@@ -6,7 +6,7 @@ EverythingSearch 是一个运行在 macOS 上的**本地文件语义搜索引擎
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
 ![macOS](https://img.shields.io/badge/macOS-10.15%2B-lightgrey)
-![License](https://img.shields.io/badge/License-Apache%202.0-green)
+![License](https://img.shields.io/badge/License-MIT-green)
 
 ## 功能特性
 
@@ -179,4 +179,4 @@ caffeinate -i ./venv/bin/python incremental.py --full
 
 ## 许可证
 
-本项目采用 [Apache License 2.0](LICENSE) 开源。
+本项目采用 [MIT License](LICENSE) 开源。

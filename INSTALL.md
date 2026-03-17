@@ -409,4 +409,4 @@ caffeinate -i ./venv/bin/python incremental.py --full
 
 ## 版权
 
-© 2026 jiggersong. Licensed under the Apache License 2.0.
+© 2026 jiggersong. Licensed under the MIT License.

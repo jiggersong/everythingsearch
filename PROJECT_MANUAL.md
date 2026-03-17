@@ -392,4 +392,4 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jigger.everythingsea
 
 ## 9. 版权
 
-© 2026 jiggersong. Licensed under the Apache License 2.0.
+© 2026 jiggersong. Licensed under the MIT License.
