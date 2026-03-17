@@ -1,0 +1,35 @@
+# Python
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# 本地配置（含 API Key，勿提交）
+config.py
+
+# 数据与缓存
+chroma_db/
+*.db
+*.db-journal
+
+# 系统与 IDE
+.DS_Store
+.idea/
+.vscode/
+.cursor/
+*.swp
+*.swo
+
+# 日志与运行时
+logs/
+*.log
+.app.pid
+
+# 安装时生成的快捷启动脚本
+start.sh

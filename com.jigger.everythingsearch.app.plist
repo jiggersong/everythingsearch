@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.jigger.everythingsearch.app</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <!-- 安装脚本 install.sh 会自动生成此路径，手动安装请替换为你的实际路径 -->
+        <string>/Users/YOUR_USERNAME/.local/bin/everythingsearch_start.sh</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/tmp/everythingsearch_stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/everythingsearch_stderr.log</string>
+</dict>
+</plist>

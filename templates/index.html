@@ -1,0 +1,1424 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EverythingSearch</title>
+<link rel="icon" type="image/png" href="/static/icon.png">
+<style>
+  :root {
+    --bg: #fafafa;
+    --bg-card: #ffffff;
+    --text: #1d1d1f;
+    --text-secondary: #6e6e73;
+    --border: #e5e5e7;
+    --accent: #0071e3;
+    --accent-light: #e8f2ff;
+    --tag-keyword: #34c759;
+    --tag-keyword-bg: #eafbf0;
+    --tag-semantic: #5856d6;
+    --tag-semantic-bg: #f0efff;
+    --shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 12px rgba(0,0,0,.04);
+    --shadow-lg: 0 2px 8px rgba(0,0,0,.08), 0 8px 24px rgba(0,0,0,.06);
+    --radius: 12px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1c1c1e;
+      --bg-card: #2c2c2e;
+      --text: #f5f5f7;
+      --text-secondary: #98989d;
+      --border: #3a3a3c;
+      --accent: #2997ff;
+      --accent-light: #1a2a3f;
+      --tag-keyword: #30d158;
+      --tag-keyword-bg: #1a3326;
+      --tag-semantic: #7d7aff;
+      --tag-semantic-bg: #2a2950;
+      --shadow: 0 1px 3px rgba(0,0,0,.2), 0 4px 12px rgba(0,0,0,.15);
+      --shadow-lg: 0 2px 8px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.2);
+    }
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { overflow-y: scroll; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    transition: background .2s;
+  }
+
+  /* ---- Layout ---- */
+  .page-layout {
+    display: flex;
+    min-height: 100vh;
+  }
+  .sidebar {
+    width: 280px;
+    position: fixed;
+    left: 0;
+    top: 0;
+    z-index: 100;
+    background: var(--bg-card);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+    transform: translateX(0);
+    transition: transform .25s ease, opacity .2s ease, width .25s ease;
+    box-shadow: 2px 0 12px rgba(0,0,0,.08);
+  }
+  .sidebar.hidden {
+    transform: translateX(-100%);
+    opacity: 0;
+    pointer-events: none;
+    box-shadow: none;
+  }
+  .sidebar.collapsed {
+    width: 48px;
+    box-shadow: none;
+  }
+  .sidebar.collapsed .sidebar-header,
+  .sidebar.collapsed .history-list { display: none; }
+  .sidebar-collapsed-toggle {
+    display: none;
+    width: 48px;
+    height: 100%;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 8px;
+    cursor: pointer;
+    color: var(--text-secondary);
+    transition: color .15s;
+  }
+  .sidebar-collapsed-toggle:hover { color: var(--accent); }
+  .sidebar.collapsed .sidebar-collapsed-toggle { display: flex; }
+  .sidebar-collapsed-toggle svg { flex-shrink: 0; }
+  .sidebar-collapsed-badge {
+    font-size: 10px;
+    font-weight: 600;
+    background: var(--accent);
+    color: #fff;
+    min-width: 18px;
+    height: 18px;
+    border-radius: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 5px;
+  }
+  .sidebar-header {
+    padding: 20px 18px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .sidebar-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .sidebar-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .sidebar-btn {
+    font-size: 12px;
+    color: var(--text-secondary);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    transition: all .15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .sidebar-btn:hover {
+    color: var(--accent);
+    background: var(--accent-light);
+  }
+  .history-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 0;
+  }
+  .history-list::-webkit-scrollbar { width: 5px; }
+  .history-list::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 3px;
+  }
+  .history-empty {
+    padding: 40px 18px;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  .history-item {
+    padding: 10px 18px;
+    cursor: pointer;
+    transition: background .12s;
+    border-left: 3px solid transparent;
+  }
+  .history-item:hover {
+    background: var(--accent-light);
+    border-left-color: var(--accent);
+  }
+  .history-item.active {
+    background: var(--accent-light);
+    border-left-color: var(--accent);
+  }
+  .history-query {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-bottom: 4px;
+  }
+  .history-meta {
+    font-size: 11px;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .history-count {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+  }
+  .history-time {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+  }
+
+  .main-content {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .wrapper {
+    max-width: 780px;
+    margin: 0 auto;
+    padding: 0 24px;
+  }
+  .hero {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding-top: 48px;
+    margin-bottom: 12px;
+    min-height: 0;
+    flex-shrink: 0;
+    transition: padding-top .3s ease, margin-bottom .3s ease;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .sidebar:not(.hidden) { box-shadow: 2px 0 16px rgba(0,0,0,.3); }
+    .sidebar.collapsed { box-shadow: none; }
+  }
+  @media (max-width: 840px) {
+    .sidebar { display: none; }
+    .sidebar.collapsed { display: none; }
+  }
+
+  .logo {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    margin-bottom: 20px;
+    transition: all .3s;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    justify-content: center;
+  }
+  .logo img {
+    height: 30px;
+    width: 30px;
+    object-fit: contain;
+    transition: all .3s;
+  }
+
+  /* ---- Search bar ---- */
+  .search-box {
+    width: 100%;
+    max-width: 760px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .search-input-wrap {
+    flex: 1;
+    min-width: 0;
+    position: relative;
+  }
+  .search-input-wrap svg {
+    position: absolute;
+    left: 20px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-secondary);
+    pointer-events: none;
+    width: 20px;
+    height: 20px;
+  }
+  .search-input-wrap input {
+    width: 100%;
+    height: 60px;
+    border: 1.5px solid var(--border);
+    border-radius: 16px;
+    padding: 0 48px 0 54px;
+    font-size: 18px;
+    background: var(--bg-card);
+    color: var(--text);
+    outline: none;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .04), 0 8px 24px rgba(0, 0, 0, .03);
+    transition: border-color .25s, box-shadow .3s;
+  }
+  .search-input-wrap input:focus {
+    border-color: rgba(0, 0, 0, .12);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, .08), 0 12px 40px rgba(0, 0, 0, .05);
+  }
+  @media (prefers-color-scheme: dark) {
+    .search-input-wrap input:focus {
+      border-color: rgba(255, 255, 255, .12);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, .3), 0 12px 40px rgba(0, 0, 0, .2);
+    }
+  }
+  .search-input-wrap input::placeholder { color: var(--text-secondary); }
+  .search-input-wrap input[readonly] {
+    background: var(--bg);
+    color: var(--text-secondary);
+    cursor: default;
+  }
+  .search-input-wrap .shortcut {
+    position: absolute;
+    right: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 12px;
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 2px 7px;
+    pointer-events: none;
+    transition: opacity .15s;
+  }
+  .search-input-wrap input:focus ~ .shortcut,
+  .search-input-wrap input:not(:placeholder-shown) ~ .shortcut { opacity: 0; }
+  .search-input-wrap.loading .shortcut { opacity: 0; }
+
+  .btn-search {
+    height: 42px;
+    padding: 0 18px;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", sans-serif;
+    font-size: 13px;
+    font-weight: 400;
+    letter-spacing: 1.5px;
+    color: rgba(0, 0, 0, .35);
+    background: rgba(0, 0, 0, .03);
+    border: 1px solid rgba(0, 0, 0, .06);
+    border-radius: 10px;
+    cursor: pointer;
+    white-space: nowrap;
+    box-shadow: none;
+    transition: all .2s;
+    flex-shrink: 0;
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+  }
+  .btn-search:hover {
+    color: rgba(0, 0, 0, .55);
+    background: rgba(0, 0, 0, .06);
+    border-color: rgba(0, 0, 0, .1);
+  }
+  .btn-search:active {
+    color: rgba(0, 0, 0, .7);
+    background: rgba(0, 0, 0, .1);
+    transform: scale(.96);
+  }
+  .btn-search.is-stop {
+    color: rgba(0, 0, 0, .3);
+  }
+  .btn-search.is-stop:hover {
+    color: rgba(255, 59, 48, .7);
+    background: rgba(255, 59, 48, .05);
+    border-color: rgba(255, 59, 48, .15);
+  }
+  @media (prefers-color-scheme: dark) {
+    .btn-search {
+      color: rgba(255, 255, 255, .3);
+      background: rgba(255, 255, 255, .04);
+      border-color: rgba(255, 255, 255, .06);
+    }
+    .btn-search:hover {
+      color: rgba(255, 255, 255, .5);
+      background: rgba(255, 255, 255, .08);
+      border-color: rgba(255, 255, 255, .1);
+    }
+    .btn-search:active {
+      color: rgba(255, 255, 255, .7);
+      background: rgba(255, 255, 255, .12);
+    }
+    .btn-search.is-stop:hover {
+      color: rgba(255, 69, 58, .8);
+      background: rgba(255, 69, 58, .08);
+      border-color: rgba(255, 69, 58, .15);
+    }
+  }
+
+  /* ---- Search progress (inline, no layout shift) ---- */
+  .search-progress {
+    display: none;
+    position: absolute;
+    right: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    pointer-events: none;
+  }
+  .search-progress.active { display: flex; }
+  .progress-dots {
+    display: flex;
+    gap: 5px;
+  }
+  .progress-dots span {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: dotPulse 1.2s ease-in-out infinite;
+  }
+  .progress-dots span:nth-child(2) { animation-delay: .15s; }
+  .progress-dots span:nth-child(3) { animation-delay: .3s; }
+  @keyframes dotPulse {
+    0%, 100% { opacity: .35; }
+    50% { opacity: 1; }
+  }
+  .progress-text {
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  /* ---- Results toolbar ---- */
+  .results-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .results-count {
+    font-size: 13px;
+    color: var(--text-secondary);
+    padding-left: 2px;
+  }
+  .sort-controls {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .sort-controls label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-right: 2px;
+  }
+  .sort-btn {
+    font-size: 12px;
+    color: var(--text-secondary);
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 10px;
+    cursor: pointer;
+    transition: all .15s;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+  }
+  .sort-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .sort-btn.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+
+  /* ---- Pagination (Google-light style) ---- */
+  .pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: 20px 0 48px;
+  }
+  .page-btn {
+    min-width: 32px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    color: var(--text-secondary);
+    background: none;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: background .15s, color .15s;
+    padding: 0;
+  }
+  .page-btn:hover { background: var(--bg-card); color: var(--accent); }
+  .page-btn.active {
+    color: var(--accent);
+    font-weight: 600;
+    background: none;
+    pointer-events: none;
+  }
+  .page-btn:disabled {
+    opacity: .3;
+    cursor: default;
+    pointer-events: none;
+  }
+  .page-btn.nav-arrow { font-size: 16px; }
+  .page-ellipsis {
+    min-width: 24px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--text-secondary);
+    opacity: .6;
+  }
+
+  /* ---- Results ---- */
+  .results {
+    padding: 20px 0 0;
+    min-height: 260px;
+  }
+  .results-header {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 16px;
+    padding-left: 2px;
+  }
+  .no-results {
+    text-align: center;
+    color: var(--text-secondary);
+    padding: 48px 0;
+    font-size: 15px;
+  }
+
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+    margin-bottom: 12px;
+    box-shadow: var(--shadow);
+    transition: box-shadow .15s, transform .15s;
+    cursor: default;
+  }
+  .card:hover {
+    box-shadow: var(--shadow-lg);
+    transform: translateY(-1px);
+  }
+
+  .card-top {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .file-icon {
+    flex-shrink: 0;
+    width: 34px; height: 34px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    font-weight: 600;
+    color: #fff;
+  }
+  .file-icon.docx { background: #2b579a; }
+  .file-icon.xlsx { background: #217346; }
+  .file-icon.pptx { background: #d24726; }
+  .file-icon.pdf  { background: #e4342b; }
+  .file-icon.txt  { background: #888; }
+  .file-icon.img  { background: #ff9500; }
+  .file-icon.code { background: #5856d6; }
+  .file-icon.other{ background: #8e8e93; }
+  .file-icon.mweb { background: #7b61ff; }
+
+  /* ---- MWeb badge ---- */
+  .badge-mweb {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 700;
+    color: #fff;
+    background: #7b61ff;
+    border-radius: 4px;
+    padding: 1px 5px;
+    margin-left: 6px;
+    vertical-align: middle;
+    letter-spacing: .3px;
+    flex-shrink: 0;
+  }
+
+  /* ---- Source filter ---- */
+  .source-controls {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 12px;
+  }
+  .source-controls label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-right: 2px;
+  }
+  .source-btn {
+    font-size: 12px;
+    color: var(--text-secondary);
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 10px;
+    cursor: pointer;
+    transition: all .15s;
+    white-space: nowrap;
+  }
+  .source-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .source-btn.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+
+  /* ---- Date filter ---- */
+  .date-filter-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .date-filter-row label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-right: 2px;
+  }
+  .date-btn {
+    font-size: 12px;
+    color: var(--text-secondary);
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 10px;
+    cursor: pointer;
+    transition: all .15s;
+    white-space: nowrap;
+  }
+  .date-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .date-btn.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  .date-custom-inputs {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .date-custom-inputs input[type="date"] {
+    font-size: 12px;
+    padding: 3px 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg-card);
+    color: var(--text);
+    outline: none;
+    transition: border-color .15s;
+  }
+  .date-custom-inputs input[type="date"]:focus {
+    border-color: var(--accent);
+  }
+  .date-custom-inputs span {
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  .card-category {
+    font-size: 11px;
+    color: var(--tag-semantic);
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .card-title {
+    font-size: 15px;
+    font-weight: 600;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .tag {
+    flex-shrink: 0;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 9px;
+    border-radius: 6px;
+  }
+  .tag.keyword  { color: var(--tag-keyword);  background: var(--tag-keyword-bg); }
+  .tag.semantic { color: var(--tag-semantic); background: var(--tag-semantic-bg); }
+
+  .card-path {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 10px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .card-preview {
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.6;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .card-actions {
+    margin-top: 12px;
+    display: flex;
+    gap: 8px;
+  }
+  .btn-reveal {
+    font-size: 12px;
+    color: var(--accent);
+    background: none;
+    border: 1px solid var(--accent);
+    border-radius: 6px;
+    padding: 4px 12px;
+    cursor: pointer;
+    transition: all .15s;
+  }
+  .btn-reveal:hover {
+    background: var(--accent);
+    color: #fff;
+  }
+  .btn-open {
+    font-size: 12px;
+    color: var(--text-secondary);
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 12px;
+    cursor: pointer;
+    transition: all .15s;
+  }
+  .btn-open:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  /* ---- Highlight ---- */
+  mark {
+    background: #fff3a8;
+    color: inherit;
+    border-radius: 2px;
+    padding: 0 1px;
+  }
+  @media (prefers-color-scheme: dark) {
+    mark {
+      background: #5c4d0b;
+      color: #fde68a;
+    }
+  }
+
+  /* ---- Intro (shown before search) ---- */
+  .intro {
+    max-width: 520px;
+    margin: 0 auto;
+    padding: 40px 20px 0;
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.8;
+    transition: opacity .2s ease;
+  }
+  .intro-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 12px;
+    text-align: center;
+    opacity: .6;
+  }
+  .intro-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .intro-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+  }
+  .intro-icon {
+    flex-shrink: 0;
+    font-size: 16px;
+    line-height: 1.4;
+  }
+  .intro-text {
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+  }
+  .intro-text strong {
+    color: var(--text);
+    font-weight: 500;
+  }
+  .intro-shortcuts {
+    text-align: center;
+    margin-top: 16px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    opacity: .7;
+  }
+  .intro-shortcuts kbd {
+    display: inline-block;
+    font-family: inherit;
+    font-size: 11px;
+    padding: 1px 6px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg);
+    margin: 0 2px;
+  }
+  @media (max-width: 520px) {
+    .intro-grid { grid-template-columns: 1fr; }
+  }
+
+  /* ---- Footer ---- */
+  .footer {
+    text-align: center;
+    padding: 20px;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .main-content .wrapper {
+    flex: 1;
+  }
+  .main-content .footer-bottom {
+    flex-shrink: 0;
+    text-align: center;
+    padding: 20px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    opacity: .5;
+  }
+</style>
+</head>
+<body>
+
+<div class="page-layout">
+  <aside class="sidebar hidden" id="sidebar">
+    <div class="sidebar-collapsed-toggle" id="sidebarExpand" title="展开搜索历史">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <span class="sidebar-collapsed-badge" id="historyBadge">0</span>
+    </div>
+    <div class="sidebar-header">
+      <span class="sidebar-title">搜索历史</span>
+      <div class="sidebar-actions">
+        <button class="sidebar-btn" id="clearHistory" title="清空历史">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+        </button>
+        <button class="sidebar-btn" id="sidebarCollapse" title="收起侧栏">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="history-list" id="historyList"></div>
+  </aside>
+
+  <div class="main-content">
+    <div class="wrapper">
+      <div class="hero" id="hero">
+        <div class="logo"><img src="/static/icon.png" alt="EverythingSearch">EverythingSearch</div>
+        <div class="search-box">
+          <div class="search-input-wrap">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input id="searchInput" type="text" placeholder="搜索本地文件..." autofocus>
+            <span class="shortcut">⌘ K</span>
+            <div class="search-progress" id="searchProgress">
+              <div class="progress-dots"><span></span><span></span><span></span></div>
+              <span class="progress-text">正在搜索…</span>
+            </div>
+          </div>
+          <button class="btn-search" id="searchBtn" style="display:none">搜索</button>
+        </div>
+      </div>
+      <div class="results" id="results"></div>
+
+      <div id="intro" class="intro">
+        <div class="intro-grid">
+          <div class="intro-item">
+            <span class="intro-icon">🔍</span>
+            <div class="intro-text"><strong>语义搜索</strong><br>支持自然语言描述，如"去年的营销方案"</div>
+          </div>
+          <div class="intro-item">
+            <span class="intro-icon">📂</span>
+            <div class="intro-text"><strong>文件 + 笔记</strong><br>同时搜索本地文件和 MWeb 笔记内容</div>
+          </div>
+          <div class="intro-item">
+            <span class="intro-icon">🎯</span>
+            <div class="intro-text"><strong>精确匹配</strong><br>关键词完全命中的结果会优先展示</div>
+          </div>
+          <div class="intro-item">
+            <span class="intro-icon">📌</span>
+            <div class="intro-text"><strong>快速定位</strong><br>点击结果可直接在 Finder 中打开文件</div>
+          </div>
+        </div>
+        <div class="intro-shortcuts"><kbd>⌘</kbd> <kbd>K</kbd> 快速聚焦搜索框 &nbsp;·&nbsp; <kbd>Enter</kbd> 开始搜索</div>
+      </div>
+    </div>
+    <footer class="footer-bottom">
+      <span id="copyright"></span>
+    </footer>
+  </div>
+</div>
+
+<script>
+const ENABLE_MWEB = {{ 'true' if enable_mweb else 'false' }};
+const input          = document.getElementById('searchInput');
+const hero           = document.getElementById('hero');
+const searchBtn      = document.getElementById('searchBtn');
+const searchProgress = document.getElementById('searchProgress');
+const results        = document.getElementById('results');
+const historyList    = document.getElementById('historyList');
+const clearBtn       = document.getElementById('clearHistory');
+const sidebar        = document.getElementById('sidebar');
+const collapseBtn    = document.getElementById('sidebarCollapse');
+const expandBtn      = document.getElementById('sidebarExpand');
+const historyBadge   = document.getElementById('historyBadge');
+let currentQuery = '';
+let searching = false;
+let abortCtrl = null;
+let currentData = null;
+let sortMode = 'relevance';
+let currentPage = 1;
+let sourceFilter = 'all';
+let dateField = 'mtime';
+let dateRange = 'all';
+let dateFrom = null;
+let dateTo = null;
+const PAGE_SIZE = 25;
+
+const SIDEBAR_STATE_KEY = 'es_sidebar_collapsed';
+
+const HISTORY_KEY = 'es_search_history';
+const MAX_HISTORY = 50;
+
+const FILE_ICONS = {
+  '.docx': ['docx', 'W'], '.doc': ['docx', 'W'],
+  '.xlsx': ['xlsx', 'X'], '.xls': ['xlsx', 'X'], '.csv': ['xlsx', 'C'],
+  '.pptx': ['pptx', 'P'], '.ppt': ['pptx', 'P'],
+  '.pdf':  ['pdf',  'P'],
+  '.txt':  ['txt',  'T'], '.md': ['txt', 'M'], '.log': ['txt', 'L'],
+  '.jpg': ['img', '🖼'], '.jpeg': ['img', '🖼'], '.png': ['img', '🖼'],
+  '.gif': ['img', '🖼'], '.bmp': ['img', '🖼'], '.svg': ['img', '🖼'],
+  '.py': ['code', 'Py'], '.js': ['code', 'JS'], '.ts': ['code', 'TS'],
+  '.json': ['code', '{ }'], '.html': ['code', '<>'], '.css': ['code', '#'],
+  '.go': ['code', 'Go'], '.java': ['code', 'J'], '.sql': ['code', 'Q'],
+};
+
+function iconFor(ext, sourceType) {
+  if (sourceType === 'mweb') return ['mweb', '📓'];
+  const m = FILE_ICONS[ext];
+  return m || ['other', '?'];
+}
+
+function setSource(s) {
+  sourceFilter = s;
+  currentQuery = input.value.trim();
+  if (currentQuery) doSearch(currentQuery);
+}
+
+function setDateField(f) {
+  dateField = f;
+  currentQuery = input.value.trim();
+  if (currentQuery) doSearch(currentQuery);
+}
+
+function setDateRange(range) {
+  dateRange = range;
+  const now = Math.floor(Date.now() / 1000);
+  const DAY = 86400;
+  switch (range) {
+    case 'week':   dateFrom = now - 7 * DAY; dateTo = null; break;
+    case 'month':  dateFrom = now - 30 * DAY; dateTo = null; break;
+    case '3month': dateFrom = now - 90 * DAY; dateTo = null; break;
+    case 'year':   dateFrom = now - 365 * DAY; dateTo = null; break;
+    case 'custom': return;
+    default:       dateFrom = null; dateTo = null;
+  }
+  currentQuery = input.value.trim();
+  if (currentQuery) doSearch(currentQuery);
+}
+
+function applyCustomDate() {
+  const fromEl = document.getElementById('dateFromInput');
+  const toEl = document.getElementById('dateToInput');
+  if (fromEl && fromEl.value) {
+    dateFrom = new Date(fromEl.value + 'T00:00:00').getTime() / 1000;
+  } else {
+    dateFrom = null;
+  }
+  if (toEl && toEl.value) {
+    dateTo = new Date(toEl.value + 'T23:59:59').getTime() / 1000;
+  } else {
+    dateTo = null;
+  }
+  currentQuery = input.value.trim();
+  if (currentQuery) doSearch(currentQuery);
+}
+
+function shortenPath(fp) {
+  return fp.replace(/^\/Users\/[^/]+\//, '~/');
+}
+
+/* ---- 仅回车或搜索按钮触发搜索，输入过程不做任何动作 ---- */
+
+/* ---- Search History ---- */
+
+function loadHistory() {
+  try {
+    return JSON.parse(localStorage.getItem(HISTORY_KEY)) || [];
+  } catch { return []; }
+}
+
+function saveHistory(history) {
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+}
+
+function addToHistory(query, resultCount) {
+  const history = loadHistory();
+  const idx = history.findIndex(h => h.query === query);
+  if (idx !== -1) history.splice(idx, 1);
+  history.unshift({ query, resultCount, timestamp: Date.now() });
+  if (history.length > MAX_HISTORY) history.length = MAX_HISTORY;
+  saveHistory(history);
+  renderHistory();
+}
+
+function formatTime(ts) {
+  const diff = Date.now() - ts;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return '刚刚';
+  if (mins < 60) return `${mins} 分钟前`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} 小时前`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days} 天前`;
+  const d = new Date(ts);
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+function updateSidebarVisibility(historyCount) {
+  if (historyCount === 0) {
+    sidebar.classList.add('hidden');
+    sidebar.classList.remove('collapsed');
+    return;
+  }
+  sidebar.classList.remove('hidden');
+  const userCollapsed = localStorage.getItem(SIDEBAR_STATE_KEY) === '1';
+  if (userCollapsed) {
+    sidebar.classList.add('collapsed');
+  } else {
+    sidebar.classList.remove('collapsed');
+  }
+  historyBadge.textContent = historyCount;
+}
+
+function renderHistory() {
+  const history = loadHistory();
+  updateSidebarVisibility(history.length);
+  if (!history.length) {
+    historyList.innerHTML = '';
+    return;
+  }
+  historyList.innerHTML = history.map(h => `
+    <div class="history-item${h.query === currentQuery ? ' active' : ''}"
+         data-query="${esc(h.query)}">
+      <div class="history-query">${esc(h.query)}</div>
+      <div class="history-meta">
+        <span class="history-count">📄 ${h.resultCount} 个结果</span>
+        <span class="history-time">${formatTime(h.timestamp)}</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+historyList.addEventListener('click', e => {
+  const item = e.target.closest('.history-item');
+  if (!item || searching) return;
+  const q = item.dataset.query;
+  input.value = q;
+  input.focus();
+  /* 只填框不搜索，用户按回车后再搜索 */
+});
+
+collapseBtn.addEventListener('click', () => {
+  localStorage.setItem(SIDEBAR_STATE_KEY, '1');
+  sidebar.classList.add('collapsed');
+});
+
+expandBtn.addEventListener('click', () => {
+  localStorage.removeItem(SIDEBAR_STATE_KEY);
+  sidebar.classList.remove('collapsed');
+});
+
+clearBtn.addEventListener('click', () => {
+  localStorage.removeItem(HISTORY_KEY);
+  renderHistory();
+});
+
+/* ---- Sorting ---- */
+
+function getSortedResults(items) {
+  const arr = [...items];
+  if (sortMode === 'mtime_desc') {
+    arr.sort((a, b) => (b.mtime || 0) - (a.mtime || 0));
+  } else if (sortMode === 'mtime_asc') {
+    arr.sort((a, b) => (a.mtime || 0) - (b.mtime || 0));
+  }
+  return arr;
+}
+
+function formatMtime(ts) {
+  if (!ts) return '';
+  const d = new Date(ts * 1000);
+  const Y = d.getFullYear();
+  const M = String(d.getMonth() + 1).padStart(2, '0');
+  const D = String(d.getDate()).padStart(2, '0');
+  const h = String(d.getHours()).padStart(2, '0');
+  const m = String(d.getMinutes()).padStart(2, '0');
+  return `${Y}-${M}-${D} ${h}:${m}`;
+}
+
+function setSort(mode) {
+  sortMode = mode;
+  currentPage = 1;
+  renderView();
+}
+
+/* ---- Pagination ---- */
+
+function buildPagination(total) {
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+  if (totalPages <= 1) return '';
+
+  let html = '<div class="pagination">';
+  html += `<button class="page-btn nav-arrow" ${currentPage <= 1 ? 'disabled' : ''} onclick="goPage(${currentPage - 1})">&lsaquo;</button>`;
+
+  const pages = [];
+  pages.push(1);
+  let lo = Math.max(2, currentPage - 2);
+  let hi = Math.min(totalPages - 1, currentPage + 2);
+  if (lo > 2) pages.push('...');
+  for (let p = lo; p <= hi; p++) pages.push(p);
+  if (hi < totalPages - 1) pages.push('...');
+  if (totalPages > 1) pages.push(totalPages);
+
+  pages.forEach(p => {
+    if (p === '...') {
+      html += '<span class="page-ellipsis">…</span>';
+    } else {
+      html += `<button class="page-btn${p === currentPage ? ' active' : ''}" onclick="goPage(${p})">${p}</button>`;
+    }
+  });
+
+  html += `<button class="page-btn nav-arrow" ${currentPage >= totalPages ? 'disabled' : ''} onclick="goPage(${currentPage + 1})">&rsaquo;</button>`;
+  html += '</div>';
+  return html;
+}
+
+function goPage(p) {
+  const totalPages = Math.ceil(currentData.results.length / PAGE_SIZE);
+  if (p < 1 || p > totalPages) return;
+  currentPage = p;
+  renderView();
+  results.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/* ---- Results ---- */
+
+function renderView() {
+  if (!currentData) {
+    results.innerHTML = '<div class="no-results">没有找到相关文件，试试换个描述？</div>';
+    return;
+  }
+
+  const sorted = getSortedResults(currentData.results);
+  const total = sorted.length;
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+  if (currentPage > totalPages) currentPage = Math.max(1, totalPages);
+  const start = (currentPage - 1) * PAGE_SIZE;
+  const pageItems = sorted.slice(start, start + PAGE_SIZE);
+  const q = currentData.query || '';
+
+  let html = '<div class="results-toolbar">';
+  html += `<div class="results-count">${total ? '找到 ' + total + ' 个相关结果' : '没有找到相关结果'}</div>`;
+  html += '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px">';
+  html += '<div class="sort-controls">';
+  html += '<label>排序:</label>';
+  html += `<button class="sort-btn${sortMode === 'relevance' ? ' active' : ''}" onclick="setSort('relevance')">匹配度</button>`;
+  html += `<button class="sort-btn${sortMode === 'mtime_desc' ? ' active' : ''}" onclick="setSort('mtime_desc')">修改时间 ↓</button>`;
+  html += `<button class="sort-btn${sortMode === 'mtime_asc' ? ' active' : ''}" onclick="setSort('mtime_asc')">修改时间 ↑</button>`;
+  html += '</div>';
+  html += '<div class="source-controls">';
+  html += '<label>来源:</label>';
+  html += `<button class="source-btn${sourceFilter === 'all' ? ' active' : ''}" onclick="setSource('all')">全部</button>`;
+  html += `<button class="source-btn${sourceFilter === 'file' ? ' active' : ''}" onclick="setSource('file')">文件</button>`;
+  if (ENABLE_MWEB) {
+    html += `<button class="source-btn${sourceFilter === 'mweb' ? ' active' : ''}" onclick="setSource('mweb')">MWeb笔记</button>`;
+  } else if (sourceFilter === 'mweb') {
+    sourceFilter = 'file';
+  }
+  html += '</div></div></div>';
+
+  html += '<div class="date-filter-row">';
+  html += '<label>时间:</label>';
+  html += `<button class="date-btn${dateField === 'mtime' ? ' active' : ''}" onclick="setDateField('mtime')">修改时间</button>`;
+  html += `<button class="date-btn${dateField === 'ctime' ? ' active' : ''}" onclick="setDateField('ctime')">创建时间</button>`;
+  html += '<span style="color:var(--border);margin:0 4px">|</span>';
+  html += `<button class="date-btn${dateRange === 'all' ? ' active' : ''}" onclick="setDateRange('all')">全部</button>`;
+  html += `<button class="date-btn${dateRange === 'week' ? ' active' : ''}" onclick="setDateRange('week')">最近一周</button>`;
+  html += `<button class="date-btn${dateRange === 'month' ? ' active' : ''}" onclick="setDateRange('month')">最近一个月</button>`;
+  html += `<button class="date-btn${dateRange === '3month' ? ' active' : ''}" onclick="setDateRange('3month')">最近三个月</button>`;
+  html += `<button class="date-btn${dateRange === 'year' ? ' active' : ''}" onclick="setDateRange('year')">最近一年</button>`;
+  html += `<button class="date-btn${dateRange === 'custom' ? ' active' : ''}" onclick="setDateRange('custom')">自定义</button>`;
+  if (dateRange === 'custom') {
+    const fmtFrom = dateFrom ? new Date(dateFrom * 1000).toISOString().slice(0, 10) : '';
+    const fmtTo = dateTo ? new Date(dateTo * 1000).toISOString().slice(0, 10) : '';
+    html += `<div class="date-custom-inputs">`;
+    html += `<input type="date" id="dateFromInput" value="${fmtFrom}" onchange="applyCustomDate()">`;
+    html += `<span>至</span>`;
+    html += `<input type="date" id="dateToInput" value="${fmtTo}" onchange="applyCustomDate()">`;
+    html += `</div>`;
+  }
+  html += '</div>';
+
+  if (!total) {
+    html += '<div class="no-results">没有找到相关文件，试试换个描述或切换来源？</div>';
+    results.innerHTML = html;
+    return;
+  }
+
+  pageItems.forEach((r, idx) => {
+    const [iconClass, iconLabel] = iconFor(r.filetype, r.source_type);
+    const tagClass = r.tag === '精确匹配' ? 'keyword' : 'semantic';
+    const tagText = r.tag === '精确匹配' ? '精确匹配' : r.relevance;
+    const mtimeStr = formatMtime(r.mtime);
+    const mwebBadge = r.source_type === 'mweb' ? '<span class="badge-mweb" title="MWeb 笔记">MWeb</span>' : '';
+    const categoryLine = (r.source_type === 'mweb' && r.categories) ? `<div class="card-category">📂 ${esc(r.categories)}</div>` : '';
+    html += `
+      <div class="card">
+        <div class="card-top">
+          <div class="file-icon ${iconClass}">${iconLabel}</div>
+          <div class="card-title">${highlight(r.filename, q)}${mwebBadge}</div>
+          <span class="tag ${tagClass}">${esc(tagText)}</span>
+        </div>
+        ${categoryLine}
+        <div class="card-path">${highlight(shortenPath(r.filepath), q)}${mtimeStr ? ' &nbsp;·&nbsp; <span style="color:var(--text-secondary);font-size:11px">' + mtimeStr + '</span>' : ''}</div>
+        <div class="card-preview">${highlight(r.preview, q)}</div>
+        <div class="card-actions">
+          <button class="btn-open" data-filepath="${esc(r.filepath)}" onclick="openFile(this.dataset.filepath)">打开</button>
+          <button class="btn-reveal" data-filepath="${esc(r.filepath)}" onclick="reveal(this.dataset.filepath)">在 Finder 中显示</button>
+        </div>
+      </div>`;
+  });
+
+  if (totalPages > 1) {
+    const rangeStart = start + 1;
+    const rangeEnd = Math.min(start + PAGE_SIZE, total);
+    html += `<div style="text-align:center;font-size:12px;color:var(--text-secondary);margin-top:16px;opacity:.7">第 ${rangeStart}-${rangeEnd} 条，共 ${total} 条</div>`;
+    html += buildPagination(total);
+  }
+
+  results.innerHTML = html;
+}
+
+function renderResults(data) {
+  currentData = data;
+  sortMode = 'relevance';
+  currentPage = 1;
+  renderView();
+}
+
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function highlight(text, query) {
+  const safe = esc(text);
+  if (!query) return safe;
+  const tokens = query.split(/\s+/).filter(Boolean);
+  const escaped = tokens.map(t => esc(t).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  if (!escaped.length) return safe;
+  const re = new RegExp('(' + escaped.join('|') + ')', 'gi');
+  return safe.replace(re, '<mark>$1</mark>');
+}
+
+function setSearching(on) {
+  searching = on;
+  input.readOnly = on;
+  searchProgress.classList.toggle('active', on);
+  input.closest('.search-input-wrap').classList.toggle('loading', on);
+  if (on) {
+    searchBtn.textContent = '停止';
+    searchBtn.classList.add('is-stop');
+  } else {
+    searchBtn.textContent = '搜索';
+    searchBtn.classList.remove('is-stop');
+  }
+}
+
+function abortSearch() {
+  if (abortCtrl) { abortCtrl.abort(); abortCtrl = null; }
+  setSearching(false);
+}
+
+function triggerSearch() {
+  if (searching) { abortSearch(); return; }
+  const q = input.value.trim();
+  if (!q) return;
+  doSearch(q);
+}
+
+async function doSearch(q) {
+  if (searching) abortSearch();
+  currentQuery = q;
+  const introEl = document.getElementById('intro');
+    if (introEl) {
+      introEl.style.opacity = '0';
+      setTimeout(() => { introEl.style.display = 'none'; }, 200);
+    }
+  results.innerHTML = '';
+  setSearching(true);
+  abortCtrl = new AbortController();
+  try {
+    let url = '/api/search?q=' + encodeURIComponent(q) + '&source=' + encodeURIComponent(sourceFilter) + '&date_field=' + encodeURIComponent(dateField);
+    if (dateFrom != null) url += '&date_from=' + dateFrom;
+    if (dateTo != null) url += '&date_to=' + dateTo;
+    const res = await fetch(url, { signal: abortCtrl.signal });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const errMsg = (data && data.error) ? data.error : ('HTTP ' + res.status + ' ' + res.statusText);
+      throw new Error(errMsg);
+    }
+    renderResults(data);
+    addToHistory(q, data.results.length);
+  } catch (e) {
+    if (e.name === 'AbortError') return;
+    const msg = (e && e.message) ? e.message : '未知错误';
+    results.innerHTML = '<div class="no-results">搜索出错：' + esc(msg) + '。请检查后端是否运行中。</div>';
+  } finally {
+    abortCtrl = null;
+    setSearching(false);
+  }
+}
+
+async function openFile(fp) {
+  if (!fp) return;
+  const res = await fetch('/api/open', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({filepath: fp}),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok && data.error) {
+    alert(data.error);
+  }
+}
+
+async function reveal(fp) {
+  if (!fp) return;
+  const res = await fetch('/api/reveal', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({filepath: fp}),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok && data.error) {
+    alert(data.error);
+  }
+}
+
+searchBtn.addEventListener('click', triggerSearch);
+
+/* 仅回车或搜索按钮触发搜索，输入过程不做任何监控或动作 */
+input.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    input.blur();
+    return;
+  }
+  if (e.key === 'Enter' && !e.isComposing) {
+    e.preventDefault();
+    triggerSearch();
+  }
+});
+
+document.addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+    e.preventDefault();
+    if (searching) return;
+    input.focus();
+    input.select();
+  }
+});
+
+renderHistory();
+
+/* ---- Intro text adjust ---- */
+try {
+  if (!ENABLE_MWEB) {
+    const introNote = document.querySelector('.intro-item:nth-child(2) .intro-text');
+    if (introNote) introNote.innerHTML = '<strong>本地文件</strong><br>仅检索本地文件内容与文件名（已关闭 MWeb 数据源）';
+  }
+} catch (_) {}
+</script>
+<script>document.getElementById('copyright').innerHTML = '\u00A9 ' + new Date().getFullYear() + ' EverythingSearch. All rights reserved.';</script>
+</body>
+</html>
