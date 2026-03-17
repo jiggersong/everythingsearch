@@ -616,12 +616,43 @@
   }
 
   /* ---- Date filter ---- */
+  .date-toggle-btn {
+    font-size: 12px;
+    color: var(--text-secondary);
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 10px;
+    cursor: pointer;
+    transition: all .15s;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 12px;
+  }
+  .date-toggle-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .date-toggle-btn.has-filter {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .date-toggle-btn .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    flex-shrink: 0;
+  }
   .date-filter-row {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
     gap: 8px;
     margin-bottom: 12px;
+    padding: 10px 14px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
   }
   .date-filter-row label {
     font-size: 12px;
@@ -941,6 +972,7 @@ let dateField = 'mtime';
 let dateRange = 'all';
 let dateFrom = null;
 let dateTo = null;
+let dateFilterOpen = false;
 const PAGE_SIZE = 25;
 
 const SIDEBAR_STATE_KEY = 'es_sidebar_collapsed';
@@ -971,6 +1003,18 @@ function setSource(s) {
   sourceFilter = s;
   currentQuery = input.value.trim();
   if (currentQuery) doSearch(currentQuery);
+}
+
+function toggleDateFilter() {
+  dateFilterOpen = !dateFilterOpen;
+  if (!dateFilterOpen && dateRange !== 'all') {
+    dateRange = 'all';
+    dateFrom = null;
+    dateTo = null;
+    currentQuery = input.value.trim();
+    if (currentQuery) { doSearch(currentQuery); return; }
+  }
+  renderView();
 }
 
 function setDateField(f) {
@@ -1214,29 +1258,34 @@ function renderView() {
   } else if (sourceFilter === 'mweb') {
     sourceFilter = 'file';
   }
+  const hasDateFilter = dateRange !== 'all';
+  html += `<button class="date-toggle-btn${hasDateFilter ? ' has-filter' : ''}" onclick="toggleDateFilter()">${hasDateFilter ? '<span class="dot"></span>' : ''}${dateFilterOpen ? '收起时间筛选' : '按时间筛选'}</button>`;
   html += '</div></div></div>';
 
-  html += '<div class="date-filter-row">';
-  html += '<label>时间:</label>';
-  html += `<button class="date-btn${dateField === 'mtime' ? ' active' : ''}" onclick="setDateField('mtime')">修改时间</button>`;
-  html += `<button class="date-btn${dateField === 'ctime' ? ' active' : ''}" onclick="setDateField('ctime')">创建时间</button>`;
-  html += '<span style="color:var(--border);margin:0 4px">|</span>';
-  html += `<button class="date-btn${dateRange === 'all' ? ' active' : ''}" onclick="setDateRange('all')">全部</button>`;
-  html += `<button class="date-btn${dateRange === 'week' ? ' active' : ''}" onclick="setDateRange('week')">最近一周</button>`;
-  html += `<button class="date-btn${dateRange === 'month' ? ' active' : ''}" onclick="setDateRange('month')">最近一个月</button>`;
-  html += `<button class="date-btn${dateRange === '3month' ? ' active' : ''}" onclick="setDateRange('3month')">最近三个月</button>`;
-  html += `<button class="date-btn${dateRange === 'year' ? ' active' : ''}" onclick="setDateRange('year')">最近一年</button>`;
-  html += `<button class="date-btn${dateRange === 'custom' ? ' active' : ''}" onclick="setDateRange('custom')">自定义</button>`;
-  if (dateRange === 'custom') {
-    const fmtFrom = dateFrom ? new Date(dateFrom * 1000).toISOString().slice(0, 10) : '';
-    const fmtTo = dateTo ? new Date(dateTo * 1000).toISOString().slice(0, 10) : '';
-    html += `<div class="date-custom-inputs">`;
-    html += `<input type="date" id="dateFromInput" value="${fmtFrom}" onchange="applyCustomDate()">`;
-    html += `<span>至</span>`;
-    html += `<input type="date" id="dateToInput" value="${fmtTo}" onchange="applyCustomDate()">`;
-    html += `</div>`;
+  if (dateFilterOpen) {
+    html += '<div class="date-filter-row">';
+    html += '<label>依据:</label>';
+    html += `<button class="date-btn${dateField === 'mtime' ? ' active' : ''}" onclick="setDateField('mtime')">修改时间</button>`;
+    html += `<button class="date-btn${dateField === 'ctime' ? ' active' : ''}" onclick="setDateField('ctime')">创建时间</button>`;
+    html += '<span style="color:var(--border);margin:0 4px">|</span>';
+    html += '<label>范围:</label>';
+    html += `<button class="date-btn${dateRange === 'all' ? ' active' : ''}" onclick="setDateRange('all')">全部</button>`;
+    html += `<button class="date-btn${dateRange === 'week' ? ' active' : ''}" onclick="setDateRange('week')">最近一周</button>`;
+    html += `<button class="date-btn${dateRange === 'month' ? ' active' : ''}" onclick="setDateRange('month')">最近一个月</button>`;
+    html += `<button class="date-btn${dateRange === '3month' ? ' active' : ''}" onclick="setDateRange('3month')">最近三个月</button>`;
+    html += `<button class="date-btn${dateRange === 'year' ? ' active' : ''}" onclick="setDateRange('year')">最近一年</button>`;
+    html += `<button class="date-btn${dateRange === 'custom' ? ' active' : ''}" onclick="setDateRange('custom')">自定义</button>`;
+    if (dateRange === 'custom') {
+      const fmtFrom = dateFrom ? new Date(dateFrom * 1000).toISOString().slice(0, 10) : '';
+      const fmtTo = dateTo ? new Date(dateTo * 1000).toISOString().slice(0, 10) : '';
+      html += `<div class="date-custom-inputs">`;
+      html += `<input type="date" id="dateFromInput" value="${fmtFrom}" onchange="applyCustomDate()">`;
+      html += `<span>至</span>`;
+      html += `<input type="date" id="dateToInput" value="${fmtTo}" onchange="applyCustomDate()">`;
+      html += `</div>`;
+    }
+    html += '</div>';
   }
-  html += '</div>';
 
   if (!total) {
     html += '<div class="no-results">没有找到相关文件，试试换个描述或切换来源？</div>';
