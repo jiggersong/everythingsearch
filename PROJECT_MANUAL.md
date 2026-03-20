@@ -188,7 +188,9 @@ python incremental.py --full   # 完整重建
 
 Flask 应用，路由：
 - `GET /` — 返回搜索页面
-- `GET /api/search?q=xxx&source=all|file|mweb` — 搜索 API
+- `GET /api/search?q=xxx&source=all|file|mweb` — 搜索 API（可选 `limit=1..200` 限制条数，便于 Agent/脚本消费）
+- `GET /api/file/read?filepath=...&max_bytes=...` — 读取**已索引根目录内**文件的文本内容（用于 Skills / 自动化；二进制会提示改用 download）
+- `GET /api/file/download?filepath=...` — 下载**已索引根目录内**文件（`Content-Disposition: attachment`）
 - `POST /api/reveal` — 在 Finder 中显示文件（含路径安全校验）
 - `POST /api/open` — 用默认应用打开文件（含路径安全校验）
 

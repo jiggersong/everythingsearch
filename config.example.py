@@ -31,6 +31,9 @@ MWEB_EXPORT_SCRIPT = ""
 # HOST = "127.0.0.1"
 # PORT = 8000
 
+# [可选] Skills / HTTP 客户端：/api/file/read 单次读取正文的最大字节数（防止一次读入过大文件）
+API_MAX_READ_BYTES = 524288
+
 # 增量索引状态数据库
 INDEX_STATE_DB = "./index_state.db"
 

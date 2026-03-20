@@ -172,6 +172,11 @@ caffeinate -i ./venv/bin/python incremental.py --full
 | 办公文档 | `.pdf` `.docx` `.xlsx` `.pptx` | 内容解析后索引 |
 | 媒体文件 | `.jpg` `.png` `.mp4` `.mp3` `.zip` `.psd` 等 | 仅索引文件名 |
 
+## Agent / Cursor Skills
+
+- 搜索、读文本、下载等 HTTP 接口见 [PROJECT_MANUAL.md](PROJECT_MANUAL.md)（`/api/search`、`/api/file/read`、`/api/file/download`）。
+- 仓库内提供 Cursor Skill：`.cursor/skills/everythingsearch-local/SKILL.md`，启用后 Agent 可按该说明调用本机服务。
+
 ## 文档
 
 - [INSTALL.md](INSTALL.md) — 详细安装与配置指引
