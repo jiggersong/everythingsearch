@@ -10,7 +10,7 @@
 
 ### 变更
 
-- **日志按天滚动**：新增仓库根目录 **`gunicorn.conf.py`**，Gunicorn 使用 `TimedRotatingFileHandler`（每日午夜切分）写入 `logs/app.log`、`logs/app_err.log`，归档文件带日期后缀（如 `app.log.2025-03-23`），默认保留 90 个备份；常驻启动改为 `-c gunicorn.conf.py`，不再使用 `--access-logfile` / `--error-logfile`。
+- **日志按天滚动**：新增仓库根目录 **`gunicorn.conf.py`**，Gunicorn 使用 `TimedRotatingFileHandler`（每日午夜切分）写入 `logs/app.log`、`logs/app_err.log`，归档文件带日期后缀（如 `app.log.2026-03-23`），默认保留 90 个备份；常驻启动改为 `-c gunicorn.conf.py`，不再使用 `--access-logfile` / `--error-logfile`。
 - **Launchd / Shell**：`everythingsearch_start.sh` 将 wrapper 输出写入按日文件 **`logs/launchd_app_YYYY-MM-DD.log`**；`everythingsearch_index.sh` 将增量索引输出写入 **`logs/incremental_YYYY-MM-DD.log`**；示例与安装脚本生成的 plist 去掉固定 `/tmp/*.log` 的 `StandardOutPath`/`StandardErrorPath`，避免单文件无限增长。
 - **开发模式**：`python -m everythingsearch.app` 通过 **`everythingsearch/logging_config.py`** 为应用与 Werkzeug 增加按天滚动的 `logs/app_dev.log`、`logs/werkzeug_dev.log`。
 - **文档**：`docs/PROJECT_MANUAL.md`、`docs/INSTALL.md`、`scripts/run_app.sh` 等与上述路径及用法对齐。
