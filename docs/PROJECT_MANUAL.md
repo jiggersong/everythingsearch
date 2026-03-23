@@ -293,7 +293,7 @@ cd /path/to/EverythingSearch
 ### 完整重建索引（首次或大规模变更后）
 ```bash
 cd /path/to/EverythingSearch
-caffeinate -i nohup ./venv/bin/python -m everythingsearch.incremental --full > logs/full_rebuild.log 2>&1 &
+caffeinate -i nohup ./venv/bin/python -m everythingsearch.incremental --full >> "logs/full_rebuild_$(date +%Y-%m-%d).log" 2>&1 &
 # 索引完成后重启搜索服务以加载新数据
 # ./scripts/run_app.sh restart
 ```
@@ -301,8 +301,9 @@ caffeinate -i nohup ./venv/bin/python -m everythingsearch.incremental --full > l
 
 ### 查看增量索引日志
 ```bash
-cat logs/incremental.log
-cat logs/incremental_err.log
+# 按日文件：incremental_YYYY-MM-DD.log（stdout/stderr 合并写入）
+ls -1 logs/incremental_*.log
+tail -n 200 logs/incremental_$(date +%Y-%m-%d).log
 ```
 
 ---
@@ -384,9 +385,10 @@ cat > ~/.local/bin/everythingsearch_start.sh << 'EOF'
 APP_DIR="$HOME/Documents/code/EverythingSearch"
 mkdir -p "$APP_DIR/logs"
 cd "$APP_DIR" || exit 1
-exec "$APP_DIR/venv/bin/python" -m gunicorn -w 1 -b 127.0.0.1:8000 \
-  --timeout 120 --access-logfile "$APP_DIR/logs/app.log" \
-  --error-logfile "$APP_DIR/logs/app_err.log" everythingsearch.app:app
+LOG_DATE=$(date +%Y-%m-%d)
+exec >>"$APP_DIR/logs/launchd_app_${LOG_DATE}.log" 2>&1
+exec "$APP_DIR/venv/bin/python" -m gunicorn -c "$APP_DIR/gunicorn.conf.py" \
+  -w 1 -b 127.0.0.1:8000 --timeout 120 everythingsearch.app:app
 EOF
 chmod +x ~/.local/bin/everythingsearch_start.sh
 cp com.jigger.everythingsearch.app.plist ~/Library/LaunchAgents/
@@ -398,8 +400,9 @@ cat > ~/.local/bin/everythingsearch_index.sh << 'EOF'
 APP_DIR="$HOME/Documents/code/EverythingSearch"
 mkdir -p "$APP_DIR/logs"
 cd "$APP_DIR" || exit 1
-exec "$APP_DIR/venv/bin/python" -m everythingsearch.incremental \
-  >> "$APP_DIR/logs/incremental.log" 2>&1
+LOG_DATE=$(date +%Y-%m-%d)
+exec >>"$APP_DIR/logs/incremental_${LOG_DATE}.log" 2>&1
+exec "$APP_DIR/venv/bin/python" -m everythingsearch.incremental
 EOF
 chmod +x ~/.local/bin/everythingsearch_index.sh
 cp com.jigger.everythingsearch.plist ~/Library/LaunchAgents/

@@ -30,12 +30,13 @@ cat > "${WRAPPER_DIR}/everythingsearch_start.sh" << EOF
 APP_DIR="${PROJECT_ROOT}"
 LOG_DIR="\$APP_DIR/logs"
 PORT="\${PORT:-8000}"
+LOG_DATE=\$(date +%Y-%m-%d)
 mkdir -p "\$LOG_DIR"
 cd "\$APP_DIR" || exit 1
+exec >>"\$LOG_DIR/launchd_app_\${LOG_DATE}.log" 2>&1
 exec "\$APP_DIR/venv/bin/python" -m gunicorn \\
+  -c "\$APP_DIR/gunicorn.conf.py" \\
   -w 1 -b "127.0.0.1:\$PORT" --timeout 120 \\
-  --access-logfile "\$LOG_DIR/app.log" \\
-  --error-logfile "\$LOG_DIR/app_err.log" \\
   everythingsearch.app:app
 EOF
 chmod +x "${WRAPPER_DIR}/everythingsearch_start.sh"
@@ -45,10 +46,11 @@ cat > "${WRAPPER_DIR}/everythingsearch_index.sh" << EOF
 # 由 install_launchd_wrappers.sh 生成
 APP_DIR="${PROJECT_ROOT}"
 LOG_DIR="\$APP_DIR/logs"
+LOG_DATE=\$(date +%Y-%m-%d)
 mkdir -p "\$LOG_DIR"
 cd "\$APP_DIR" || exit 1
-exec "\$APP_DIR/venv/bin/python" -m everythingsearch.incremental \\
-  >> "\$LOG_DIR/incremental.log" 2>&1
+exec >>"\$LOG_DIR/incremental_\${LOG_DATE}.log" 2>&1
+exec "\$APP_DIR/venv/bin/python" -m everythingsearch.incremental
 EOF
 chmod +x "${WRAPPER_DIR}/everythingsearch_index.sh"
 
@@ -68,10 +70,6 @@ cat > "${LAUNCH_AGENTS}/com.jigger.everythingsearch.app.plist" << PLIST_APP
     <true/>
     <key>KeepAlive</key>
     <true/>
-    <key>StandardOutPath</key>
-    <string>/tmp/everythingsearch_stdout.log</string>
-    <key>StandardErrorPath</key>
-    <string>/tmp/everythingsearch_stderr.log</string>
 </dict>
 </plist>
 PLIST_APP
@@ -95,10 +93,6 @@ cat > "${LAUNCH_AGENTS}/com.jigger.everythingsearch.plist" << PLIST_INDEX
         <key>Minute</key>
         <integer>0</integer>
     </dict>
-    <key>StandardOutPath</key>
-    <string>/tmp/everythingsearch_index_stdout.log</string>
-    <key>StandardErrorPath</key>
-    <string>/tmp/everythingsearch_index_stderr.log</string>
 </dict>
 </plist>
 PLIST_INDEX

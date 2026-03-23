@@ -280,11 +280,9 @@ rm ~/Library/LaunchAgents/com.jigger.everythingsearch.plist
 ### 查看索引日志
 
 ```bash
-# 标准输出日志
-cat logs/incremental.log
-
-# 错误日志
-cat logs/incremental_err.log
+# 按日文件：incremental_YYYY-MM-DD.log（标准输出与错误合并）
+ls -1 logs/incremental_*.log
+tail -n 200 logs/incremental_$(date +%Y-%m-%d).log
 ```
 
 ---

@@ -43,7 +43,7 @@ _start() {
         echo "✅ 服务已启动 (PID $pid)"
         echo "   访问: http://127.0.0.1:$PORT"
     else
-        echo "❌ 启动失败，请查看 logs/app_err.log"
+        echo "❌ 启动失败，请查看 logs/ 下 app_err.log（及按日归档的同名 .YYYY-MM-DD 文件）与 launchd_app_*.log"
         return 1
     fi
 }
@@ -98,7 +98,7 @@ _restart() {
             echo "✅ 服务已重启 (PID $new_pid)"
             echo "   访问: http://127.0.0.1:$PORT"
         else
-            echo "❌ 重启失败，请查看 logs/app_err.log"
+            echo "❌ 重启失败，请查看 logs/ 下 app_err.log（及按日归档）与 launchd_app_*.log"
             return 1
         fi
     fi

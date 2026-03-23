@@ -8,6 +8,9 @@ from flask import Flask, request, jsonify, render_template, send_file
 
 import config
 
+from . import __version__ as _package_version
+from .logging_config import setup_flask_dev_daily_file_logging
+
 logger = logging.getLogger(__name__)
 from .search import search_core, clear_search_cache, _search_cache
 
@@ -140,7 +143,7 @@ def api_health():
     return jsonify({
         "ok": True,
         "status": "healthy" if vdb_status == "ok" else "degraded",
-        "version": "1.0.0",
+        "version": _package_version,
         "uptime": uptime_str,
         "uptime_seconds": uptime_seconds,
         "vectordb": {
@@ -283,6 +286,7 @@ def api_file_download():
 
 def main():
     """CLI entry: python -m everythingsearch.app"""
+    setup_flask_dev_daily_file_logging()
     logger.info("启动 EverythingSearch 服务...")
     _warmup_vectordb()
 

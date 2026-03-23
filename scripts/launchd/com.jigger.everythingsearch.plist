@@ -17,9 +17,5 @@
         <key>Minute</key>
         <integer>0</integer>
     </dict>
-    <key>StandardOutPath</key>
-    <string>/tmp/everythingsearch_index_stdout.log</string>
-    <key>StandardErrorPath</key>
-    <string>/tmp/everythingsearch_index_stderr.log</string>
 </dict>
 </plist>

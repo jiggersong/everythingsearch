@@ -251,12 +251,13 @@ setup_launchd() {
 APP_DIR="${INSTALL_DIR}"
 LOG_DIR="\$APP_DIR/logs"
 PORT="\${PORT:-8000}"
+LOG_DATE=\$(date +%Y-%m-%d)
 mkdir -p "\$LOG_DIR"
 cd "\$APP_DIR" || exit 1
+exec >>"\$LOG_DIR/launchd_app_\${LOG_DATE}.log" 2>&1
 exec "\$APP_DIR/venv/bin/python" -m gunicorn \\
+  -c "\$APP_DIR/gunicorn.conf.py" \\
   -w 1 -b "127.0.0.1:\$PORT" --timeout 120 \\
-  --access-logfile "\$LOG_DIR/app.log" \\
-  --error-logfile "\$LOG_DIR/app_err.log" \\
   everythingsearch.app:app
 WRAPPER_EOF
         chmod +x "${wrapper_dir}/everythingsearch_start.sh"
@@ -279,10 +280,6 @@ WRAPPER_EOF
     <true/>
     <key>KeepAlive</key>
     <true/>
-    <key>StandardOutPath</key>
-    <string>/tmp/everythingsearch_stdout.log</string>
-    <key>StandardErrorPath</key>
-    <string>/tmp/everythingsearch_stderr.log</string>
 </dict>
 </plist>
 PLIST_EOF
@@ -307,10 +304,11 @@ PLIST_EOF
 #!/usr/bin/env bash
 APP_DIR="${INSTALL_DIR}"
 LOG_DIR="\$APP_DIR/logs"
+LOG_DATE=\$(date +%Y-%m-%d)
 mkdir -p "\$LOG_DIR"
 cd "\$APP_DIR" || exit 1
-exec "\$APP_DIR/venv/bin/python" -m everythingsearch.incremental \\
-  >> "\$LOG_DIR/incremental.log" 2>&1
+exec >>"\$LOG_DIR/incremental_\${LOG_DATE}.log" 2>&1
+exec "\$APP_DIR/venv/bin/python" -m everythingsearch.incremental
 WRAPPER_EOF
         chmod +x "${wrapper_dir}/everythingsearch_index.sh"
 
@@ -335,10 +333,6 @@ WRAPPER_EOF
         <key>Minute</key>
         <integer>0</integer>
     </dict>
-    <key>StandardOutPath</key>
-    <string>/tmp/everythingsearch_index_stdout.log</string>
-    <key>StandardErrorPath</key>
-    <string>/tmp/everythingsearch_index_stderr.log</string>
 </dict>
 </plist>
 PLIST_EOF

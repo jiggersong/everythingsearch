@@ -14,9 +14,5 @@
     <true/>
     <key>KeepAlive</key>
     <true/>
-    <key>StandardOutPath</key>
-    <string>/tmp/everythingsearch_stdout.log</string>
-    <key>StandardErrorPath</key>
-    <string>/tmp/everythingsearch_stderr.log</string>
 </dict>
 </plist>
