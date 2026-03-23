@@ -10,8 +10,9 @@ EverythingSearch 是一个运行在 macOS 上的**本地文件语义搜索引擎
 - **混合索引**：同时索引文件内容和文件名，确保仅靠文件名也能搜到（如图片、视频）
 - **MWeb 笔记集成（可选）**：可搜索 MWeb 导出的 Markdown 笔记，结果中以标签区分来源；不需要时可通过 `ENABLE_MWEB=False` 完全关闭
 - **位置加权**：关键词出现在文件名、标题中的结果会获得更高的排名
-- **Embedding 缓存**：已生成过的向量不会重复调用 API，大幅加速索引重建
+- **Embedding 缓存**：已生成过的向量不会重复调用 API；SQLite 使用 WAL 与连接池，旧库自动迁移 `created_at` 列
 - **增量索引**：支持每日自动检测文件变更，仅对新增/修改/删除的文件更新索引
+- **搜索内存缓存与健康检查**：重复查询可命中短期内存缓存；提供 `/api/health`、`POST /api/cache/clear`（须本机或受信网络）
 - **隐私与成本平衡**：索引和数据库完全本地化（ChromaDB），仅在生成向量时调用云端 API（阿里通义千问 DashScope）
 - **WebUI 搜索界面**：浏览器中搜索，支持来源过滤、排序、分页、关键词高亮、Finder 定位
 
@@ -27,7 +28,7 @@ EverythingSearch 是一个运行在 macOS 上的**本地文件语义搜索引擎
                         │ HTTP (localhost:8000)
 ┌───────────────────────▼──────────────────────────────┐
 │               Flask 后端 (app.py)                      │
-│       /api/search · /api/reveal · /api/open           │
+│  /api/search · /api/health · /api/cache/clear · …     │
 └───────────────────────┬──────────────────────────────┘
                         │
 ┌───────────────────────▼──────────────────────────────┐
@@ -92,6 +93,9 @@ EverythingSearch/
 ├── com.jigger.everythingsearch.app.plist  # macOS launchd 搜索服务常驻 plist
 ├── run_app.sh                             # 搜索服务管理（start/stop/restart）
 ├── requirements.txt       # Python 依赖清单
+├── pytest.ini             # pytest 配置
+├── tests/                 # 单元/接口测试
+├── CHANGELOG.md           # 版本变更记录
 ├── venv/                  # Python 虚拟环境
 │
 ├── PROJECT_MANUAL.md      # 本说明书
@@ -141,6 +145,8 @@ EverythingSearch/
 
 **标题提取**：从各类文件中提取标题/heading，作为独立 chunk 存储，搜索时获得加权。
 
+**全量向量化 batch**：`calculate_batch_size(docs)` 按当前文档列表的平均 `page_content` 长度选择 batch（长文档约 25、中等约 40、较短约 55），以平衡 API 吞吐与单批体积。
+
 **MWeb 笔记扫描**：解析 YAML front matter（title、categories、mweb_uuid），提取 Markdown 标题，与文件采用相同的 chunk 结构。
 
 **每个文件生成 3 类 chunk**：
@@ -149,6 +155,10 @@ EverythingSearch/
 3. `chunk_type: "content"` — 正文分块（每块 ~500 字符）
 
 ### 4.3 search.py — 搜索引擎
+
+**内存缓存**：对 `(query, source_filter, date_field, date_from, date_to)` 的搜索结果做短期缓存（默认 TTL 与条数见代码中 `CACHE_TTL_SECONDS`、`MAX_CACHE_SIZE`）。重建索引或需立即一致时，可调用 `POST /api/cache/clear`；清空向量库进程内缓存时也会清空该缓存。
+
+**超时（Unix）**：在支持 `SIGALRM` 的系统上为单次搜索设置约 30 秒闹钟，超时返回空列表并记日志；**闹钟为进程级**，多线程并发请求下不宜指望对每个请求独立可靠计时。不支持 `SIGALRM` 的环境跳过闹钟，仅执行搜索。
 
 搜索管道流程：
 1. **向量搜索**：在同一 collection 内进行相似度检索；可通过 `source=all|file|mweb` 过滤来源（若 `ENABLE_MWEB=False` 则仅返回文件来源）
@@ -162,7 +172,9 @@ EverythingSearch/
 
 `CachedEmbeddings` 继承自 `DashScopeEmbeddings`，在调用 API 前先查 SQLite 缓存：
 - 缓存 Key：`SHA256(model_name + "::" + text)`
-- 缓存 Value：向量的 JSON 序列化
+- 缓存 Value：向量的 JSON 序列化；写入时带 `created_at`（Unix 时间戳）
+- 连接使用 **WAL**、**连接池**（固定数量连接复用）；若磁盘上已有旧表仅有 `(text_hash, vector)` 两列，初始化时会 **ALTER TABLE** 增加 `created_at`
+- 命中/调用计数使用 `PrivateAttr` + `threading.Lock`，避免 Pydantic 对模型默认值做 deepcopy 时失败
 - 首次全量索引后，后续重建几乎无需 API 调用
 
 ### 4.5 incremental.py — 增量索引
@@ -189,12 +201,14 @@ python incremental.py --full   # 完整重建
 Flask 应用，路由：
 - `GET /` — 返回搜索页面
 - `GET /api/search?q=xxx&source=all|file|mweb` — 搜索 API（可选 `limit=1..200` 限制条数，便于 Agent/脚本消费）
+- `GET /api/health` — 健康与状态摘要（运行时间、向量库文档数、搜索内存缓存条目数等）；**勿对公网暴露未鉴权服务**
+- `POST /api/cache/clear` — 清空搜索**内存缓存**（索引更新后若需立即避免命中旧结果可调用；与重启进程作用类似，按需选用）
 - `GET /api/file/read?filepath=...&max_bytes=...` — 读取**已索引根目录内**文件的文本内容（用于 Skills / 自动化；二进制会提示改用 download）
 - `GET /api/file/download?filepath=...` — 下载**已索引根目录内**文件（`Content-Disposition: attachment`）
 - `POST /api/reveal` — 在 Finder 中显示文件（含路径安全校验）
 - `POST /api/open` — 用默认应用打开文件（含路径安全校验）
 
-> 出于安全考虑，已移除以下接口：`/api/config`、`/api/health`、`/api/stats`、`/api/reload`。
+> 出于安全考虑，以下接口仍不提供：`/api/config`、`/api/stats`、`/api/reload`。
 > 索引重建后需重启搜索服务以加载新数据：`./run_app.sh restart`
 
 **运行方式**：

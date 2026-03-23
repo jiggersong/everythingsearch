@@ -1,33 +1,115 @@
 import hashlib
 import json
+import logging
 import sqlite3
 import threading
+import time
 from typing import Any
+from queue import Queue, Empty
 
-from pydantic import ConfigDict
+from pydantic import ConfigDict, PrivateAttr
 from langchain_community.embeddings import DashScopeEmbeddings
+
+logger = logging.getLogger(__name__)
+
+
+class ConnectionPool:
+    """SQLite 连接池实现"""
+    
+    def __init__(self, db_path: str, max_connections: int = 5, timeout: int = 30):
+        self.db_path = db_path
+        self.max_connections = max_connections
+        self.timeout = timeout
+        self._pool = Queue(max_connections)
+        self._created_connections = 0
+        self._lock = threading.Lock()
+        self._initialized = False
+        
+    def _create_connection(self) -> sqlite3.Connection:
+        """创建新连接并启用 WAL 模式"""
+        conn = sqlite3.connect(self.db_path, check_same_thread=False, timeout=self.timeout)
+        # 启用 WAL 模式提高并发性能
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA cache_size=10000")
+        conn.commit()
+        return conn
+    
+    def initialize(self):
+        """初始化连接池"""
+        if self._initialized:
+            return
+        with self._lock:
+            if self._initialized:
+                return
+            for _ in range(self.max_connections):
+                conn = self._create_connection()
+                self._pool.put(conn)
+            self._created_connections = self.max_connections
+            self._initialized = True
+    
+    def get_connection(self, timeout: float = 10.0) -> sqlite3.Connection:
+        """从连接池获取连接"""
+        self.initialize()
+        try:
+            return self._pool.get(timeout=timeout)
+        except Empty:
+            # 如果池子空了，创建临时连接（超过 max_connections 限制）
+            logger.warning("连接池耗尽，创建临时连接")
+            return self._create_connection()
+    
+    def return_connection(self, conn: sqlite3.Connection):
+        """归还连接到池"""
+        try:
+            # 简单健康检查
+            conn.execute("SELECT 1")
+            self._pool.put(conn, block=False)
+        except (sqlite3.Error, Exception):
+            # 连接损坏，关闭它
+            try:
+                conn.close()
+            except:
+                pass
+    
+    def close_all(self):
+        """关闭所有连接"""
+        while not self._pool.empty():
+            try:
+                conn = self._pool.get_nowait()
+                conn.close()
+            except:
+                pass
 
 
 class EmbeddingCache:
-    """Thread-safe SQLite cache for embedding vectors."""
+    """Thread-safe SQLite cache for embedding vectors with connection pool."""
 
-    def __init__(self, db_path: str):
+    def __init__(self, db_path: str, max_connections: int = 5):
         self.db_path = db_path
-        self._local = threading.local()
+        self._pool = ConnectionPool(db_path, max_connections)
         self._init_db()
 
-    def _get_conn(self) -> sqlite3.Connection:
-        if not hasattr(self._local, "conn") or self._local.conn is None:
-            self._local.conn = sqlite3.connect(self.db_path)
-        return self._local.conn
-
     def _init_db(self):
-        conn = self._get_conn()
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS embeddings "
-            "(text_hash TEXT PRIMARY KEY, vector TEXT)"
-        )
-        conn.commit()
+        """初始化数据库表；旧版仅两列的表会迁移增加 created_at。"""
+        conn = self._pool.get_connection()
+        try:
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS embeddings "
+                "(text_hash TEXT PRIMARY KEY, vector TEXT, created_at REAL)"
+            )
+            row = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='embeddings'"
+            ).fetchone()
+            if row:
+                cols = {r[1] for r in conn.execute("PRAGMA table_info(embeddings)").fetchall()}
+                if "created_at" not in cols:
+                    conn.execute("ALTER TABLE embeddings ADD COLUMN created_at REAL")
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_created_at ON embeddings(created_at)"
+            )
+            conn.commit()
+        finally:
+            self._pool.return_connection(conn)
 
     @staticmethod
     def _hash(model: str, text: str) -> str:
@@ -37,28 +119,54 @@ class EmbeddingCache:
         hashes = {self._hash(model, t): t for t in texts}
         result: dict[str, list[float] | None] = {t: None for t in texts}
 
-        conn = self._get_conn()
-        hash_list = list(hashes.keys())
-        for i in range(0, len(hash_list), 500):
-            batch = hash_list[i:i + 500]
-            placeholders = ",".join("?" * len(batch))
-            rows = conn.execute(
-                f"SELECT text_hash, vector FROM embeddings WHERE text_hash IN ({placeholders})",
-                batch,
-            ).fetchall()
-            for h, vec_json in rows:
-                text = hashes[h]
-                result[text] = json.loads(vec_json)
+        conn = self._pool.get_connection()
+        try:
+            hash_list = list(hashes.keys())
+            for i in range(0, len(hash_list), 500):
+                batch = hash_list[i:i + 500]
+                placeholders = ",".join("?" * len(batch))
+                rows = conn.execute(
+                    f"SELECT text_hash, vector FROM embeddings WHERE text_hash IN ({placeholders})",
+                    batch,
+                ).fetchall()
+                for h, vec_json in rows:
+                    text = hashes[h]
+                    result[text] = json.loads(vec_json)
+        finally:
+            self._pool.return_connection(conn)
         return result
 
     def put_many(self, model: str, items: list[tuple[str, list[float]]]):
-        conn = self._get_conn()
-        rows = [(self._hash(model, text), json.dumps(vec)) for text, vec in items]
-        conn.executemany(
-            "INSERT OR REPLACE INTO embeddings (text_hash, vector) VALUES (?, ?)",
-            rows,
-        )
-        conn.commit()
+        """批量写入缓存，包含创建时间"""
+        now = time.time()
+        conn = self._pool.get_connection()
+        try:
+            rows = [(self._hash(model, text), json.dumps(vec), now) for text, vec in items]
+            conn.executemany(
+                "INSERT OR REPLACE INTO embeddings (text_hash, vector, created_at) VALUES (?, ?, ?)",
+                rows,
+            )
+            conn.commit()
+        finally:
+            self._pool.return_connection(conn)
+    
+    def cleanup_old_entries(self, max_age_days: int = 30):
+        """清理过期缓存条目"""
+        cutoff = time.time() - (max_age_days * 24 * 3600)
+        conn = self._pool.get_connection()
+        try:
+            cursor = conn.execute(
+                "DELETE FROM embeddings WHERE created_at IS NOT NULL AND created_at < ?",
+                (cutoff,),
+            )
+            conn.commit()
+            deleted = cursor.rowcount
+            if deleted > 0:
+                # 执行 VACUUM 回收空间
+                conn.execute("VACUUM")
+            return deleted
+        finally:
+            self._pool.return_connection(conn)
 
 
 class CachedEmbeddings(DashScopeEmbeddings):
@@ -69,6 +177,7 @@ class CachedEmbeddings(DashScopeEmbeddings):
     _cache: Any = None
     cache_hits: int = 0
     api_calls: int = 0
+    _stats_lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
 
     def __init__(self, cache_path: str = "./embedding_cache.db", **kwargs):
         super().__init__(**kwargs)
@@ -93,8 +202,9 @@ class CachedEmbeddings(DashScopeEmbeddings):
             if cached[t] is None:
                 uncached_indices.append(i)
 
-        self.cache_hits += len(safe_texts) - len(uncached_indices)
-        self.api_calls += len(uncached_indices)
+        with self._stats_lock:
+            self.cache_hits += len(safe_texts) - len(uncached_indices)
+            self.api_calls += len(uncached_indices)
 
         if uncached_indices:
             uncached_texts = [safe_texts[i] for i in uncached_indices]
@@ -111,15 +221,22 @@ class CachedEmbeddings(DashScopeEmbeddings):
         safe = (text[: self._EMBED_MAX] if text and len(text) > self._EMBED_MAX else text) or " "
         result = self._cache.get_many(self.model, [safe])
         if result[safe] is not None:
-            self.cache_hits += 1
+            with self._stats_lock:
+                self.cache_hits += 1
             return result[safe]
-        self.api_calls += 1
+        with self._stats_lock:
+            self.api_calls += 1
         vec = super().embed_query(safe)
         self._cache.put_many(self.model, [(safe, vec)])
         return vec
 
     def stats_str(self) -> str:
-        total = self.cache_hits + self.api_calls
-        if total == 0:
-            return "无嵌入调用"
-        return f"API 调用: {self.api_calls} / {total} ({self.cache_hits} 缓存命中)"
+        with self._stats_lock:
+            total = self.cache_hits + self.api_calls
+            if total == 0:
+                return "无嵌入调用"
+            return f"API 调用: {self.api_calls} / {total} ({self.cache_hits} 缓存命中)"
+    
+    def cleanup_cache(self, max_age_days: int = 30) -> int:
+        """清理旧缓存条目"""
+        return self._cache.cleanup_old_entries(max_age_days)

@@ -1,6 +1,10 @@
 import os
 import argparse
 import logging
+import threading
+import time
+import signal
+import hashlib
 import config
 import chromadb
 from chromadb.errors import NotFoundError, InternalError
@@ -14,6 +18,61 @@ logger = logging.getLogger(__name__)
 _embeddings = None
 _vectordb = None
 _chroma_client = None
+
+# ================= 搜索缓存 =================
+_search_cache: dict[str, tuple[list[dict], float]] = {}
+_cache_lock = threading.Lock()
+CACHE_TTL_SECONDS = 1200  # 20分钟缓存
+MAX_CACHE_SIZE = 100  # 最大缓存条目数
+
+
+def _get_cache_key(query: str, source_filter: str | None, date_field: str | None,
+                   date_from: float | None, date_to: float | None) -> str:
+    """生成缓存键"""
+    key_data = f"{query}:{source_filter}:{date_field}:{date_from}:{date_to}"
+    return hashlib.sha256(key_data.encode()).hexdigest()
+
+
+def _get_cached_search(cache_key: str) -> list[dict] | None:
+    """获取缓存的搜索结果，TTL = 20分钟"""
+    with _cache_lock:
+        if cache_key in _search_cache:
+            result, timestamp = _search_cache[cache_key]
+            if time.time() - timestamp < CACHE_TTL_SECONDS:
+                logger.debug(f"缓存命中: {cache_key[:8]}...")
+                return result
+            else:
+                del _search_cache[cache_key]
+        return None
+
+
+def _set_cached_search(cache_key: str, result: list[dict]):
+    """缓存搜索结果，限制缓存大小"""
+    with _cache_lock:
+        # 限制缓存大小
+        if len(_search_cache) >= MAX_CACHE_SIZE:
+            # 删除最旧的条目
+            oldest_key = min(_search_cache, key=lambda k: _search_cache[k][1])
+            del _search_cache[oldest_key]
+            logger.debug(f"缓存清理: 移除最旧条目 {oldest_key[:8]}...")
+        _search_cache[cache_key] = (result, time.time())
+
+
+def clear_search_cache():
+    """清空搜索缓存（用于索引更新后）"""
+    with _cache_lock:
+        _search_cache.clear()
+        logger.info("搜索缓存已清空")
+
+
+# ================= 超时控制 =================
+class SearchTimeoutError(Exception):
+    """搜索超时（SIGALRM）；勿与内置 TimeoutError 混淆。"""
+
+
+def _timeout_handler(signum, frame):
+    """信号处理函数"""
+    raise SearchTimeoutError("搜索操作超时")
 
 
 def _ensure_dashscope_api_key():
@@ -66,6 +125,8 @@ def _clear_vectordb_cache():
     _embeddings = None
     _vectordb = None
     _chroma_client = None
+    # 同时清空搜索缓存
+    clear_search_cache()
 
 
 def _apply_weights(
@@ -168,7 +229,7 @@ def _build_where_filter(
     return {"$and": clauses}
 
 
-def search_core(
+def _do_search_core(
     query: str,
     source_filter: str | None = None,
     date_field: str | None = None,
@@ -176,12 +237,7 @@ def search_core(
     date_to: float | None = None,
 ) -> list[dict]:
     """
-    Core search: returns a list of result dicts, sorted by relevance.
-    Each dict: {filename, filepath, relevance, tag, preview, filetype, mtime, ctime, source_type, categories}
-
-    source_filter: None/"all" = everything, "file" = files only, "mweb" = MWeb notes only
-    date_field: "mtime" or "ctime" (default "mtime")
-    date_from / date_to: unix timestamps for time-range filtering (inclusive)
+    实际的搜索核心逻辑（内部使用，支持超时控制）
     """
     where_filter = _build_where_filter(source_filter, date_field, date_from, date_to)
 
@@ -276,6 +332,52 @@ def search_core(
             "categories": categories,
         })
     return results
+
+
+def search_core(
+    query: str,
+    source_filter: str | None = None,
+    date_field: str | None = None,
+    date_from: float | None = None,
+    date_to: float | None = None,
+) -> list[dict]:
+    """
+    Core search: returns a list of result dicts, sorted by relevance.
+    添加缓存和超时控制（30秒超时）
+    
+    Each dict: {filename, filepath, relevance, tag, preview, filetype, mtime, ctime, source_type, categories}
+
+    source_filter: None/"all" = everything, "file" = files only, "mweb" = MWeb notes only
+    date_field: "mtime" or "ctime" (default "mtime")
+    date_from / date_to: unix timestamps for time-range filtering (inclusive)
+    """
+    # 1. 检查缓存
+    cache_key = _get_cache_key(query, source_filter, date_field, date_from, date_to)
+    cached = _get_cached_search(cache_key)
+    if cached is not None:
+        return cached
+
+    # 2. 执行搜索；SIGALRM 仅适用于 Unix，且不宜与多线程并发共用同一进程闹钟
+    timeout_seconds = 30
+    if not hasattr(signal, "SIGALRM"):
+        results = _do_search_core(query, source_filter, date_field, date_from, date_to)
+        _set_cached_search(cache_key, results)
+        return results
+
+    original_handler = signal.signal(signal.SIGALRM, _timeout_handler)
+    signal.alarm(timeout_seconds)
+    try:
+        results = _do_search_core(query, source_filter, date_field, date_from, date_to)
+        signal.alarm(0)
+        _set_cached_search(cache_key, results)
+        return results
+    except SearchTimeoutError:
+        logger.warning("搜索超时 (>%ds): query='%s'", timeout_seconds, query[:50])
+        signal.alarm(0)
+        return []
+    finally:
+        signal.signal(signal.SIGALRM, original_handler)
+        signal.alarm(0)
 
 
 # ---- CLI ----

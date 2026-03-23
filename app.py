@@ -2,14 +2,37 @@ import os
 import mimetypes
 import subprocess
 import logging
+import time
+from datetime import datetime
 from flask import Flask, request, jsonify, render_template, send_file
 
 import config
 
 logger = logging.getLogger(__name__)
-from search import search_core
+from search import search_core, clear_search_cache, _search_cache
 
 app = Flask(__name__)
+
+# 全局状态
+_warmup_done = False
+_start_time = time.time()
+
+
+def _warmup_vectordb():
+    """预热向量数据库连接"""
+    global _warmup_done
+    if _warmup_done:
+        return True
+    try:
+        # 触发向量数据库初始化
+        from search import _get_vectordb
+        _ = _get_vectordb()
+        _warmup_done = True
+        logger.info("向量数据库预热完成")
+        return True
+    except Exception as e:
+        logger.warning(f"预热失败: {e}")
+        return False
 
 
 def _safe_filepath(filepath: str) -> bool:
@@ -70,10 +93,65 @@ def _is_under_index_roots(filepath: str) -> bool:
     return False
 
 
+@app.before_request
+def before_request():
+    """每个请求前的处理：确保预热完成"""
+    if not _warmup_done:
+        _warmup_vectordb()
+
+
 @app.route("/")
 def index():
     enable_mweb = bool(getattr(config, "ENABLE_MWEB", True))
     return render_template("index.html", enable_mweb=enable_mweb)
+
+
+@app.route("/api/health")
+def api_health():
+    """健康检查接口，返回系统状态"""
+    # 检查向量数据库
+    vdb_status = "ok"
+    doc_count = 0
+    try:
+        from search import _get_chroma_collection
+        col = _get_chroma_collection()
+        if col:
+            doc_count = col.count()
+        else:
+            vdb_status = "not_initialized"
+    except Exception as e:
+        vdb_status = f"error: {str(e)}"
+    
+    # 计算运行时间
+    uptime_seconds = int(time.time() - _start_time)
+    uptime_str = f"{uptime_seconds // 3600}h {(uptime_seconds % 3600) // 60}m {uptime_seconds % 60}s"
+    
+    # 缓存统计
+    cache_stats = {
+        "cached_queries": len(_search_cache),
+        "max_cache_size": 100
+    }
+    
+    return jsonify({
+        "ok": True,
+        "status": "healthy" if vdb_status == "ok" else "degraded",
+        "version": "1.0.0",
+        "uptime": uptime_str,
+        "uptime_seconds": uptime_seconds,
+        "vectordb": {
+            "status": vdb_status,
+            "document_count": doc_count
+        },
+        "cache": cache_stats,
+        "timestamp": datetime.now().isoformat()
+    })
+
+
+@app.route("/api/cache/clear", methods=["POST"])
+def api_clear_cache():
+    """清空搜索缓存（索引更新后调用）"""
+    clear_search_cache()
+    return jsonify({"ok": True, "message": "搜索缓存已清空"})
 
 
 @app.route("/api/search")
@@ -199,6 +277,10 @@ def api_file_download():
 
 
 if __name__ == "__main__":
+    # 启动时尝试预热
+    logger.info("启动 EverythingSearch 服务...")
+    _warmup_vectordb()
+    
     debug = os.environ.get("FLASK_DEBUG", "false").lower() in ("true", "1", "yes")
     port = int(os.environ.get("PORT", getattr(config, "PORT", 8000)))
     host = os.environ.get("FLASK_HOST", getattr(config, "HOST", "127.0.0.1"))

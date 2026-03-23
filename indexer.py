@@ -63,6 +63,19 @@ def _truncate_for_embed(text: str) -> str:
     return text
 
 
+def calculate_batch_size(docs_list: list[Document]) -> int:
+    """根据文档平均长度选择向量化 batch size（用于全量重建索引）。"""
+    if not docs_list:
+        return 50
+    total_chars = sum(len(d.page_content) for d in docs_list)
+    avg_chars = total_chars / len(docs_list)
+    if avg_chars > 400:
+        return 25
+    if avg_chars > 200:
+        return 40
+    return 55
+
+
 def normalize_path(path_str):
     """将 macOS 常见的 NFD 编码强制转为 NFC 标准编码"""
     return unicodedata.normalize('NFC', path_str)
@@ -662,7 +675,8 @@ def build_index():
         cache_path=config.EMBEDDING_CACHE_PATH,
     )
 
-    batch_size = 50
+    batch_size = calculate_batch_size(docs)
+    print(f"  动态 batch_size: {batch_size} (基于文档平均长度)")
     total = len(docs)
     max_retries = 3
     retry_delay = 5

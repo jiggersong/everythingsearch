@@ -14,8 +14,11 @@ EverythingSearch 是一个运行在 macOS 上的**本地文件语义搜索引擎
 - **混合索引**：同时索引文件内容和文件名，确保仅靠文件名也能搜到（如图片、视频等媒体文件）
 - **MWeb 笔记集成（可选）**：可搜索 MWeb 导出的 Markdown 笔记，通过 `ENABLE_MWEB=False` 可完全关闭
 - **位置加权**：关键词出现在文件名、标题中的结果获得更高排名
-- **Embedding 缓存**：已生成过的向量不会重复调用 API，大幅加速后续索引重建
+- **Embedding 缓存**：已生成过的向量不会重复调用 API，大幅加速后续索引重建；SQLite 使用 WAL 与连接池，提升并发访问缓存时的表现
 - **增量索引**：支持每日自动检测文件变更，仅对新增/修改/删除的文件更新索引
+- **全量重建优化**：按文档平均长度自动选择向量化 batch 大小，加快大批量索引
+- **搜索内存缓存**：相同查询条件在短时间内重复搜索时命中内存缓存（默认约 20 分钟、最多 100 条）；索引重大变更后可 `POST /api/cache/clear` 清空
+- **运维接口**：`GET /api/health` 查看进程运行时间、向量库文档数、缓存条目数等（仅供本机/受信环境使用）
 - **隐私优先**：索引和数据库完全本地化（ChromaDB），仅在生成向量时调用云端 API
 - **Web 搜索界面**：浏览器中搜索，支持来源过滤、排序、分页、关键词高亮、Finder 定位
 
@@ -29,7 +32,8 @@ EverythingSearch 是一个运行在 macOS 上的**本地文件语义搜索引擎
                       │ HTTP (localhost:8000)
 ┌─────────────────────▼─────────────────────────┐
 │            Flask 后端 (app.py)                  │
-│    /api/search · /api/reveal · /api/open       │
+│  /api/search · /api/health · /api/cache/clear  │
+│  · /api/file/* · /api/reveal · /api/open       │
 └─────────────────────┬─────────────────────────┘
                       │
 ┌─────────────────────▼─────────────────────────┐
@@ -105,6 +109,13 @@ caffeinate -i ./venv/bin/python incremental.py --full
 
 浏览器打开 http://127.0.0.1:8000 开始搜索。
 
+### 运行测试（可选）
+
+```bash
+./venv/bin/pip install pytest   # 若尚未安装
+./venv/bin/python -m pytest tests/ -q
+```
+
 ## 配置说明
 
 所有配置集中在 `config.py` 中（从 `config.example.py` 复制）。
@@ -160,6 +171,8 @@ caffeinate -i ./venv/bin/python incremental.py --full
 ./run_app.sh restart
 ```
 
+若希望立即让 Web 搜索忘掉旧结果，可在本机调用 `curl -s -X POST http://127.0.0.1:8000/api/cache/clear`（与重启服务二选一或并用，视场景而定）。
+
 ### 开机自启（可选）
 
 项目提供 macOS launchd 配置文件，支持搜索服务开机自启和每日定时增量索引。运行 `install.sh` 时可选择安装，或参考 [INSTALL.md](INSTALL.md) 手动配置。
@@ -181,6 +194,9 @@ caffeinate -i ./venv/bin/python incremental.py --full
 
 - [INSTALL.md](INSTALL.md) — 详细安装与配置指引
 - [PROJECT_MANUAL.md](PROJECT_MANUAL.md) — 项目技术说明书（架构、模块详解、调参指南）
+- [CHANGELOG.md](CHANGELOG.md) — 版本与变更记录
+
+在 **GitHub** 上还可通过 [Releases](https://github.com/jiggersong/everythingsearch/releases) 发布带说明的版本：在仓库页点击 **Releases → Draft a new release**，填写 Tag（如 `v1.1.0`）与发行说明，用户即可按版本查看变化。
 
 ## 许可证
 

@@ -73,10 +73,26 @@ curl -s -X POST "$BASE/api/reveal" -H "Content-Type: application/json" \
   -d '{"filepath":"/absolute/path/to/file"}'
 ```
 
+## 5. 健康检查（可选）
+
+用于确认服务存活与大致状态（向量库文档数、搜索内存缓存条目数等）：
+
+```bash
+curl -s "$BASE/api/health"
+```
+
+## 6. 清空搜索内存缓存（可选）
+
+索引大规模更新后，若需尽快避免重复查询命中旧结果：
+
+```bash
+curl -s -X POST "$BASE/api/cache/clear"
+```
+
 ## 安全说明
 
 - `/api/file/read` 与 `/api/file/download` **仅允许** `config.TARGET_DIR`（及 `ENABLE_MWeb` 时 `MWEB_DIR`）下的真实文件路径；其他路径返回 404。
-- 服务应仅监听本机或受信网络；不要将未鉴权实例暴露到公网。
+- `/api/health` 会返回运行状态与数据规模摘要；服务应仅监听本机或受信网络，不要将未鉴权实例暴露到公网。
 
 ## Agent 工作流建议
 
