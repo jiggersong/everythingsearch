@@ -31,7 +31,7 @@ EverythingSearch 是一个运行在 macOS 上的**本地文件语义搜索引擎
 └─────────────────────┬─────────────────────────┘
                       │ HTTP (localhost:8000)
 ┌─────────────────────▼─────────────────────────┐
-│            Flask 后端 (app.py)                  │
+│            Flask 后端 (everythingsearch.app)       │
 │  /api/search · /api/health · /api/cache/clear  │
 │  · /api/file/* · /api/reveal · /api/open       │
 └─────────────────────┬─────────────────────────┘
@@ -46,7 +46,7 @@ EverythingSearch 是一个运行在 macOS 上的**本地文件语义搜索引擎
 └─────────────────────┬─────────────────────────┘
                       │
 ┌─────────────────────▼─────────────────────────┐
-│   索引构建 (indexer.py / incremental.py)        │
+│   索引构建 (indexer / incremental 模块)            │
 │  文件扫描 · 内容解析 · 标题提取 · 文本切分        │
 └─────────────────────┬─────────────────────────┘
                       │
@@ -81,7 +81,7 @@ EverythingSearch 是一个运行在 macOS 上的**本地文件语义搜索引擎
 ```bash
 git clone https://github.com/jiggersong/everythingsearch.git
 cd everythingsearch
-./install.sh
+./scripts/install.sh
 ```
 
 安装脚本会交互式引导你完成配置（API Key、索引目录、MWeb 等）。
@@ -97,14 +97,14 @@ python3.11 -m venv venv
 ./venv/bin/pip install -r requirements.txt
 
 # 创建配置文件并编辑
-cp config.example.py config.py
+cp etc/config.example.py config.py
 # 编辑 config.py：填写 API Key 和索引目录
 
 # 构建首次索引
-caffeinate -i ./venv/bin/python incremental.py --full
+caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full
 
 # 启动搜索服务
-./venv/bin/python app.py
+./venv/bin/python -m everythingsearch.app
 ```
 
 浏览器打开 http://127.0.0.1:8000 开始搜索。
@@ -118,7 +118,7 @@ caffeinate -i ./venv/bin/python incremental.py --full
 
 ## 配置说明
 
-所有配置集中在 `config.py` 中（从 `config.example.py` 复制）。
+所有配置集中在仓库根目录的 `config.py` 中（从 `etc/config.example.py` 复制）。
 
 ### 必填配置
 
@@ -149,33 +149,33 @@ caffeinate -i ./venv/bin/python incremental.py --full
 
 ```bash
 # 开发模式（前台运行）
-./venv/bin/python app.py
+./venv/bin/python -m everythingsearch.app
 
 # 常驻模式（后台运行，需配合 launchd）
-./run_app.sh start
-./run_app.sh status    # 查看状态
-./run_app.sh restart   # 重启
-./run_app.sh stop      # 停止
+./scripts/run_app.sh start
+./scripts/run_app.sh status    # 查看状态
+./scripts/run_app.sh restart   # 重启
+./scripts/run_app.sh stop      # 停止
 ```
 
 ### 增量索引
 
 ```bash
 # 增量更新（仅处理变更文件）
-./venv/bin/python incremental.py
+./venv/bin/python -m everythingsearch.incremental
 
 # 完整重建
-caffeinate -i ./venv/bin/python incremental.py --full
+caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full
 
 # 索引完成后重启搜索服务以加载新数据
-./run_app.sh restart
+./scripts/run_app.sh restart
 ```
 
 若希望立即让 Web 搜索忘掉旧结果，可在本机调用 `curl -s -X POST http://127.0.0.1:8000/api/cache/clear`（与重启服务二选一或并用，视场景而定）。
 
 ### 开机自启（可选）
 
-项目提供 macOS launchd 配置文件，支持搜索服务开机自启和每日定时增量索引。运行 `install.sh` 时可选择安装，或参考 [INSTALL.md](INSTALL.md) 手动配置。
+项目提供 macOS launchd 配置文件，支持搜索服务开机自启和每日定时增量索引。运行 `scripts/install.sh` 时可选择安装，或参考 [docs/INSTALL.md](docs/INSTALL.md) 手动配置。
 
 ## 支持的文件类型
 
@@ -187,14 +187,26 @@ caffeinate -i ./venv/bin/python incremental.py --full
 
 ## Agent / Cursor Skills
 
-- 搜索、读文本、下载等 HTTP 接口见 [PROJECT_MANUAL.md](PROJECT_MANUAL.md)（`/api/search`、`/api/file/read`、`/api/file/download`）。
+- 搜索、读文本、下载等 HTTP 接口见 [docs/PROJECT_MANUAL.md](docs/PROJECT_MANUAL.md)（`/api/search`、`/api/file/read`、`/api/file/download`）。
 - 仓库内提供 Cursor Skill：`.cursor/skills/everythingsearch-local/SKILL.md`，启用后 Agent 可按该说明调用本机服务。
+
+## 仓库布局
+
+| 目录 | 说明 |
+|------|------|
+| `docs/` | 用户文档（安装说明、手册、变更记录） |
+| `scripts/` | 安装与运维（`install.sh`、`run_app.sh`、`install_launchd_wrappers.sh` 更新本机 launchd 等） |
+| `everythingsearch/` | Python 应用包（Web、索引、搜索、向量缓存） |
+| `etc/` | 配置模板（`config.example.py` → 复制为根目录 `config.py`） |
+| `data/` | 向量库、Embedding 与索引状态等本地数据（默认路径，勿提交） |
+| `logs/` | 运行日志 |
+| `tests/` | 自动化测试 |
 
 ## 文档
 
-- [INSTALL.md](INSTALL.md) — 详细安装与配置指引
-- [PROJECT_MANUAL.md](PROJECT_MANUAL.md) — 项目技术说明书（架构、模块详解、调参指南）
-- [CHANGELOG.md](CHANGELOG.md) — 版本与变更记录
+- [docs/INSTALL.md](docs/INSTALL.md) — 详细安装与配置指引
+- [docs/PROJECT_MANUAL.md](docs/PROJECT_MANUAL.md) — 项目技术说明书（架构、模块详解、调参指南）
+- [docs/CHANGELOG.md](docs/CHANGELOG.md) — 版本与变更记录
 
 
 ## 许可证

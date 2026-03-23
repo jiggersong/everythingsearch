@@ -82,10 +82,10 @@ check_python() {
 }
 
 install_project() {
-    local script_dir
-    script_dir="$(cd "$(dirname "$0")" && pwd)"
+    local repo_root
+    repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 
-    if [[ "$script_dir" == "$INSTALL_DIR" ]]; then
+    if [[ "$repo_root" == "$INSTALL_DIR" ]]; then
         log_ok "项目已在目标位置: $INSTALL_DIR"
         return
     fi
@@ -106,12 +106,13 @@ install_project() {
 
     log_info "复制项目文件到 ${INSTALL_DIR} ..."
     rsync -a --exclude='venv/' \
-             --exclude='chroma_db/' \
+             --exclude='data/chroma_db/' \
+             --exclude='data/*.db' \
              --exclude='*.db' \
              --exclude='__pycache__/' \
              --exclude='.DS_Store' \
              --exclude='logs/*.log' \
-             "$script_dir/" "$INSTALL_DIR/"
+             "$repo_root/" "$INSTALL_DIR/"
 
     log_ok "项目文件复制完成"
 }
@@ -144,9 +145,9 @@ configure_project() {
     cd "$INSTALL_DIR"
     local config_file="config.py"
 
-    if [[ ! -f "$config_file" && -f "config.example.py" ]]; then
-        cp config.example.py "$config_file"
-        log_ok "已从 config.example.py 创建 config.py"
+    if [[ ! -f "$config_file" && -f "etc/config.example.py" ]]; then
+        cp etc/config.example.py "$config_file"
+        log_ok "已从 etc/config.example.py 创建 config.py"
     fi
 
     echo ""
@@ -256,7 +257,7 @@ exec "\$APP_DIR/venv/bin/python" -m gunicorn \\
   -w 1 -b "127.0.0.1:\$PORT" --timeout 120 \\
   --access-logfile "\$LOG_DIR/app.log" \\
   --error-logfile "\$LOG_DIR/app_err.log" \\
-  app:app
+  everythingsearch.app:app
 WRAPPER_EOF
         chmod +x "${wrapper_dir}/everythingsearch_start.sh"
 
@@ -308,7 +309,7 @@ APP_DIR="${INSTALL_DIR}"
 LOG_DIR="\$APP_DIR/logs"
 mkdir -p "\$LOG_DIR"
 cd "\$APP_DIR" || exit 1
-exec "\$APP_DIR/venv/bin/python" "\$APP_DIR/incremental.py" \\
+exec "\$APP_DIR/venv/bin/python" -m everythingsearch.incremental \\
   >> "\$LOG_DIR/incremental.log" 2>&1
 WRAPPER_EOF
         chmod +x "${wrapper_dir}/everythingsearch_index.sh"
@@ -365,13 +366,13 @@ build_first_index() {
     if [[ "$build_now" =~ ^[Yy] ]]; then
         cd "$INSTALL_DIR"
         log_info "开始构建索引 (使用 caffeinate 防止系统休眠)..."
-        caffeinate -i ./venv/bin/python incremental.py --full
+        caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full
         log_ok "索引构建完成!"
     else
         log_info "跳过首次索引。稍后可运行:"
         echo ""
         echo "  cd $INSTALL_DIR"
-        echo "  caffeinate -i ./venv/bin/python incremental.py --full"
+        echo "  caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full"
         echo ""
     fi
 }
@@ -385,11 +386,11 @@ cd "$DIR"
 echo "EverythingSearch 启动中..."
 echo "浏览器访问: http://127.0.0.1:8000"
 echo "按 Ctrl+C 停止服务"
-./venv/bin/python app.py
+./venv/bin/python -m everythingsearch.app
 LAUNCHER_EOF
     chmod +x start.sh
     log_ok "快捷启动脚本已创建: ${INSTALL_DIR}/start.sh"
-    log_ok "服务管理脚本: ./run_app.sh {start|stop|restart|status|dev}"
+    log_ok "服务管理脚本: ./scripts/run_app.sh {start|stop|restart|status|dev}"
 }
 
 print_summary() {
@@ -400,20 +401,20 @@ print_summary() {
     echo ""
     echo -e "  ${CYAN}项目位置${NC}: $INSTALL_DIR"
     echo -e "  ${CYAN}配置文件${NC}: $INSTALL_DIR/config.py"
-    echo -e "  ${CYAN}安装指引${NC}: $INSTALL_DIR/INSTALL.md"
+    echo -e "  ${CYAN}安装指引${NC}: $INSTALL_DIR/docs/INSTALL.md"
     echo ""
     echo -e "  ${YELLOW}启动服务${NC}:"
     echo "    开发: cd $INSTALL_DIR && ./start.sh"
-    echo "    常驻: cd $INSTALL_DIR && ./run_app.sh start"
-    echo "    管理: ./run_app.sh {stop|restart|status}"
+    echo "    常驻: cd $INSTALL_DIR && ./scripts/run_app.sh start"
+    echo "    管理: ./scripts/run_app.sh {stop|restart|status}"
     echo ""
     echo -e "  ${YELLOW}浏览器打开${NC}: http://127.0.0.1:8000"
     echo ""
     echo -e "  ${YELLOW}手动增量索引${NC}:"
-    echo "    cd $INSTALL_DIR && ./venv/bin/python incremental.py"
+    echo "    cd $INSTALL_DIR && ./venv/bin/python -m everythingsearch.incremental"
     echo ""
     echo -e "  ${YELLOW}完整重建索引${NC}:"
-    echo "    cd $INSTALL_DIR && caffeinate -i ./venv/bin/python incremental.py --full"
+    echo "    cd $INSTALL_DIR && caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full"
     echo ""
 }
 

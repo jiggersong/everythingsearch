@@ -36,7 +36,7 @@
 
 ```bash
 cd /path/to/EverythingSearch
-./install.sh
+./scripts/install.sh
 ```
 
 安装脚本会自动完成以下步骤：
@@ -58,10 +58,8 @@ cd /path/to/EverythingSearch
 cd ~/Documents/code
 tar czf EverythingSearch-install.tar.gz \
     --exclude='venv' \
-    --exclude='chroma_db' \
-    --exclude='embedding_cache.db' \
-    --exclude='index_state.db' \
-    --exclude='scan_cache.db' \
+    --exclude='data/chroma_db' \
+    --exclude='data/*.db' \
     --exclude='__pycache__' \
     --exclude='.DS_Store' \
     --exclude='logs/*.log' \
@@ -74,7 +72,7 @@ tar czf EverythingSearch-install.tar.gz \
 cd ~/Documents/code
 tar xzf EverythingSearch-install.tar.gz
 cd EverythingSearch
-./install.sh
+./scripts/install.sh
 ```
 
 ---
@@ -111,7 +109,7 @@ python3.11 -m venv venv
 
 ### 3.5 编辑配置文件
 
-若 `config.py` 不存在，先复制模板：`cp config.example.py config.py`
+若 `config.py` 不存在，先复制模板：`cp etc/config.example.py config.py`
 
 用文本编辑器打开 `config.py`，修改以下必填项：
 
@@ -130,7 +128,7 @@ MWEB_DIR = "/Users/你的用户名/Documents/MWebMarkDown/File"
 
 ```bash
 # 使用 caffeinate 防止电脑休眠中断长时间运行
-caffeinate -i ./venv/bin/python incremental.py --full
+caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full
 ```
 
 索引时间取决于文件数量和类型：
@@ -142,37 +140,32 @@ caffeinate -i ./venv/bin/python incremental.py --full
 
 **方式一：开发模式（前台运行）**
 ```bash
-./venv/bin/python app.py
+./venv/bin/python -m everythingsearch.app
 # 或
-./run_app.sh dev
+./scripts/run_app.sh dev
 ```
 
 **方式二：常驻模式（后台运行，支持重启）**
 ```bash
-./run_app.sh start    # 启动
-./run_app.sh stop     # 停止
-./run_app.sh restart  # 重启
-./run_app.sh status   # 查看状态
+./scripts/run_app.sh start    # 启动
+./scripts/run_app.sh stop     # 停止
+./scripts/run_app.sh restart  # 重启
+./scripts/run_app.sh status   # 查看状态
 ```
 
 **方式三：开机自启（launchd）**
 
 > **注意**：macOS 对 `~/Documents` 目录有 TCC 隐私保护，LaunchAgent 无法直接访问该路径下的脚本和日志文件。因此 launchd 通过调用 `~/.local/bin/` 下的 wrapper 脚本来启动服务，由脚本内部 `cd` 到项目目录。
 
+**推荐（与当前代码布局一致）**：在项目根目录执行：
+
 ```bash
-# 1. 创建 wrapper 脚本（launchd 通过它来启动服务）
-mkdir -p ~/.local/bin
-cp launchd_wrapper.sh ~/.local/bin/everythingsearch_start.sh
-chmod +x ~/.local/bin/everythingsearch_start.sh
-# 编辑 ~/.local/bin/everythingsearch_start.sh 确认 APP_DIR 路径正确
-
-# 2. 安装 plist（plist 已配置为调用 wrapper 脚本）
-cp com.jigger.everythingsearch.app.plist ~/Library/LaunchAgents/
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jigger.everythingsearch.app.plist
-
-# 卸载:
-# launchctl bootout gui/$(id -u)/com.jigger.everythingsearch.app
+./scripts/install_launchd_wrappers.sh
 ```
+
+可选传入项目根目录：`./scripts/install_launchd_wrappers.sh /path/to/EverythingSearch`。脚本会写入 `everythingsearch.app:app`（gunicorn）与 `python -m everythingsearch.incremental`（定时索引），并注册 `com.jigger.everythingsearch.app` 与 `com.jigger.everythingsearch` 两个 launchd 任务。
+
+手动安装时可参考仓库内 `scripts/launchd/*.plist`；卸载搜索服务：`launchctl bootout gui/$(id -u)/com.jigger.everythingsearch.app`。
 
 浏览器打开 http://127.0.0.1:8000 开始搜索。
 
@@ -190,7 +183,7 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jigger.everythingsea
    ```
 3. 保存退出后，在浏览器中访问：**http://everythingsearch.local:8000** 即可。
 
-无需修改应用代码；请求会经 hosts 解析到 127.0.0.1，服务照常监听 127.0.0.1:8000。若希望不加端口号（仅 `http://everythingsearch.local`），可将 `config.py` 中 `PORT = 80` 并用 `sudo ./venv/bin/python app.py` 启动，或使用 Nginx/Caddy 等反向代理将 80 转发到 8000。
+无需修改应用代码；请求会经 hosts 解析到 127.0.0.1，服务照常监听 127.0.0.1:8000。若希望不加端口号（仅 `http://everythingsearch.local`），可将 `config.py` 中 `PORT = 80` 并用 `sudo ./venv/bin/python -m everythingsearch.app` 启动，或使用 Nginx/Caddy 等反向代理将 80 转发到 8000。
 
 ---
 
@@ -224,7 +217,7 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jigger.everythingsea
 - **搜索结果太杂**：调小 `SCORE_THRESHOLD`（如 0.35）
 - **搜索太慢**：调小 `SEARCH_TOP_K`（如 100）
 
-修改配置后需重启搜索服务：`./run_app.sh restart` 或重新运行 `python app.py`。
+修改配置后需重启搜索服务：`./scripts/run_app.sh restart` 或重新运行 `python -m everythingsearch.app`。
 
 ---
 
@@ -240,8 +233,8 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jigger.everythingsea
 # 1. 创建 wrapper 脚本
 mkdir -p ~/.local/bin
 cp launchd_wrapper.sh ~/.local/bin/everythingsearch_index.sh
-# 注意：需将 everythingsearch_index.sh 的内容改为调用 incremental.py
-#       （安装脚本 install.sh 会自动生成正确内容）
+# 注意：需将 everythingsearch_index.sh 的内容改为调用 `python -m everythingsearch.incremental`
+#       （安装脚本 scripts/install.sh 会自动生成正确内容）
 chmod +x ~/.local/bin/everythingsearch_index.sh
 
 # 2. 安装 plist
@@ -303,14 +296,14 @@ cat logs/incremental_err.log
 ```bash
 cd /path/to/EverythingSearch
 # 开发模式（前台）
-./run_app.sh dev
-# 或: ./venv/bin/python app.py
+./scripts/run_app.sh dev
+# 或: ./venv/bin/python -m everythingsearch.app
 
 # 常驻模式（后台，支持重启）
-./run_app.sh start
-./run_app.sh status   # 查看状态
-./run_app.sh restart  # 重启
-./run_app.sh stop     # 停止
+./scripts/run_app.sh start
+./scripts/run_app.sh status   # 查看状态
+./scripts/run_app.sh restart  # 重启
+./scripts/run_app.sh stop     # 停止
 ```
 
 浏览器打开 http://127.0.0.1:8000
@@ -327,9 +320,9 @@ cd /path/to/EverythingSearch
 当文件有大量变更时，可手动触发：
 
 ```bash
-./venv/bin/python incremental.py
+./venv/bin/python -m everythingsearch.incremental
 # 索引完成后需重启搜索服务以加载新数据
-./run_app.sh restart
+./scripts/run_app.sh restart
 ```
 
 ### 完整重建索引
@@ -337,9 +330,9 @@ cd /path/to/EverythingSearch
 更换索引目录或数据异常时使用：
 
 ```bash
-caffeinate -i ./venv/bin/python incremental.py --full
+caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full
 # 索引完成后需重启搜索服务以加载新数据
-./run_app.sh restart
+./scripts/run_app.sh restart
 ```
 
 ---
@@ -359,11 +352,11 @@ caffeinate -i ./venv/bin/python incremental.py --full
 **A**: 
 1. 确认文件后缀在 `config.py` 的 `SUPPORTED_EXTENSIONS` 中
 2. 确认文件在 `TARGET_DIR` 目录下
-3. 运行 `python incremental.py` 更新索引
-4. 重启搜索服务以加载新索引：`./run_app.sh restart`
+3. 运行 `python -m everythingsearch.incremental` 更新索引
+4. 重启搜索服务以加载新索引：`./scripts/run_app.sh restart`
 
 ### Q: launchd 开机自启服务一直失败（退出码 78）
-**A**: 这是 macOS TCC 隐私保护导致的。LaunchAgent 无法直接访问 `~/Documents` 目录。解决方法：确保使用 `~/.local/bin/` 下的 wrapper 脚本启动（而非在 plist 中直接引用 `~/Documents` 下的 Python 或脚本），plist 的 `StandardOutPath`/`StandardErrorPath` 也应指向 `/tmp/` 而非 `~/Documents`。运行 `install.sh` 可自动完成正确配置。
+**A**: 这是 macOS TCC 隐私保护导致的。LaunchAgent 无法直接访问 `~/Documents` 目录。解决方法：确保使用 `~/.local/bin/` 下的 wrapper 脚本启动（而非在 plist 中直接引用 `~/Documents` 下的 Python 或脚本），plist 的 `StandardOutPath`/`StandardErrorPath` 也应指向 `/tmp/` 而非 `~/Documents`。可运行 `scripts/install.sh` 交互安装，或在项目根目录执行 `scripts/install_launchd_wrappers.sh` 仅刷新 wrapper 与 plist。
 
 ### Q: 如何更换 API Key
 **A**: 编辑 `config.py` 中的 `MY_API_KEY`，重启搜索服务即可。无需重建索引。
@@ -376,7 +369,7 @@ caffeinate -i ./venv/bin/python incremental.py --full
 ### Q: 数据库文件太大
 **A**: 
 - `embedding_cache.db`：向量缓存，删除后重建索引时会重新调用 API 生成
-- `chroma_db/`：向量数据库，只能通过 `--full` 重建清理
+- `data/chroma_db/`：向量数据库，只能通过 `--full` 重建清理
 
 ---
 
@@ -386,22 +379,17 @@ caffeinate -i ./venv/bin/python incremental.py --full
 
 | 文件 | 用途 |
 |------|------|
-| `install.sh` | 自动安装脚本 |
-| `INSTALL.md` | 本安装指引 |
-| `PROJECT_MANUAL.md` | 项目详细说明书 |
-| `config.py` | 配置文件（需编辑） |
-| `config.example.py` | 配置模板 |
-| `app.py` | Web 服务入口 |
-| `run_app.sh` | 搜索服务管理（start/stop/restart/status/dev） |
-| `search.py` | 搜索引擎核心 |
-| `indexer.py` | 索引构建程序 |
-| `incremental.py` | 增量索引程序 |
-| `embedding_cache.py` | 向量缓存层 |
+| `scripts/install.sh` | 自动安装脚本 |
+| `docs/INSTALL.md` | 本安装指引 |
+| `docs/PROJECT_MANUAL.md` | 项目详细说明书 |
+| `config.py` | 配置文件（需编辑，位于仓库根目录） |
+| `etc/config.example.py` | 配置模板 |
+| `everythingsearch/` | Python 包（`app`、`search`、`indexer`、`incremental`、`embedding_cache` 等） |
+| `everythingsearch/templates/index.html` | 搜索页面 |
+| `everythingsearch/static/` | 静态资源 |
+| `scripts/run_app.sh` | 搜索服务管理（start/stop/restart/status/dev） |
 | `requirements.txt` | Python 依赖清单 |
-| `templates/index.html` | 搜索页面 |
-| `static/icon.png` | 页面图标 |
-| `com.jigger.everythingsearch.plist` | 定时索引任务 plist 配置 |
-| `com.jigger.everythingsearch.app.plist` | 搜索服务常驻 plist 配置 |
+| `scripts/launchd/*.plist` | launchd 配置参考副本 |
 | `~/.local/bin/everythingsearch_start.sh` | 搜索服务 launchd wrapper 脚本（安装时生成） |
 | `~/.local/bin/everythingsearch_index.sh` | 增量索引 launchd wrapper 脚本（安装时生成） |
 

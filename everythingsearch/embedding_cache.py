@@ -179,7 +179,9 @@ class CachedEmbeddings(DashScopeEmbeddings):
     api_calls: int = 0
     _stats_lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
 
-    def __init__(self, cache_path: str = "./embedding_cache.db", **kwargs):
+    def __init__(self, cache_path: str, **kwargs):
+        if not cache_path or not str(cache_path).strip():
+            raise ValueError("CachedEmbeddings 需要 cache_path（请传入 config.EMBEDDING_CACHE_PATH）")
         super().__init__(**kwargs)
         object.__setattr__(self, "_cache", EmbeddingCache(cache_path))
 

@@ -1,7 +1,15 @@
 # config.example.py - 配置模板
-# 复制为 config.py 并修改: cp config.example.py config.py
+# 复制到仓库根目录: cp etc/config.example.py config.py
 
 import os
+
+
+def _project_root() -> str:
+    d = os.path.dirname(os.path.abspath(__file__))
+    return os.path.dirname(d) if os.path.basename(d) == "etc" else d
+
+
+_ROOT = _project_root()
 
 # ================= 必填配置 =================
 
@@ -35,22 +43,22 @@ MWEB_EXPORT_SCRIPT = ""
 API_MAX_READ_BYTES = 524288
 
 # 增量索引状态数据库
-INDEX_STATE_DB = "./index_state.db"
+INDEX_STATE_DB = os.path.join(_ROOT, "data", "index_state.db")
 
 # 扫描缓存：未变更文件跳过解析
-SCAN_CACHE_PATH = "./scan_cache.db"
+SCAN_CACHE_PATH = os.path.join(_ROOT, "data", "scan_cache.db")
 
 
 # ================= 高级配置 =================
 
-PERSIST_DIRECTORY = "./chroma_db"
+PERSIST_DIRECTORY = os.path.join(_ROOT, "data", "chroma_db")
 EMBEDDING_MODEL = "text-embedding-v2"
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 80
 MAX_CONTENT_LENGTH = 20000
 SEARCH_TOP_K = 250
 SCORE_THRESHOLD = 0.35
-EMBEDDING_CACHE_PATH = "./embedding_cache.db"
+EMBEDDING_CACHE_PATH = os.path.join(_ROOT, "data", "embedding_cache.db")
 
 POSITION_WEIGHTS = {
     "filename": 0.60,

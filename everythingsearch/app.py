@@ -9,9 +9,14 @@ from flask import Flask, request, jsonify, render_template, send_file
 import config
 
 logger = logging.getLogger(__name__)
-from search import search_core, clear_search_cache, _search_cache
+from .search import search_core, clear_search_cache, _search_cache
 
-app = Flask(__name__)
+_PKG_DIR = os.path.dirname(os.path.abspath(__file__))
+app = Flask(
+    __name__,
+    template_folder=os.path.join(_PKG_DIR, "templates"),
+    static_folder=os.path.join(_PKG_DIR, "static"),
+)
 
 # 全局状态
 _warmup_done = False
@@ -25,7 +30,7 @@ def _warmup_vectordb():
         return True
     try:
         # 触发向量数据库初始化
-        from search import _get_vectordb
+        from .search import _get_vectordb
         _ = _get_vectordb()
         _warmup_done = True
         logger.info("向量数据库预热完成")
@@ -113,7 +118,7 @@ def api_health():
     vdb_status = "ok"
     doc_count = 0
     try:
-        from search import _get_chroma_collection
+        from .search import _get_chroma_collection
         col = _get_chroma_collection()
         if col:
             doc_count = col.count()
@@ -276,12 +281,16 @@ def api_file_download():
     )
 
 
-if __name__ == "__main__":
-    # 启动时尝试预热
+def main():
+    """CLI entry: python -m everythingsearch.app"""
     logger.info("启动 EverythingSearch 服务...")
     _warmup_vectordb()
-    
+
     debug = os.environ.get("FLASK_DEBUG", "false").lower() in ("true", "1", "yes")
     port = int(os.environ.get("PORT", getattr(config, "PORT", 8000)))
     host = os.environ.get("FLASK_HOST", getattr(config, "HOST", "127.0.0.1"))
     app.run(host=host, port=port, debug=debug)
+
+
+if __name__ == "__main__":
+    main()

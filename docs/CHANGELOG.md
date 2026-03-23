@@ -19,7 +19,7 @@
 - **搜索**（`search.py`）：对相同查询条件做短期内存缓存（默认 TTL 20 分钟、最多 100 条）；在 **Unix/macOS** 上为单次搜索设置约 30 秒 `SIGALRM` 超时（无 `SIGALRM` 的环境则不做闹钟超时）；向量库缓存清理时同步清空搜索缓存。
 - **Embedding 缓存**（`embedding_cache.py`）：SQLite **WAL**、固定大小连接池、旧版仅两列表结构自动 `ALTER` 增加 `created_at`；统计计数使用 `PrivateAttr` 锁，避免 Pydantic 初始化问题。
 - **索引**（`indexer.py`）：全量重建时按文档平均长度选择向量化 **batch**（约 25 / 40 / 55）。
-- **应用**（`app.py`）：启动或首个请求前尝试预热向量库连接。
+- **应用**（`everythingsearch.app`）：启动或首个请求前尝试预热向量库连接。
 
 ### 说明
 

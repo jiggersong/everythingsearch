@@ -27,12 +27,12 @@ EverythingSearch 是一个运行在 macOS 上的**本地文件语义搜索引擎
 └───────────────────────┬──────────────────────────────┘
                         │ HTTP (localhost:8000)
 ┌───────────────────────▼──────────────────────────────┐
-│               Flask 后端 (app.py)                      │
+│            Flask 后端 (everythingsearch.app)           │
 │  /api/search · /api/health · /api/cache/clear · …     │
 └───────────────────────┬──────────────────────────────┘
                         │
 ┌───────────────────────▼──────────────────────────────┐
-│             搜索引擎 (search.py)                       │
+│            搜索引擎 (everythingsearch.search)           │
 │  向量搜索 · 位置加权 · 关键词回退 · 文件去重 · 来源过滤   │
 └───────────────────────┬──────────────────────────────┘
                         │
@@ -42,12 +42,12 @@ EverythingSearch 是一个运行在 macOS 上的**本地文件语义搜索引擎
 └───────────────────────┬──────────────────────────────┘
                         │
 ┌───────────────────────▼──────────────────────────────┐
-│     索引构建 (indexer.py / incremental.py)              │
+│     索引构建 (indexer / incremental 模块)               │
 │  文件扫描 · 内容解析 · 标题提取 · 文本切分 · 向量生成     │
 └───────────────────────┬──────────────────────────────┘
                         │
 ┌───────────────────────▼──────────────────────────────┐
-│     Embedding 服务 (embedding_cache.py)                │
+│     Embedding 服务 (embedding_cache 模块)                │
 │  CachedEmbeddings → SQLite 缓存 → DashScope API       │
 └──────────────────────────────────────────────────────┘
 ```
@@ -70,36 +70,38 @@ EverythingSearch 是一个运行在 macOS 上的**本地文件语义搜索引擎
 
 ```
 EverythingSearch/
-├── config.py              # 配置文件（从 config.example.py 复制，含 API Key 等）
-├── config.example.py      # 配置模板（可提交，不含敏感信息）
-├── indexer.py             # 全量索引构建（扫描文件+MWeb、解析内容、生成向量）
-├── incremental.py         # 增量索引（检测变更、部分更新ChromaDB）
-├── search.py              # 搜索核心（向量搜索、加权、去重、关键词回退）
-├── embedding_cache.py     # Embedding 向量缓存层（SQLite + DashScope）
-├── app.py                 # Flask Web 服务
-│
-├── templates/
-│   └── index.html         # 搜索页面（单文件，含 CSS + JS）
-├── static/
-│   └── icon.png           # 页面图标
-│
-├── chroma_db/             # ChromaDB 向量数据库（自动生成）
-├── embedding_cache.db     # Embedding 向量缓存（SQLite，自动生成）
-├── scan_cache.db          # 扫描解析缓存（SQLite，未变更文件跳过解析，自动生成）
-├── index_state.db         # 增量索引状态追踪（SQLite，自动生成）
-├── logs/                  # 定时任务日志目录
-│
-├── com.jigger.everythingsearch.plist      # macOS launchd 定时索引任务 plist
-├── com.jigger.everythingsearch.app.plist  # macOS launchd 搜索服务常驻 plist
-├── run_app.sh                             # 搜索服务管理（start/stop/restart）
-├── requirements.txt       # Python 依赖清单
-├── pytest.ini             # pytest 配置
-├── tests/                 # 单元/接口测试
-├── CHANGELOG.md           # 版本变更记录
-├── venv/                  # Python 虚拟环境
-│
-├── PROJECT_MANUAL.md      # 本说明书
-└── INSTALL.md             # 安装与配置指引
+├── config.py                 # 本地配置（从 etc/config.example.py 复制，勿提交密钥）
+├── etc/
+│   └── config.example.py     # 配置模板
+├── everythingsearch/         # Python 应用包
+│   ├── app.py                # Flask Web 服务
+│   ├── search.py             # 搜索核心
+│   ├── indexer.py            # 全量索引构建
+│   ├── incremental.py      # 增量索引
+│   ├── embedding_cache.py    # Embedding 缓存层
+│   ├── templates/
+│   │   └── index.html
+│   └── static/
+│       └── icon.png
+├── data/                     # 本地数据与缓存（默认路径，勿提交）
+│   ├── chroma_db/            # ChromaDB
+│   ├── embedding_cache.db
+│   ├── scan_cache.db
+│   └── index_state.db
+├── logs/                     # 运行与定时任务日志
+├── scripts/
+│   ├── install.sh
+│   ├── run_app.sh            # 搜索服务管理（start/stop/restart/dev）
+│   ├── run_tests.sh
+│   └── launchd/              # launchd plist 参考副本
+├── docs/
+│   ├── INSTALL.md
+│   ├── PROJECT_MANUAL.md
+│   └── CHANGELOG.md
+├── requirements.txt
+├── pytest.ini
+├── tests/
+└── venv/
 
 ~/.local/bin/
 ├── everythingsearch_start.sh  # 搜索服务 launchd wrapper（安装时生成）
@@ -177,7 +179,7 @@ EverythingSearch/
 - 命中/调用计数使用 `PrivateAttr` + `threading.Lock`，避免 Pydantic 对模型默认值做 deepcopy 时失败
 - 首次全量索引后，后续重建几乎无需 API 调用
 
-### 4.5 incremental.py — 增量索引
+### 4.5 `everythingsearch.incremental` — 增量索引
 
 使用 SQLite 表 `file_index` 追踪每个文件的 `(filepath, mtime, source_type)`：
 - **新增文件**：生成向量并写入 ChromaDB
@@ -190,13 +192,13 @@ EverythingSearch/
 
 运行方式：
 ```bash
-python incremental.py          # 增量更新
-python incremental.py --full   # 完整重建
+python -m everythingsearch.incremental          # 增量更新
+python -m everythingsearch.incremental --full   # 完整重建
 ```
 
-> **注意**：索引完成后需重启搜索服务以加载新数据：`./run_app.sh restart`
+> **注意**：索引完成后需重启搜索服务以加载新数据：`./scripts/run_app.sh restart`
 
-### 4.6 app.py — Web 服务
+### 4.6 `everythingsearch.app` — Web 服务
 
 Flask 应用，路由：
 - `GET /` — 返回搜索页面
@@ -209,12 +211,12 @@ Flask 应用，路由：
 - `POST /api/open` — 用默认应用打开文件（含路径安全校验）
 
 > 出于安全考虑，以下接口仍不提供：`/api/config`、`/api/stats`、`/api/reload`。
-> 索引重建后需重启搜索服务以加载新数据：`./run_app.sh restart`
+> 索引重建后需重启搜索服务以加载新数据：`./scripts/run_app.sh restart`
 
 **运行方式**：
-- 开发：`./venv/bin/python app.py` 或 `./run_app.sh dev`
-- 常驻：`./run_app.sh start`（gunicorn 后台）
-- 管理：`./run_app.sh stop|restart|status`
+- 开发：`./venv/bin/python -m everythingsearch.app` 或 `./scripts/run_app.sh dev`
+- 常驻：`./scripts/run_app.sh start`（gunicorn 后台）
+- 管理：`./scripts/run_app.sh stop|restart|status`
 
 ### 4.7 launchd 常驻服务
 
@@ -230,7 +232,7 @@ Flask 应用，路由：
 
 **定时索引**（`com.jigger.everythingsearch.plist`）：
 - 每天 10:00 执行增量索引，睡眠唤醒后补执行
-- 通过 `~/.local/bin/everythingsearch_index.sh` 启动 `incremental.py`
+- 通过 `~/.local/bin/everythingsearch_index.sh` 启动 `python -m everythingsearch.incremental`
 
 **管理命令**（推荐使用 `launchctl bootstrap/bootout` 而非旧版 `load/unload`）：
 ```bash
@@ -269,31 +271,31 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jigger.everythingsea
 ```bash
 cd /path/to/EverythingSearch
 # 方式一：开发模式（前台）
-./venv/bin/python app.py
-# 或 ./run_app.sh dev
+./venv/bin/python -m everythingsearch.app
+# 或 ./scripts/run_app.sh dev
 
 # 方式二：常驻模式（后台，支持重启）
-./run_app.sh start
-./run_app.sh status   # 查看状态
-./run_app.sh restart  # 重启
-./run_app.sh stop     # 停止
+./scripts/run_app.sh start
+./scripts/run_app.sh status   # 查看状态
+./scripts/run_app.sh restart  # 重启
+./scripts/run_app.sh stop     # 停止
 ```
 然后在浏览器打开 http://127.0.0.1:8000
 
 ### 手动触发增量索引
 ```bash
 cd /path/to/EverythingSearch
-./venv/bin/python incremental.py
+./venv/bin/python -m everythingsearch.incremental
 # 索引完成后重启搜索服务以加载新数据
-./run_app.sh restart
+./scripts/run_app.sh restart
 ```
 
 ### 完整重建索引（首次或大规模变更后）
 ```bash
 cd /path/to/EverythingSearch
-caffeinate -i nohup ./venv/bin/python incremental.py --full > logs/full_rebuild.log 2>&1 &
+caffeinate -i nohup ./venv/bin/python -m everythingsearch.incremental --full > logs/full_rebuild.log 2>&1 &
 # 索引完成后重启搜索服务以加载新数据
-# ./run_app.sh restart
+# ./scripts/run_app.sh restart
 ```
 `caffeinate -i` 防止电脑睡眠中断进程。
 
@@ -313,7 +315,7 @@ cat logs/incremental_err.log
 - 调大（如 0.60）→ 更宽松，结果更多但可能含噪声
 
 ### 增加索引目录
-修改 `config.py` 中的 `TARGET_DIR`，然后执行 `python incremental.py --full` 重建。
+修改 `config.py` 中的 `TARGET_DIR`，然后执行 `python -m everythingsearch.incremental --full` 重建。
 
 ### 更换 Embedding 模型
 修改 `config.py` 中的 `EMBEDDING_MODEL`（需为 DashScope 支持的模型名），然后全量重建。缓存会自动因模型名不同而失效。
@@ -366,11 +368,11 @@ python3.11 -m venv venv
 nano config.py
 
 # 5. 构建首次索引
-caffeinate -i ./venv/bin/python incremental.py --full
+caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full
 
 # 6. 启动搜索服务
-./run_app.sh start
-# 或开发模式: ./venv/bin/python app.py
+./scripts/run_app.sh start
+# 或开发模式: ./venv/bin/python -m everythingsearch.app
 # 浏览器打开 http://127.0.0.1:8000
 
 # 7.（可选）搜索服务开机自启
@@ -384,7 +386,7 @@ mkdir -p "$APP_DIR/logs"
 cd "$APP_DIR" || exit 1
 exec "$APP_DIR/venv/bin/python" -m gunicorn -w 1 -b 127.0.0.1:8000 \
   --timeout 120 --access-logfile "$APP_DIR/logs/app.log" \
-  --error-logfile "$APP_DIR/logs/app_err.log" app:app
+  --error-logfile "$APP_DIR/logs/app_err.log" everythingsearch.app:app
 EOF
 chmod +x ~/.local/bin/everythingsearch_start.sh
 cp com.jigger.everythingsearch.app.plist ~/Library/LaunchAgents/
@@ -396,7 +398,7 @@ cat > ~/.local/bin/everythingsearch_index.sh << 'EOF'
 APP_DIR="$HOME/Documents/code/EverythingSearch"
 mkdir -p "$APP_DIR/logs"
 cd "$APP_DIR" || exit 1
-exec "$APP_DIR/venv/bin/python" "$APP_DIR/incremental.py" \
+exec "$APP_DIR/venv/bin/python" -m everythingsearch.incremental \
   >> "$APP_DIR/logs/incremental.log" 2>&1
 EOF
 chmod +x ~/.local/bin/everythingsearch_index.sh

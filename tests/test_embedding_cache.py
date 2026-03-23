@@ -9,7 +9,7 @@ import threading
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from embedding_cache import ConnectionPool, EmbeddingCache
+from everythingsearch.embedding_cache import ConnectionPool, EmbeddingCache
 
 
 class TestConnectionPool:

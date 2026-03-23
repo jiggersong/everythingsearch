@@ -13,7 +13,7 @@ os.environ.setdefault('FLASK_ENV', 'testing')
 @pytest.fixture
 def client():
     """创建测试客户端"""
-    from app import app
+    from everythingsearch.app import app
     app.config['TESTING'] = True
     with app.test_client() as client:
         yield client
@@ -173,12 +173,12 @@ class TestWarmup:
     
     def test_warmup_function_exists(self):
         """测试预热函数存在"""
-        from app import _warmup_vectordb
+        from everythingsearch.app import _warmup_vectordb
         assert callable(_warmup_vectordb)
     
     def test_warmup_idempotent(self, client):
         """预热可重复调用且不抛错"""
-        from app import _warmup_vectordb
+        from everythingsearch.app import _warmup_vectordb
 
         assert _warmup_vectordb() in (True, False)
         assert _warmup_vectordb() in (True, False)

@@ -6,7 +6,7 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from indexer import (
+from everythingsearch.indexer import (
     normalize_path,
     _extract_md_headings,
     _parse_front_matter,
@@ -167,7 +167,7 @@ class TestBuildDocuments:
     def test_build_documents_for_txt(self, sample_text_file):
         """测试文本文件文档构建"""
         try:
-            from indexer import build_documents_for_file
+            from everythingsearch.indexer import build_documents_for_file
             from langchain_core.documents import Document
             
             docs = build_documents_for_file(
@@ -193,7 +193,7 @@ class TestBuildDocuments:
     def test_build_documents_for_md(self, sample_md_file):
         """测试 Markdown 文件文档构建"""
         try:
-            from indexer import build_documents_for_file
+            from everythingsearch.indexer import build_documents_for_file
             
             docs = build_documents_for_file(
                 sample_md_file,

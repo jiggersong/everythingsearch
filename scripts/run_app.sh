@@ -9,7 +9,7 @@
 
 set -e
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$SCRIPT_DIR"
 
 PORT="${PORT:-8000}"
@@ -133,7 +133,7 @@ case "${1:-}" in
     dev)
         echo "开发模式 (前台运行，Ctrl+C 停止)..."
         echo "⚠️ 请先确保常驻服务已停止: launchctl unload ~/Library/LaunchAgents/$LAUNCHD_LABEL.plist"
-        FLASK_DEBUG=true "$PYTHON" app.py
+        FLASK_DEBUG=true "$PYTHON" -m everythingsearch.app
         ;;
     *)
         echo "用法: $0 {start|stop|restart|status|dev}"

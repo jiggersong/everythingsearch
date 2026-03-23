@@ -11,7 +11,7 @@ from chromadb.errors import NotFoundError, InternalError
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
 
-from embedding_cache import CachedEmbeddings
+from .embedding_cache import CachedEmbeddings
 
 logger = logging.getLogger(__name__)
 

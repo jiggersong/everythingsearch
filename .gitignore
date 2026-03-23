@@ -15,6 +15,11 @@ build/
 config.py
 
 # 数据与缓存
+data/chroma_db/
+data/*.db
+data/*.db-journal
+*.db-wal
+*.db-shm
 chroma_db/
 *.db
 *.db-journal

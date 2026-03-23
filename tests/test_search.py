@@ -7,7 +7,7 @@ import os
 # 确保导入路径正确
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from search import (
+from everythingsearch.search import (
     _get_cache_key, 
     _get_cached_search, 
     _set_cached_search,
@@ -69,7 +69,7 @@ class TestSearchCache:
     
     def test_cache_ttl_expired(self, monkeypatch):
         """TTL 过期后应未命中（通过伪造时间）"""
-        import search as search_mod
+        import everythingsearch.search as search_mod
 
         base = 1_000_000.0
         clock = [base]
@@ -97,7 +97,7 @@ class TestSearchCache:
             _set_cached_search(f"key_{i}", [{"filename": f"file_{i}.txt"}])
         
         # 缓存大小应该被限制
-        from search import _search_cache
+        from everythingsearch.search import _search_cache
         assert len(_search_cache) <= 100
     
     def test_clear_cache(self):
@@ -204,7 +204,7 @@ class TestSearchIntegration:
     def test_search_basic(self):
         """测试基本搜索（如果配置存在）"""
         try:
-            from search import search_core
+            from everythingsearch.search import search_core
             # 使用简单查询测试
             results = search_core("test")
             assert isinstance(results, list)
@@ -213,7 +213,7 @@ class TestSearchIntegration:
     
     def test_timeout_mechanism_exists(self):
         """超时信号处理与异常类型存在（Unix 下由 SIGALRM 触发）"""
-        from search import SearchTimeoutError, _timeout_handler
+        from everythingsearch.search import SearchTimeoutError, _timeout_handler
 
         assert issubclass(SearchTimeoutError, Exception)
         assert callable(_timeout_handler)

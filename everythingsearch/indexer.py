@@ -16,7 +16,7 @@ except ImportError:
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
 
-from embedding_cache import CachedEmbeddings
+from .embedding_cache import CachedEmbeddings
 
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
