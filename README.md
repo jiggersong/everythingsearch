@@ -196,7 +196,6 @@ caffeinate -i ./venv/bin/python incremental.py --full
 - [PROJECT_MANUAL.md](PROJECT_MANUAL.md) — 项目技术说明书（架构、模块详解、调参指南）
 - [CHANGELOG.md](CHANGELOG.md) — 版本与变更记录
 
-在 **GitHub** 上还可通过 [Releases](https://github.com/jiggersong/everythingsearch/releases) 发布带说明的版本：在仓库页点击 **Releases → Draft a new release**，填写 Tag（如 `v1.1.0`）与发行说明，用户即可按版本查看变化。
 
 ## 许可证
 
