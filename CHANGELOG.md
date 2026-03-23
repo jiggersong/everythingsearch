@@ -6,6 +6,8 @@
 
 ## [1.1.0] - 2025-03-23
 
+**GitHub Release**：[v1.1.0](https://github.com/jiggersong/everythingsearch/releases/tag/v1.1.0)
+
 ### 新增
 
 - **HTTP**：`GET /api/health` — 返回运行时间、向量库状态与文档数、搜索内存缓存条目数等（仅适合本机或受信网络）。
@@ -28,4 +30,4 @@
 
 初始公开版本能力以 README 与 PROJECT_MANUAL 描述为准（语义搜索、增量索引、Web UI、本地 ChromaDB 等）。
 
-在仓库中打上 Git 标签（如 `v1.1.0`）并在 GitHub **Releases** 中写发行说明后，可将对应链接补到本节标题旁便于跳转。
+后续版本可同样打 Tag、发 Release，并在本节为对应版本增加 Release 链接。
