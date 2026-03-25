@@ -1,9 +1,10 @@
 """
 Incremental indexing: track file changes via SQLite and update ChromaDB partially.
 
-Usage:
-    python -m everythingsearch.incremental            # incremental update
-    python -m everythingsearch.incremental --full     # full rebuild
+Usage (from repo root):
+    python -m everythingsearch.incremental              # incremental update
+    python -m everythingsearch.incremental --full       # full rebuild
+    ./venv/bin/python everythingsearch/incremental.py   # same, if root is cwd
 """
 
 import os
@@ -14,12 +15,18 @@ import subprocess
 import argparse
 import unicodedata
 
+# Repo-root `config.py` is imported by name; direct `python everythingsearch/incremental.py`
+# only puts this package dir on sys.path, so add project root first.
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
+
 import config
-from .indexer import (
+from everythingsearch.indexer import (
     normalize_path,
     build_documents_for_path_cached,
 )
-from .embedding_cache import CachedEmbeddings
+from everythingsearch.embedding_cache import CachedEmbeddings
 from langchain_chroma import Chroma
 import chromadb
 
