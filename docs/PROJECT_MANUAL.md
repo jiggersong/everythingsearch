@@ -194,6 +194,8 @@ EverythingSearch/
 ```bash
 python -m everythingsearch.incremental          # 增量更新
 python -m everythingsearch.incremental --full   # 完整重建
+# 或（在仓库根目录）:
+./venv/bin/python everythingsearch/incremental.py
 ```
 
 > **注意**：索引完成后需重启搜索服务以加载新数据：`./scripts/run_app.sh restart`
@@ -266,6 +268,17 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jigger.everythingsea
 ---
 
 ## 6. 日常使用
+
+### Makefile 快捷命令
+```bash
+cd /path/to/EverythingSearch
+make index         # 增量索引
+make index-full    # 全量重建索引
+make app           # 前台启动应用
+make app-status    # 查看常驻服务状态
+make app-restart   # 重启常驻服务
+make app-stop      # 停止常驻服务
+```
 
 ### 启动搜索服务
 ```bash

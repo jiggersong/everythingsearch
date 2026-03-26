@@ -145,6 +145,17 @@ caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full
 
 ## 日常使用
 
+### Makefile 快捷命令
+
+```bash
+make index         # 增量索引
+make index-full    # 全量重建索引
+make app           # 前台启动应用
+make app-status    # 查看常驻服务状态
+make app-restart   # 重启常驻服务
+make app-stop      # 停止常驻服务
+```
+
 ### 启动搜索服务
 
 ```bash

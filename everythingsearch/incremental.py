@@ -183,7 +183,7 @@ def run_incremental():
     if "local_files" not in existing_collections:
         print("\n⚠️ ChromaDB collection 不存在，将执行完整索引...")
         conn.close()
-        from .indexer import build_index
+        from everythingsearch.indexer import build_index
         build_index()
         _rebuild_state_db()
         return
@@ -212,7 +212,7 @@ def run_incremental():
         # 同步清理扫描缓存，避免缓存膨胀
         cache_path = getattr(config, "SCAN_CACHE_PATH", None)
         if cache_path:
-            from .indexer import _init_scan_cache
+            from everythingsearch.indexer import _init_scan_cache
             scan_conn = sqlite3.connect(cache_path)
             _init_scan_cache(scan_conn)
             for fp in deleted_paths:
@@ -227,7 +227,7 @@ def run_incremental():
         cache_path = getattr(config, "SCAN_CACHE_PATH", None)
         scan_cache_conn = sqlite3.connect(cache_path) if cache_path else None
         if scan_cache_conn:
-            from .indexer import _init_scan_cache
+            from everythingsearch.indexer import _init_scan_cache
             _init_scan_cache(scan_cache_conn)
         print(f"\n🧠 索引 {len(to_index)} 个文件 ({len(modified_paths)} 修改 + {len(new_paths)} 新增)...")
         for i, fp in enumerate(to_index):
@@ -303,7 +303,7 @@ def _rebuild_state_db():
 
 def run_full():
     """Full rebuild: use indexer.build_index then rebuild state DB."""
-    from .indexer import build_index
+    from everythingsearch.indexer import build_index
     build_index()
     _rebuild_state_db()
 

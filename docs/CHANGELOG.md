@@ -4,6 +4,16 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.2.2] - 2026-03-26
+
+**GitHub Release**：[v1.2.2](https://github.com/jiggersong/everythingsearch/releases/tag/v1.2.2)
+
+### 变更
+
+- **增量索引启动兼容性**：修复 `everythingsearch/incremental.py` 在脚本方式启动（`python everythingsearch/incremental.py`）时可能触发的相对导入错误，统一使用绝对导入，避免 `ImportError: attempted relative import with no known parent package`。
+- **新增快捷命令**：新增仓库根目录 `Makefile`，提供 `make index`、`make index-full`、`make app`、`make app-status`、`make app-restart`、`make app-stop`，简化日常索引与服务管理。
+- **文档更新**：`README.md`、`docs/INSTALL.md`、`docs/PROJECT_MANUAL.md` 补充 Makefile 用法与增量索引运行说明。
+
 ## [1.2.1] - 2026-03-23
 
 **GitHub Release**：[v1.2.1](https://github.com/jiggersong/everythingsearch/releases/tag/v1.2.1)
