@@ -27,13 +27,13 @@ make app-stop      # 停止常驻服务
 
 | 建议顺序 | 文档 | 角色定位 | 适用场景 | 可获得信息 |
 |----------|------|----------|----------|------------|
-| 1 | `docs/INSTALL.md` | 安装与运维指南 | 首次安装、迁移新机器、环境初始化 | 前置条件、API Key 配置、安装流程、launchd 包装脚本、日常运维命令 |
-| 2 | `docs/PROJECT_MANUAL.md` | 技术参考手册 | 开发、维护、二次改造 | 架构图、模块边界、配置矩阵、索引/搜索流程、调优与部署实践 |
-| 3 | `docs/CHANGELOG.md` | 版本与兼容性记录 | 升级评估、回归排查、发布核对 | 各版本用户可见变更、Release 链接、升级背景 |
+| 1 | [`docs/INSTALL.md`](docs/INSTALL.md) | 安装与运维指南 | 首次安装、迁移新机器、环境初始化 | 前置条件、API Key 配置、安装流程、launchd 包装脚本、日常运维命令 |
+| 2 | [`docs/PROJECT_MANUAL.md`](docs/PROJECT_MANUAL.md) | 技术参考手册 | 开发、维护、二次改造 | 架构图、模块边界、配置矩阵、索引/搜索流程、调优与部署实践 |
+| 3 | [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | 版本与兼容性记录 | 升级评估、回归排查、发布核对 | 各版本用户可见变更、Release 链接、升级背景 |
 
 ## 技术参考手册范围
 
-`docs/PROJECT_MANUAL.md` 是项目的核心技术手册，重点覆盖：
+[`docs/PROJECT_MANUAL.md`](docs/PROJECT_MANUAL.md) 是项目的核心技术手册，重点覆盖：
 
 | 范围 | 重点内容 |
 |------|----------|
@@ -47,4 +47,4 @@ make app-stop      # 停止常驻服务
 
 ## 许可证
 
-MIT License。
+本项目采用 [MIT License](LICENSE)。
