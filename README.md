@@ -1,5 +1,34 @@
 # EverythingSearch
 
+> English is now the default documentation language.
+>
+> - English: `README.md`, `docs/INSTALL.en.md`, `docs/PROJECT_MANUAL.en.md`, `docs/CHANGELOG.en.md`
+> - 中文: `README.zh-CN.md`, `docs/INSTALL.md`, `docs/PROJECT_MANUAL.md`, `docs/CHANGELOG.md`
+
+EverythingSearch is a **local semantic file search engine for macOS**.
+It supports natural-language and keyword queries over your local files, code, and notes.
+
+## Quick Links (English)
+
+- Install & setup: `docs/INSTALL.en.md`
+- Architecture and module details: `docs/PROJECT_MANUAL.en.md`
+- Release history: `docs/CHANGELOG.en.md`
+
+## Common Commands
+
+```bash
+make index         # incremental indexing
+make index-full    # full reindex
+make app           # run app in foreground
+make app-status    # status of launchd-managed app
+make app-restart   # restart launchd-managed app
+make app-stop      # stop launchd-managed app
+```
+
+---
+
+## 中文说明（保留）
+
 EverythingSearch 是一个运行在 macOS 上的**本地文件语义搜索引擎**。它允许用户通过自然语言或关键词，快速查找存储在本地的文档、代码和资料。
 
 > 类似 Windows 上的 Everything，但增加了语义理解能力——不仅能精确匹配文件名，还能理解自然语言描述（如"去年的营销方案"）并找到相关文档。
