@@ -1,5 +1,7 @@
 # EverythingSearch 项目说明书
 
+[English](PROJECT_MANUAL.en.md) | [中文](PROJECT_MANUAL.md)
+
 ## 1. 项目概述
 
 EverythingSearch 是一个运行在 macOS 上的**本地文件语义搜索引擎**。它允许用户通过自然语言或关键词，快速查找存储在本地的文档、代码和资料。

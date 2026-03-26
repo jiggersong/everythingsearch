@@ -1,8 +1,21 @@
 # Changelog
 
+[English](CHANGELOG.en.md) | [中文](CHANGELOG.md)
+
 本文件记录 EverythingSearch 面向使用者的可见变更。建议与 [GitHub Releases](https://github.com/jiggersong/everythingsearch/releases) 中的 Tag 一并维护（Release 说明可摘要自本文件对应版本）。
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
+
+## [1.3.0] - 2026-03-26
+
+**GitHub Release**：[v1.3.0](https://github.com/jiggersong/everythingsearch/releases/tag/v1.3.0)
+
+### 变更
+
+- **文档国际化统一升级**：`README`、`INSTALL`、`PROJECT_MANUAL`、`CHANGELOG` 全部补齐中英文版本，并在文档顶部提供中英文切换链接。
+- **技术手册英文版对齐**：`docs/PROJECT_MANUAL.en.md` 按中文版结构重写，对齐章节编号、架构图、技术栈/配置表格、模块细节、运维与部署内容。
+- **README 文档门户优化**：文档导读改为更规范的表格化门户（文档矩阵 + 技术手册范围），并合并重复信息。
+- **入口精简**：移除冗余的 `README.en.md`，统一以 `README.md` 作为英文默认入口，`README.zh-CN.md` 作为中文入口。
 
 ## [1.2.3] - 2026-03-26
 
@@ -12,7 +25,7 @@
 
 - **增量索引启动兼容性**：修复 `everythingsearch/incremental.py` 在脚本方式启动（`python everythingsearch/incremental.py`）时可能触发的相对导入错误，统一使用绝对导入，避免 `ImportError: attempted relative import with no known parent package`。
 - **新增快捷命令**：新增仓库根目录 `Makefile`，提供 `make index`、`make index-full`、`make app`、`make app-status`、`make app-restart`、`make app-stop`，简化日常索引与服务管理。
-- **英文文档（默认）+ 中文可选**：新增 `README.en.md`、`README.zh-CN.md`、`docs/INSTALL.en.md`、`docs/PROJECT_MANUAL.en.md`、`docs/CHANGELOG.en.md`；`README.md` 顶部调整为英文入口并保留中文内容入口。
+- **英文文档（默认）+ 中文可选**：新增 `README.zh-CN.md`、`docs/INSTALL.en.md`、`docs/PROJECT_MANUAL.en.md`、`docs/CHANGELOG.en.md`；`README.md` 作为英文默认入口，顶部提供中英文切换。
 
 ## [1.2.1] - 2026-03-23
 

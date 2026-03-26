@@ -1,18 +1,17 @@
 # EverythingSearch
 
-> English is now the default documentation language.
->
-> - English: `README.md`, `docs/INSTALL.en.md`, `docs/PROJECT_MANUAL.en.md`, `docs/CHANGELOG.en.md`
-> - 中文: `README.zh-CN.md`, `docs/INSTALL.md`, `docs/PROJECT_MANUAL.md`, `docs/CHANGELOG.md`
+[English](README.md) | [中文](README.zh-CN.md)
 
 EverythingSearch is a **local semantic file search engine for macOS**.
 It supports natural-language and keyword queries over your local files, code, and notes.
 
-## Quick Links (English)
+## Quick Start
 
-- Install & setup: `docs/INSTALL.en.md`
-- Architecture and module details: `docs/PROJECT_MANUAL.en.md`
-- Release history: `docs/CHANGELOG.en.md`
+```bash
+git clone https://github.com/jiggersong/everythingsearch.git
+cd everythingsearch
+./scripts/install.sh
+```
 
 ## Common Commands
 
@@ -25,230 +24,28 @@ make app-restart   # restart launchd-managed app
 make app-stop      # stop launchd-managed app
 ```
 
----
+## Documentation Matrix
 
-## 中文说明（保留）
+| Suggested Order | Document | Role | Best For | What You Get |
+|-----------------|----------|------|----------|--------------|
+| 1 | `docs/INSTALL.en.md` | Installation and operations guide | First installation, machine migration, environment setup | prerequisites, API key setup, install workflow, launchd wrapper setup, daily operation commands |
+| 2 | `docs/PROJECT_MANUAL.en.md` | Technical reference manual | Developers, maintainers, contributors | architecture diagram, module boundaries, configuration matrix, indexing/search pipeline, tuning and deployment practices |
+| 3 | `docs/CHANGELOG.en.md` | Release and compatibility ledger | Upgrades, regression checks, release review | user-visible changes by version, release links, upgrade context |
 
-EverythingSearch 是一个运行在 macOS 上的**本地文件语义搜索引擎**。它允许用户通过自然语言或关键词，快速查找存储在本地的文档、代码和资料。
+## Technical Manual Scope
 
-> 类似 Windows 上的 Everything，但增加了语义理解能力——不仅能精确匹配文件名，还能理解自然语言描述（如"去年的营销方案"）并找到相关文档。
+`docs/PROJECT_MANUAL.en.md` is the canonical technical reference and covers:
 
-![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
-![macOS](https://img.shields.io/badge/macOS-10.15%2B-lightgrey)
-![License](https://img.shields.io/badge/License-MIT-green)
+| Area | Highlights |
+|------|------------|
+| Core understanding | project goals, core capabilities, architecture overview |
+| System design | architecture diagram, technology stack, repository structure |
+| Module internals | `app`, `search`, `indexer`, `incremental`, `embedding_cache` responsibilities |
+| Runtime behavior | configuration matrix, indexing/search lifecycle, API surface |
+| Operations | launchd service model, daily commands, tuning, fresh deployment checklist |
 
-## 功能特性
+For Chinese docs, switch via the language link at the top of this page.
 
-- **语义搜索**：基于向量相似度的自然语言搜索，不局限于关键词精确匹配
-- **混合索引**：同时索引文件内容和文件名，确保仅靠文件名也能搜到（如图片、视频等媒体文件）
-- **MWeb 笔记集成（可选）**：可搜索 MWeb 导出的 Markdown 笔记，通过 `ENABLE_MWEB=False` 可完全关闭
-- **位置加权**：关键词出现在文件名、标题中的结果获得更高排名
-- **Embedding 缓存**：已生成过的向量不会重复调用 API，大幅加速后续索引重建；SQLite 使用 WAL 与连接池，提升并发访问缓存时的表现
-- **增量索引**：支持每日自动检测文件变更，仅对新增/修改/删除的文件更新索引
-- **全量重建优化**：按文档平均长度自动选择向量化 batch 大小，加快大批量索引
-- **搜索内存缓存**：相同查询条件在短时间内重复搜索时命中内存缓存（默认约 20 分钟、最多 100 条）；索引重大变更后可 `POST /api/cache/clear` 清空
-- **运维接口**：`GET /api/health` 查看进程运行时间、向量库文档数、缓存条目数等（仅供本机/受信环境使用）
-- **隐私优先**：索引和数据库完全本地化（ChromaDB），仅在生成向量时调用云端 API
-- **Web 搜索界面**：浏览器中搜索，支持来源过滤、排序、分页、关键词高亮、Finder 定位
+## License
 
-## 技术架构
-
-```
-┌───────────────────────────────────────────────┐
-│              WebUI (浏览器)                      │
-│   搜索 / 过滤 / 排序 / 分页 / 高亮 / Finder定位   │
-└─────────────────────┬─────────────────────────┘
-                      │ HTTP (localhost:8000)
-┌─────────────────────▼─────────────────────────┐
-│            Flask 后端 (everythingsearch.app)       │
-│  /api/search · /api/health · /api/cache/clear  │
-│  · /api/file/* · /api/reveal · /api/open       │
-└─────────────────────┬─────────────────────────┘
-                      │
-┌─────────────────────▼─────────────────────────┐
-│           搜索引擎 (search.py)                  │
-│  向量搜索 · 位置加权 · 关键词回退 · 文件去重       │
-└─────────────────────┬─────────────────────────┘
-                      │
-┌─────────────────────▼─────────────────────────┐
-│         ChromaDB (本地向量数据库)                │
-└─────────────────────┬─────────────────────────┘
-                      │
-┌─────────────────────▼─────────────────────────┐
-│   索引构建 (indexer / incremental 模块)            │
-│  文件扫描 · 内容解析 · 标题提取 · 文本切分        │
-└─────────────────────┬─────────────────────────┘
-                      │
-┌─────────────────────▼─────────────────────────┐
-│   Embedding 服务 (embedding_cache.py)          │
-│  CachedEmbeddings → SQLite 缓存 → DashScope   │
-└───────────────────────────────────────────────┘
-```
-
-### 技术栈
-
-| 组件 | 选型 | 说明 |
-|------|------|------|
-| 开发语言 | Python 3.11 | 推荐 3.11（或 3.10） |
-| 编排框架 | LangChain | 文档加载、切分和向量化流程编排 |
-| 向量模型 | Aliyun DashScope text-embedding-v2 | 中文理解好，成本极低 |
-| 向量数据库 | ChromaDB | 本地文件型数据库，无需 Docker |
-| Web 框架 | Flask + Gunicorn | 开发/生产 HTTP 服务 |
-| 文件解析 | pypdf / python-docx / openpyxl / python-pptx | PDF、Word、Excel、PPT 内容提取 |
-| 前端 | 单文件 HTML + CSS + JS | 无需 Node.js 构建 |
-
-## 快速开始
-
-### 前置条件
-
-- macOS 10.15+
-- Python 3.10 或 3.11
-- [阿里云 DashScope API Key](https://dashscope.console.aliyun.com/apiKey)（费用极低，约 ¥0.0007 / 1000 tokens）
-
-### 自动安装（推荐）
-
-```bash
-git clone https://github.com/jiggersong/everythingsearch.git
-cd everythingsearch
-./scripts/install.sh
-```
-
-安装脚本会交互式引导你完成配置（API Key、索引目录、MWeb 等）。
-
-### 手动安装
-
-```bash
-git clone https://github.com/jiggersong/everythingsearch.git
-cd everythingsearch
-
-# 创建虚拟环境并安装依赖
-python3.11 -m venv venv
-./venv/bin/pip install -r requirements.txt
-
-# 创建配置文件并编辑
-cp etc/config.example.py config.py
-# 编辑 config.py：填写 API Key 和索引目录
-
-# 构建首次索引
-caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full
-
-# 启动搜索服务
-./venv/bin/python -m everythingsearch.app
-```
-
-浏览器打开 http://127.0.0.1:8000 开始搜索。
-
-### 运行测试（可选）
-
-```bash
-./venv/bin/pip install pytest   # 若尚未安装
-./venv/bin/python -m pytest tests/ -q
-```
-
-## 配置说明
-
-所有配置集中在仓库根目录的 `config.py` 中（从 `etc/config.example.py` 复制）。
-
-### 必填配置
-
-| 配置项 | 说明 |
-|--------|------|
-| `MY_API_KEY` | DashScope API Key（推荐使用环境变量 `DASHSCOPE_API_KEY`） |
-| `TARGET_DIR` | 要索引的文件根目录，支持单目录或列表 |
-
-### 可选配置
-
-| 配置项 | 默认值 | 说明 |
-|--------|--------|------|
-| `ENABLE_MWEB` | `False` | 是否启用 MWeb 数据源 |
-| `SEARCH_TOP_K` | `250` | 向量检索候选数量 |
-| `SCORE_THRESHOLD` | `0.35` | 相关度阈值（越小越严格） |
-| `CHUNK_SIZE` | `500` | 文本切分块大小 |
-| `MAX_CONTENT_LENGTH` | `20000` | 单文件最大索引字符数 |
-
-### 搜索调优
-
-- **结果太少**：调大 `SCORE_THRESHOLD`（如 0.55）或调大 `SEARCH_TOP_K`
-- **结果太杂**：调小 `SCORE_THRESHOLD`（如 0.30）
-- **搜索太慢**：调小 `SEARCH_TOP_K`（如 100）
-
-## 日常使用
-
-### Makefile 快捷命令
-
-```bash
-make index         # 增量索引
-make index-full    # 全量重建索引
-make app           # 前台启动应用
-make app-status    # 查看常驻服务状态
-make app-restart   # 重启常驻服务
-make app-stop      # 停止常驻服务
-```
-
-### 启动搜索服务
-
-```bash
-# 开发模式（前台运行）
-./venv/bin/python -m everythingsearch.app
-
-# 常驻模式（后台运行，需配合 launchd）
-./scripts/run_app.sh start
-./scripts/run_app.sh status    # 查看状态
-./scripts/run_app.sh restart   # 重启
-./scripts/run_app.sh stop      # 停止
-```
-
-### 增量索引
-
-```bash
-# 增量更新（仅处理变更文件）
-./venv/bin/python -m everythingsearch.incremental
-
-# 完整重建
-caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full
-
-# 索引完成后重启搜索服务以加载新数据
-./scripts/run_app.sh restart
-```
-
-若希望立即让 Web 搜索忘掉旧结果，可在本机调用 `curl -s -X POST http://127.0.0.1:8000/api/cache/clear`（与重启服务二选一或并用，视场景而定）。
-
-### 开机自启（可选）
-
-项目提供 macOS launchd 配置文件，支持搜索服务开机自启和每日定时增量索引。运行 `scripts/install.sh` 时可选择安装，或参考 [docs/INSTALL.md](docs/INSTALL.md) 手动配置。
-
-## 支持的文件类型
-
-| 类型 | 后缀 | 索引方式 |
-|------|------|----------|
-| 文本文件 | `.txt` `.md` `.py` `.js` `.json` `.html` `.css` `.java` `.go` `.ts` 等 | 全文索引 |
-| 办公文档 | `.pdf` `.docx` `.xlsx` `.pptx` | 内容解析后索引 |
-| 媒体文件 | `.jpg` `.png` `.mp4` `.mp3` `.zip` `.psd` 等 | 仅索引文件名 |
-
-## Agent / Cursor Skills
-
-- 搜索、读文本、下载等 HTTP 接口见 [docs/PROJECT_MANUAL.md](docs/PROJECT_MANUAL.md)（`/api/search`、`/api/file/read`、`/api/file/download`）。
-- 仓库内提供 Cursor Skill：`.cursor/skills/everythingsearch-local/SKILL.md`，启用后 Agent 可按该说明调用本机服务。
-
-## 仓库布局
-
-| 目录 | 说明 |
-|------|------|
-| `docs/` | 用户文档（安装说明、手册、变更记录） |
-| `scripts/` | 安装与运维（`install.sh`、`run_app.sh`、`install_launchd_wrappers.sh` 更新本机 launchd 等） |
-| `everythingsearch/` | Python 应用包（Web、索引、搜索、向量缓存） |
-| `etc/` | 配置模板（`config.example.py` → 复制为根目录 `config.py`） |
-| `data/` | 向量库、Embedding 与索引状态等本地数据（默认路径，勿提交） |
-| `logs/` | 运行日志 |
-| `tests/` | 自动化测试 |
-
-## 文档
-
-- [docs/INSTALL.md](docs/INSTALL.md) — 详细安装与配置指引
-- [docs/PROJECT_MANUAL.md](docs/PROJECT_MANUAL.md) — 项目技术说明书（架构、模块详解、调参指南）
-- [docs/CHANGELOG.md](docs/CHANGELOG.md) — 版本与变更记录
-
-
-## 许可证
-
-本项目采用 [MIT License](LICENSE) 开源。
+MIT License.

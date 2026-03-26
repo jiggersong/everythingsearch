@@ -1,5 +1,7 @@
 # EverythingSearch 安装与配置指引
 
+[English](INSTALL.en.md) | [中文](INSTALL.md)
+
 ## 概述
 
 本文档指导你在一台全新的 Mac 上安装并配置 EverythingSearch 本地语义搜索引擎。安装完成后，你可以通过浏览器搜索本地文件；如启用 MWeb，也可同时检索 MWeb 导出的 Markdown 笔记。
