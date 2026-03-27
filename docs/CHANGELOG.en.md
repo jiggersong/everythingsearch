@@ -4,6 +4,14 @@
 
 This file records user-visible changes of EverythingSearch and is intended to stay in sync with GitHub Releases tags.
 
+## [1.3.1] - 2026-03-27
+
+[GitHub Release](https://github.com/jiggersong/everythingsearch/releases/tag/v1.3.1)
+
+### Fixed
+
+- **Dependency (ChromaDB)**: bumped `chromadb` from **1.5.2** to **1.5.5**. On **Python 3.14** with **Pydantic 2.12+** (where `BaseSettings` moved to `pydantic-settings`), older Chroma incorrectly fell back to **`pydantic.v1`**, which raised **`pydantic.v1.errors.ConfigError: unable to infer type for attribute "chroma_server_nofile"`** during import and broke **`everythingsearch/incremental.py`** (and anything that imports `chromadb`). Chroma **1.5.5** uses **`pydantic_settings.BaseSettings`** with Pydantic v2 validators, restoring imports and indexing.
+
 ## [1.3.0] - 2026-03-26
 
 [GitHub Release](https://github.com/jiggersong/everythingsearch/releases/tag/v1.3.0)

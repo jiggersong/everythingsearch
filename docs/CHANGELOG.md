@@ -6,6 +6,14 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.3.1] - 2026-03-27
+
+**GitHub Release**：[v1.3.1](https://github.com/jiggersong/everythingsearch/releases/tag/v1.3.1)
+
+### 修复
+
+- **依赖（ChromaDB）**：将 `chromadb` 自 `1.5.2` 升级至 **`1.5.5`**。在 **Python 3.14** 与 **Pydantic 2.12+**（`BaseSettings` 已迁至 `pydantic-settings`）组合下，旧版 Chroma 会错误回退到 **`pydantic.v1`**，导入时在 `Settings` 上对 `chroma_server_nofile` 等字段触发 **`pydantic.v1.errors.ConfigError: unable to infer type for attribute "chroma_server_nofile"`**，导致 **`everythingsearch/incremental.py`** 及任何会 `import chromadb` 的入口无法启动。`1.5.5` 改为使用 **`pydantic_settings.BaseSettings`** 与 Pydantic v2 校验器，恢复正常导入与索引流程。
+
 ## [1.3.0] - 2026-03-26
 
 **GitHub Release**：[v1.3.0](https://github.com/jiggersong/everythingsearch/releases/tag/v1.3.0)
