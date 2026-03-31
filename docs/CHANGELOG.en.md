@@ -4,6 +4,15 @@
 
 This file records user-visible changes of EverythingSearch and is intended to stay in sync with GitHub Releases tags.
 
+## [1.3.2] - 2026-03-31
+
+[GitHub Release](https://github.com/jiggersong/everythingsearch/releases/tag/v1.3.2)
+
+### Changed
+
+- **Web UI**: refreshed search page styling and interactions in `everythingsearch/templates/index.html`, guided by common **Apple HIG** and **Google Material Design 3** patterns—system font stack, capsule search field with focus ring, sidebar/history hierarchy, result cards and filter chips, pagination and button hit targets, light/dark tokens and elevation; added `prefers-reduced-motion` and `focus-visible` support. **No change** to search behavior or APIs.
+- **Docs**: added `docs/UI_DESIGN_APPLE_GOOGLE.md` describing the UI approach and acceptance notes.
+
 ## [1.3.1] - 2026-03-27
 
 [GitHub Release](https://github.com/jiggersong/everythingsearch/releases/tag/v1.3.1)
