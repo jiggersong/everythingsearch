@@ -6,6 +6,15 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.3.3] - 2026-03-31
+
+**GitHub Release**：[v1.3.3](https://github.com/jiggersong/everythingsearch/releases/tag/v1.3.3)
+
+### 变更
+
+- **Makefile**：新增 **`make help`** 目标，列出全部快捷命令及一行说明。
+- **文档**：新增 **`docs/UI_DESIGN_APPLE_GOOGLE.en.md`**（英文），与 **`docs/UI_DESIGN_APPLE_GOOGLE.md`** 顶部互链、章节与表格结构一致；修正中文版设计令牌表与实现一致的描边变量说明。`README` / `README.zh-CN` 文档矩阵增加 Web UI 设计说明一行；`INSTALL` / `INSTALL.en`、`PROJECT_MANUAL` / `PROJECT_MANUAL.en` 补充 **`make help`**，并在仓库文件树中列出根目录 **`Makefile`** 与双语 UI 设计文件。
+
 ## [1.3.2] - 2026-03-31
 
 **GitHub Release**：[v1.3.2](https://github.com/jiggersong/everythingsearch/releases/tag/v1.3.2)
@@ -13,7 +22,7 @@
 ### 变更
 
 - **Web 界面**：搜索页（`everythingsearch/templates/index.html`）视觉与交互优化，整体对齐 **Apple Human Interface Guidelines** 与 **Google Material Design 3** 的常见做法：系统字体栈与排版、胶囊搜索框与聚焦环、侧栏与历史项层次、结果卡片与筛选 Chip（pill）、分页与按钮触控尺寸、深浅色令牌与阴影；支持 `prefers-reduced-motion` 与 `focus-visible`，**不改变**既有搜索与 API 行为。
-- **文档**：新增 Web UI 设计说明 **`docs/UI_DESIGN_APPLE_GOOGLE.md`**（中文）与 **`docs/UI_DESIGN_APPLE_GOOGLE.en.md`**（英文），顶部互链、章节与表格结构一致；`README` / `README.zh-CN`、`INSTALL` / `INSTALL.en`、`PROJECT_MANUAL` / `PROJECT_MANUAL.en` 补充 **`make help`** 说明，并在项目树中列出上述文件与根目录 `Makefile`。
+- **文档**：新增 **`docs/UI_DESIGN_APPLE_GOOGLE.md`**（中文），记录 Web UI 方案与验收要点。
 
 ## [1.3.1] - 2026-03-27
 

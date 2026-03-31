@@ -4,6 +4,15 @@
 
 This file records user-visible changes of EverythingSearch and is intended to stay in sync with GitHub Releases tags.
 
+## [1.3.3] - 2026-03-31
+
+[GitHub Release](https://github.com/jiggersong/everythingsearch/releases/tag/v1.3.3)
+
+### Changed
+
+- **Makefile**: added a **`make help`** target that prints every shortcut target with a one-line description.
+- **Docs**: added **`docs/UI_DESIGN_APPLE_GOOGLE.en.md`** (English) with the same structure as the Chinese page and cross-links at the top; aligned the Chinese design token table with implemented CSS variables. Extended the `README` / `README.zh-CN` documentation matrix with a Web UI design row; updated `INSTALL` / `INSTALL.en` and `PROJECT_MANUAL` / `PROJECT_MANUAL.en` to document **`make help`** and to list the root **`Makefile`** plus the bilingual UI design files in the repository tree.
+
 ## [1.3.2] - 2026-03-31
 
 [GitHub Release](https://github.com/jiggersong/everythingsearch/releases/tag/v1.3.2)
@@ -11,7 +20,7 @@ This file records user-visible changes of EverythingSearch and is intended to st
 ### Changed
 
 - **Web UI**: refreshed search page styling and interactions in `everythingsearch/templates/index.html`, guided by common **Apple HIG** and **Google Material Design 3** patterns—system font stack, capsule search field with focus ring, sidebar/history hierarchy, result cards and filter chips, pagination and button hit targets, light/dark tokens and elevation; added `prefers-reduced-motion` and `focus-visible` support. **No change** to search behavior or APIs.
-- **Docs**: added bilingual Web UI design notes—`docs/UI_DESIGN_APPLE_GOOGLE.md` (Chinese) and `docs/UI_DESIGN_APPLE_GOOGLE.en.md` (English)—with matching structure, cross-links at the top, and aligned sections/tables; updated `README` / `README.zh-CN`, `INSTALL` / `INSTALL.en`, and `PROJECT_MANUAL` / `PROJECT_MANUAL.en` to document **`make help`** and to list those files plus the root `Makefile` in the repository tree.
+- **Docs**: added **`docs/UI_DESIGN_APPLE_GOOGLE.md`** (Chinese) describing the UI approach and acceptance notes.
 
 ## [1.3.1] - 2026-03-27
 
