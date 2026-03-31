@@ -4,6 +4,20 @@
 
 EverythingSearch 是一个运行在 macOS 上的**本地文件语义搜索引擎**，对应 Windows 下的 Everything 软件的能力，支持自然语言与关键词检索本地文档、代码、资料与笔记。
 
+## 核心能力
+
+- **语义搜索**：不局限于关键词精确匹配，能理解自然语言描述（如"去年的营销方案"）并找到相关文档
+- **混合索引**：同时索引文件内容和文件名，确保仅靠文件名也能搜到（如图片、视频）
+- **MWeb 笔记集成（可选）**：可搜索 MWeb 导出的 Markdown 笔记，结果中以标签区分来源；不需要时可通过 `ENABLE_MWEB=False` 完全关闭
+- **位置加权**：关键词出现在文件名、标题中的结果会获得更高的排名
+- **Embedding 缓存**：已生成过的向量不会重复调用 API；SQLite 使用 WAL 与连接池，旧库自动迁移 `created_at` 列
+- **增量索引**：支持每日自动检测文件变更，仅对新增/修改/删除的文件更新索引
+- **搜索内存缓存与健康检查**：重复查询可命中短期内存缓存；提供 `/api/health`、`POST /api/cache/clear`（须本机或受信网络）
+- **隐私与成本平衡**：索引和数据库完全本地化（ChromaDB），仅在生成向量时调用云端 API（阿里通义千问 DashScope）
+- **WebUI 搜索界面**：浏览器中搜索，支持来源过滤、排序、分页、关键词高亮、Finder 定位
+
+---
+
 ## 快速开始
 
 ```bash
@@ -31,7 +45,7 @@ make app-stop      # 停止常驻服务
 | 1    | [`INSTALL.md`](docs/INSTALL.md)                                                                                                                | 安装与运维指南     | 首次安装、迁移新机器、环境初始化              | 前置条件、API Key 配置、安装流程、launchd 包装脚本、日常运维命令 |
 | 2    | [`PROJECT_MANUAL.md`](docs/PROJECT_MANUAL.md)                                                                                                  | 技术参考手册      | 开发、维护、二次改造                    | 架构图、模块边界、配置矩阵、索引/搜索流程、调优与部署实践            |
 | 3    | [`CHANGELOG.md`](docs/CHANGELOG.md)                                                                                                            | 版本与兼容性记录    | 升级评估、回归排查、发布核对                | 各版本用户可见变更、Release 链接、升级背景                |
-| 4    | [`UI_DESIGN_APPLE_GOOGLE.md`](docs/UI_DESIGN_APPLE_GOOGLE.md)                                    | Web UI 设计说明 | 界面维护、HIG/Material 对齐、无障碍与动效约定 | 设计令牌、组件级说明、验收标准；中英文页面顶部互链                |
+| 4    | [`UI_DESIGN_APPLE_GOOGLE.md`](docs/UI_DESIGN_APPLE_GOOGLE.md)                                    | Web UI 设计说明 | 界面维护、HIG/Material 对齐、无障碍与动效约定 | 设计原则与设计令牌；中英文页面顶部互链                              |
 
 ## 技术参考手册范围
 

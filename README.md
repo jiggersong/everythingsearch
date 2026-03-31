@@ -3,7 +3,21 @@
 [English](README.md) | [中文](README.zh-CN.md)
 
 EverythingSearch is a **local semantic file search engine for macOS**.
-Equivalent to the capabilities of the 'Everything' software on Windows，It supports natural-language and keyword queries over your local files, code, and notes.
+Equivalent to the capabilities of the 'Everything' software on Windows. It supports natural-language and keyword queries over your local files, code, and notes.
+
+## Core Capabilities
+
+- **Semantic search**: understands intent beyond exact keyword matching
+- **Hybrid indexing**: indexes both file content and filenames, so media files can still be found by name
+- **Optional MWeb integration**: supports indexed MWeb Markdown exports; can be fully disabled with `ENABLE_MWEB=False`
+- **Position weighting**: keywords in filename/headings receive higher ranking
+- **Embedding cache**: avoids repeated API embedding calls; SQLite uses WAL and connection pooling
+- **Incremental indexing**: updates only new/modified/deleted files on each run
+- **Search memory cache and health API**: repeated queries can hit memory cache; includes `/api/health` and `POST /api/cache/clear`
+- **Privacy-first with controlled cloud usage**: index and vector DB stay local (ChromaDB); cloud API is used only for embedding generation
+- **Web UI**: source filter, sorting, pagination, highlights, Finder reveal
+
+---
 
 ## Quick Start
 
@@ -32,7 +46,7 @@ make app-stop      # stop launchd-managed app
 | 1   | [`INSTALL.en.md`](docs/INSTALL.en.md)                                                                                                       | Installation and operations guide | First installation, machine migration, environment setup        | prerequisites, API key setup, install workflow, launchd wrapper setup, daily operation commands                          |
 | 2   | [`PROJECT_MANUAL.en.md`](docs/PROJECT_MANUAL.en.md)                                                                                         | Technical reference manual        | Developers, maintainers, contributors                           | architecture diagram, module boundaries, configuration matrix, indexing/search pipeline, tuning and deployment practices |
 | 3   | [`CHANGELOG.en.md`](docs/CHANGELOG.en.md)                                                                                                   | Release and compatibility ledger  | Upgrades, regression checks, release review                     | user-visible changes by version, release links, upgrade context                                                          |
-| 4   | [`UI_DESIGN_APPLE_GOOGLE.en.md`](docs/UI_DESIGN_APPLE_GOOGLE.en.md)                                   | Web UI design notes               | UI maintenance, HIG/Material alignment, a11y/motion conventions | design tokens, component-level notes, acceptance criteria; bilingual pages cross-linked at the top                       |
+| 4   | [`UI_DESIGN_APPLE_GOOGLE.en.md`](docs/UI_DESIGN_APPLE_GOOGLE.en.md)                                   | Web UI design notes               | UI maintenance, HIG/Material alignment, a11y/motion conventions | design principles and tokens; bilingual pages cross-linked at the top                                                  |
 
 ## Technical Manual Scope
 
