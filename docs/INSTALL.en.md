@@ -118,7 +118,8 @@ Equivalent commands are available through `./scripts/run_app.sh` and Python modu
 - `scripts/run_app.sh`: app lifecycle management
 - `scripts/install_launchd_wrappers.sh`: launchd wrapper setup
 - `docs/PROJECT_MANUAL.en.md`: technical manual
-- `docs/CHANGELOG.en.md`: release notes
+
+Version history: [GitHub Releases](https://github.com/jiggersong/everythingsearch/releases).
 
 ## Copyright
 

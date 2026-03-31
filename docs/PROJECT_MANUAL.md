@@ -99,7 +99,6 @@ EverythingSearch/
 ├── docs/
 │   ├── INSTALL.md
 │   ├── PROJECT_MANUAL.md
-│   ├── CHANGELOG.md
 │   ├── UI_DESIGN_APPLE_GOOGLE.md      # Web UI 设计说明（中文）
 │   └── UI_DESIGN_APPLE_GOOGLE.en.md   # Web UI 设计说明（英文）
 ├── Makefile                  # make 快捷命令（make help 列出说明）

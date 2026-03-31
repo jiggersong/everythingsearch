@@ -100,7 +100,6 @@ EverythingSearch/
 ├── docs/
 │   ├── INSTALL.en.md
 │   ├── PROJECT_MANUAL.en.md
-│   ├── CHANGELOG.en.md
 │   ├── UI_DESIGN_APPLE_GOOGLE.en.md   # Web UI design notes (English)
 │   └── UI_DESIGN_APPLE_GOOGLE.md      # Web UI design notes (Chinese)
 ├── Makefile                  # make shortcuts (make help lists targets)

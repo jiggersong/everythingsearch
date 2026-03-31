@@ -410,6 +410,8 @@ caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full
 | `~/.local/bin/everythingsearch_start.sh` | 搜索服务 launchd wrapper 脚本（安装时生成） |
 | `~/.local/bin/everythingsearch_index.sh` | 增量索引 launchd wrapper 脚本（安装时生成） |
 
+版本与变更说明见仓库 [GitHub Releases](https://github.com/jiggersong/everythingsearch/releases)。
+
 ---
 
 ## 版权
