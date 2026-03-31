@@ -100,7 +100,10 @@ EverythingSearch/
 ├── docs/
 │   ├── INSTALL.en.md
 │   ├── PROJECT_MANUAL.en.md
-│   └── CHANGELOG.en.md
+│   ├── CHANGELOG.en.md
+│   ├── UI_DESIGN_APPLE_GOOGLE.en.md   # Web UI design notes (English)
+│   └── UI_DESIGN_APPLE_GOOGLE.md      # Web UI design notes (Chinese)
+├── Makefile                  # make shortcuts (make help lists targets)
 ├── requirements.txt
 ├── pytest.ini
 ├── tests/
@@ -266,6 +269,7 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jigger.everythingsea
 ### Makefile shortcuts
 ```bash
 cd /path/to/EverythingSearch
+make help          # list all make targets with one-line descriptions
 make index
 make index-full
 make app
@@ -273,6 +277,8 @@ make app-status
 make app-restart
 make app-stop
 ```
+
+`make help` is defined in the root `Makefile` and should stay in sync with available targets; use it when you forget command names.
 
 ### Start search service
 ```bash

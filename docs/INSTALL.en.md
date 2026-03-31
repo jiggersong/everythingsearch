@@ -89,7 +89,11 @@ This installs:
 
 ## 6. Daily Operations
 
+### Makefile shortcuts
+
 ```bash
+cd /path/to/EverythingSearch
+make help          # list all make targets with one-line descriptions
 make index
 make index-full
 make app
@@ -97,6 +101,8 @@ make app-status
 make app-restart
 make app-stop
 ```
+
+When you are unsure which targets exist, run **`make help`** (kept in sync with the root `Makefile`).
 
 Equivalent commands are available through `./scripts/run_app.sh` and Python module entrypoints.
 

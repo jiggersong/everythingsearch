@@ -13,7 +13,7 @@
 ### 变更
 
 - **Web 界面**：搜索页（`everythingsearch/templates/index.html`）视觉与交互优化，整体对齐 **Apple Human Interface Guidelines** 与 **Google Material Design 3** 的常见做法：系统字体栈与排版、胶囊搜索框与聚焦环、侧栏与历史项层次、结果卡片与筛选 Chip（pill）、分页与按钮触控尺寸、深浅色令牌与阴影；支持 `prefers-reduced-motion` 与 `focus-visible`，**不改变**既有搜索与 API 行为。
-- **文档**：新增 `docs/UI_DESIGN_APPLE_GOOGLE.md`，记录上述 UI 方案与验收要点。
+- **文档**：新增 Web UI 设计说明 **`docs/UI_DESIGN_APPLE_GOOGLE.md`**（中文）与 **`docs/UI_DESIGN_APPLE_GOOGLE.en.md`**（英文），顶部互链、章节与表格结构一致；`README` / `README.zh-CN`、`INSTALL` / `INSTALL.en`、`PROJECT_MANUAL` / `PROJECT_MANUAL.en` 补充 **`make help`** 说明，并在项目树中列出上述文件与根目录 `Makefile`。
 
 ## [1.3.1] - 2026-03-27
 

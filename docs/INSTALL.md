@@ -295,6 +295,7 @@ tail -n 200 logs/incremental_$(date +%Y-%m-%d).log
 
 ```bash
 cd /path/to/EverythingSearch
+make help          # 列出全部 make 目标及一行说明
 make index         # 增量索引
 make index-full    # 全量重建索引
 make app           # 前台启动应用
@@ -302,6 +303,8 @@ make app-status    # 查看常驻服务状态
 make app-restart   # 重启常驻服务
 make app-stop      # 停止常驻服务
 ```
+
+不确定有哪些 `make` 目标时，执行 **`make help`**（与根目录 `Makefile` 中说明同步）。
 
 ### 启动搜索
 

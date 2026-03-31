@@ -99,7 +99,10 @@ EverythingSearch/
 ├── docs/
 │   ├── INSTALL.md
 │   ├── PROJECT_MANUAL.md
-│   └── CHANGELOG.md
+│   ├── CHANGELOG.md
+│   ├── UI_DESIGN_APPLE_GOOGLE.md      # Web UI 设计说明（中文）
+│   └── UI_DESIGN_APPLE_GOOGLE.en.md   # Web UI 设计说明（英文）
+├── Makefile                  # make 快捷命令（make help 列出说明）
 ├── requirements.txt
 ├── pytest.ini
 ├── tests/
@@ -274,6 +277,7 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jigger.everythingsea
 ### Makefile 快捷命令
 ```bash
 cd /path/to/EverythingSearch
+make help          # 列出全部 make 目标及一行说明
 make index         # 增量索引
 make index-full    # 全量重建索引
 make app           # 前台启动应用
@@ -281,6 +285,8 @@ make app-status    # 查看常驻服务状态
 make app-restart   # 重启常驻服务
 make app-stop      # 停止常驻服务
 ```
+
+`make help` 与仓库根目录 `Makefile` 中的 `help` 目标同步维护；忘记子命令时可优先执行 `make help`。
 
 ### 启动搜索服务
 ```bash

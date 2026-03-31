@@ -15,6 +15,7 @@ cd everythingsearch
 ## 常用命令
 
 ```bash
+make help          # 列出全部 make 目标及一行说明
 make index         # 增量索引
 make index-full    # 全量重建
 make app           # 前台运行
@@ -30,6 +31,7 @@ make app-stop      # 停止常驻服务
 | 1 | [`INSTALL.md`](docs/INSTALL.md) | 安装与运维指南 | 首次安装、迁移新机器、环境初始化 | 前置条件、API Key 配置、安装流程、launchd 包装脚本、日常运维命令 |
 | 2 | [`PROJECT_MANUAL.md`](docs/PROJECT_MANUAL.md) | 技术参考手册 | 开发、维护、二次改造 | 架构图、模块边界、配置矩阵、索引/搜索流程、调优与部署实践 |
 | 3 | [`CHANGELOG.md`](docs/CHANGELOG.md) | 版本与兼容性记录 | 升级评估、回归排查、发布核对 | 各版本用户可见变更、Release 链接、升级背景 |
+| 4 | [`UI_DESIGN_APPLE_GOOGLE.md`](docs/UI_DESIGN_APPLE_GOOGLE.md)（[English](docs/UI_DESIGN_APPLE_GOOGLE.en.md)） | Web UI 设计说明 | 界面维护、HIG/Material 对齐、无障碍与动效约定 | 设计令牌、组件级说明、验收标准；中英文页面顶部互链 |
 
 ## 技术参考手册范围
 

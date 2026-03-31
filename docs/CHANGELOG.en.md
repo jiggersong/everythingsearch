@@ -11,7 +11,7 @@ This file records user-visible changes of EverythingSearch and is intended to st
 ### Changed
 
 - **Web UI**: refreshed search page styling and interactions in `everythingsearch/templates/index.html`, guided by common **Apple HIG** and **Google Material Design 3** patterns—system font stack, capsule search field with focus ring, sidebar/history hierarchy, result cards and filter chips, pagination and button hit targets, light/dark tokens and elevation; added `prefers-reduced-motion` and `focus-visible` support. **No change** to search behavior or APIs.
-- **Docs**: added `docs/UI_DESIGN_APPLE_GOOGLE.md` describing the UI approach and acceptance notes.
+- **Docs**: added bilingual Web UI design notes—`docs/UI_DESIGN_APPLE_GOOGLE.md` (Chinese) and `docs/UI_DESIGN_APPLE_GOOGLE.en.md` (English)—with matching structure, cross-links at the top, and aligned sections/tables; updated `README` / `README.zh-CN`, `INSTALL` / `INSTALL.en`, and `PROJECT_MANUAL` / `PROJECT_MANUAL.en` to document **`make help`** and to list those files plus the root `Makefile` in the repository tree.
 
 ## [1.3.1] - 2026-03-27
 
