@@ -14,7 +14,7 @@ cd "$PROJECT_DIR"
 # 检查虚拟环境
 if [ ! -d "venv" ]; then
     echo "❌ 未找到虚拟环境 venv/"
-    echo "请先运行: python3.11 -m venv venv && ./venv/bin/pip install pytest"
+    echo "请先运行: python3.11 -m venv venv && ./venv/bin/pip install -r requirements/dev.txt"
     exit 1
 fi
 
@@ -24,7 +24,7 @@ source venv/bin/activate
 # 检查 pytest
 if ! command -v pytest &> /dev/null; then
     echo "⚠️  未找到 pytest，正在安装..."
-    pip install pytest -q
+    pip install -r requirements/dev.txt -q
 fi
 
 echo "🧪 运行 EverythingSearch 测试..."

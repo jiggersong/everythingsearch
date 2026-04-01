@@ -38,13 +38,30 @@ The installer helps you configure API key, index directory, optional MWeb integr
 python3.11 -m venv venv
 ./venv/bin/pip install --upgrade pip
 ./venv/bin/pip install -r requirements.txt
+
+# For runtime-only installation, you can use:
+# ./venv/bin/pip install -r requirements/base.txt
 cp etc/config.example.py config.py
 ```
 
-Edit `config.py`:
+Prefer setting the API key via environment variable first:
 
-- Required: `MY_API_KEY`, `TARGET_DIR`
-- Optional: `ENABLE_MWEB`, `MWEB_DIR`, `MWEB_EXPORT_SCRIPT`
+```bash
+export DASHSCOPE_API_KEY="sk-your-real-api-key"
+```
+
+Then edit `config.py`:
+
+- Required: `TARGET_DIR`
+- Recommended: keep `MY_API_KEY = ""` and let `DASHSCOPE_API_KEY` supply the key
+- Optional: `ENABLE_MWEB`, `MWEB_LIBRARY_PATH`
+
+Config precedence:
+
+- Environment variables override `config.py`
+- `config.py` is still supported during the migration window
+- `DASHSCOPE_API_KEY`, `MY_API_KEY`, and `TARGET_DIR` no longer ship with runnable placeholder defaults
+- If `PERSIST_DIRECTORY`, `INDEX_STATE_DB`, `SCAN_CACHE_PATH`, or `EMBEDDING_CACHE_PATH` are not set explicitly, they default under the current repository's `data/` directory; for packaged or non-repo deployments, set them explicitly
 
 Build first index:
 
@@ -67,12 +84,20 @@ Foreground mode:
 
 ## 4. Configuration
 
-Main config file: `config.py`
+Main local config file: `config.py`
+
+Runtime load order:
+
+- environment variables
+- repository-root `config.py`
+- safe in-code defaults for non-sensitive options only
 
 - Core: API key, target directories
 - Search tuning: `SEARCH_TOP_K`, `SCORE_THRESHOLD`
 - Index tuning: `CHUNK_SIZE`, `MAX_CONTENT_LENGTH`
 - Data source: `ENABLE_MWEB`
+
+For non-repo or packaged deployments, explicitly configure `PERSIST_DIRECTORY`, `INDEX_STATE_DB`, `SCAN_CACHE_PATH`, and `EMBEDDING_CACHE_PATH` instead of relying on inferred defaults.
 
 ## 5. Scheduled Incremental Indexing
 
@@ -108,6 +133,7 @@ Equivalent commands are available through `./scripts/run_app.sh` and Python modu
 
 ## 7. FAQ / Common Issues
 
+- **Occasional 400 Bad Request from API?**: This strictly means the request payload/parameters were invalid (e.g., malformed JSON, missing filepath, or unauthorized path traversal beyond the indexed boundary). Check your client or script inputs.
 - **Index changes not reflected in search**: restart app (`make app-restart`)
 - **Long full rebuild interrupted by sleep**: run with `caffeinate -i`
 - **launchd startup issues**: regenerate wrappers with `./scripts/install_launchd_wrappers.sh`
@@ -118,6 +144,10 @@ Equivalent commands are available through `./scripts/run_app.sh` and Python modu
 - `scripts/run_app.sh`: app lifecycle management
 - `scripts/install_launchd_wrappers.sh`: launchd wrapper setup
 - `docs/PROJECT_MANUAL.en.md`: technical manual
+- `everythingsearch/app.py`: Flask routing entry and application bus
+- `everythingsearch/services/`: Core service logic decoupling
+- `everythingsearch/request_validation.py`: HTTP JSON validation intercepting bad requests
+- `everythingsearch/infra/`: Infrastructure (settings, logging)
 
 Version history: [GitHub Releases](https://github.com/jiggersong/everythingsearch/releases).
 

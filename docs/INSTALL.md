@@ -107,24 +107,41 @@ python3.11 -m venv venv
 ```bash
 ./venv/bin/pip install --upgrade pip
 ./venv/bin/pip install -r requirements.txt
+
+# 若你只想安装运行时依赖，可改用：
+# ./venv/bin/pip install -r requirements/base.txt
 ```
 
 ### 3.5 编辑配置文件
 
 若 `config.py` 不存在，先复制模板：`cp etc/config.example.py config.py`
 
-用文本编辑器打开 `config.py`，修改以下必填项：
+推荐先设置环境变量，再编辑 `config.py` 中的其余本地配置：
+
+```bash
+export DASHSCOPE_API_KEY="sk-你的API密钥"
+```
+
+然后用文本编辑器打开 `config.py`，至少确认以下必填项：
 
 ```python
-# [必填] 阿里云 DashScope API Key
-MY_API_KEY = "sk-你的API密钥"
+# [推荐] 将真实 API Key 放在环境变量 DASHSCOPE_API_KEY 中；
+# 若必须写入文件，也可以在 MY_API_KEY 中填写真实值
+MY_API_KEY = ""
 
 # [必填] 要索引的文件根目录
 TARGET_DIR = "/Users/你的用户名/Documents/你的文件夹"
 
-# [可选] MWeb 笔记导出目录（不使用 MWeb 可忽略）
-MWEB_DIR = "/Users/你的用户名/Documents/MWebMarkDown/File"
+# [可选] MWeb 笔记配置（仅在 ENABLE_MWEB=True 时生效）
+# MWEB_LIBRARY_PATH: MWeb数据库目录（留空则默认 macOS 标准路径）
+# MWEB_DIR: 导出的 Markdown 文件存放地（留空则默认为内置的 data/mweb_export）
 ```
+
+配置优先级说明：
+- 环境变量优先于 `config.py`
+- 当前迁移窗口内仍兼容 `config.py`
+- `DASHSCOPE_API_KEY`、`MY_API_KEY`、`TARGET_DIR` 不再提供可运行的伪默认值；缺失时会在搜索或索引初始化时明确报错
+- 若未显式配置 `PERSIST_DIRECTORY`、`INDEX_STATE_DB`、`SCAN_CACHE_PATH`、`EMBEDDING_CACHE_PATH`，默认会落在当前仓库根目录下的 `data/`；在打包部署或非常规安装场景中，建议显式设置这些路径
 
 ### 3.6 构建首次索引
 
@@ -191,27 +208,32 @@ caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full
 
 ## 四、配置说明
 
-所有配置项集中在 `config.py` 文件中。
+主要本地配置入口仍然是仓库根目录 `config.py`；运行时加载顺序为：环境变量 > `config.py` > 代码内安全默认值。
 
 ### 必填配置
 
 | 配置项 | 说明 | 示例 |
 |-------|------|------|
-| `MY_API_KEY` | DashScope API Key（推荐改为设置环境变量 `DASHSCOPE_API_KEY`，避免写入文件） | `"sk-xxxx..."` |
-| `TARGET_DIR` | 要索引的文件根目录 | `"/Users/me/Documents"` |
+| `MY_API_KEY` | DashScope API Key 的兼容字段；推荐优先设置环境变量 `DASHSCOPE_API_KEY`，仅在必须时写入本地文件 | `"sk-xxxx..."` |
+| `TARGET_DIR` | 要索引的文件根目录；支持字符串或列表，且环境变量 `TARGET_DIR` 优先 | `"/Users/me/Documents"` |
 
 ### 可选配置
 
 | 配置项 | 默认值 | 说明 |
 |-------|--------|------|
-| `ENABLE_MWEB` | `False` | 是否启用 MWeb 数据源。关闭后会跳过 MWeb 导出/扫描，且搜索页不再显示「MWeb笔记」来源 |
-| `MWEB_DIR` | `".../MWebMarkDown/File"` | MWeb 笔记导出目录 |
-| `MWEB_EXPORT_SCRIPT` | `".../mweb_export.py"` | MWeb 导出脚本路径 |
+| `ENABLE_MWEB` | `False` | 是否启用 MWeb 连接源。只需开启此开关，系统将全权接管内部扫描和导出 |
+| `MWEB_LIBRARY_PATH`| 默认系统库路径 | [可选的极客配置] 仅当您安装过非标准位置 MWeb 时覆盖 |
+| `MWEB_DIR` | `data/mweb_export` | 闭环管理的 MWeb 笔记输出保护区（留空即默认使用） |
 | `INDEX_ONLY_KEYWORDS` | `[]` | 只索引路径含特定关键词的文件，空列表=全部索引 |
 | `SEARCH_TOP_K` | `250` | 每个来源检索候选数量，越大结果越多但越慢 |
 | `SCORE_THRESHOLD` | `0.45` | 相关度阈值，越小越严格 |
 | `CHUNK_SIZE` | `500` | 文本切分块大小 |
 | `MAX_CONTENT_LENGTH` | `20000` | 单文件最大索引字符数 |
+
+说明：
+- `FLASK_DEBUG` 仍通过环境变量单独控制，不属于持久配置文件项
+- `TARGET_DIR` 为空、`MY_API_KEY` 为空且环境变量缺失时，系统会快速失败并提示如何设置
+- 若未来不是以仓库工作区方式运行，而是以其他安装形态部署，建议显式配置 `PERSIST_DIRECTORY`、`INDEX_STATE_DB`、`SCAN_CACHE_PATH`、`EMBEDDING_CACHE_PATH`
 
 ### 搜索调优建议
 
@@ -298,6 +320,7 @@ cd /path/to/EverythingSearch
 make help          # 列出全部 make 目标及一行说明
 make index         # 增量索引
 make index-full    # 全量重建索引
+make mweb-export   # 仅单独执行 MWeb 笔记强制全量扫描导出
 make app           # 前台启动应用
 make app-status    # 查看常驻服务状态
 make app-restart   # 重启常驻服务
@@ -356,6 +379,9 @@ caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full
 
 ## 七、常见问题
 
+### Q: API 请求偶尔遇到 400 Bad Request 错误？
+**A**: 这意味着请求本身是非法的（如缺失 `filepath`、非 JSON 对象负载，或是强行探测越过了限定保护树的非索引安全路径）。检查调用方或脚本是否输送了合格的数据。
+
 ### Q: 安装依赖时报错 `error: externally-managed-environment`
 **A**: 确保使用的是项目的虚拟环境 `./venv/bin/pip`，不要使用系统 Python 的 pip。
 
@@ -379,7 +405,7 @@ caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full
 **A**: 编辑 `config.py` 中的 `MY_API_KEY`，重启搜索服务即可。无需重建索引。
 
 ### Q: 这台电脑没有 MWeb，能否完全忽略 MWeb？
-**A**: 可以。将 `config.py` 中的 `ENABLE_MWEB = False`，并把 `MWEB_DIR` / `MWEB_EXPORT_SCRIPT` 设为空字符串。之后：
+**A**: 可以。只需要将 `config.py` 中的 `ENABLE_MWEB = False`。之后：
 - 增量索引不会再运行 MWeb 导出，也不会扫描 MWeb
 - 搜索结果页「来源」中不再显示「MWeb笔记」
 
@@ -399,13 +425,20 @@ caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full
 | `scripts/install.sh` | 自动安装脚本 |
 | `docs/INSTALL.md` | 本安装指引 |
 | `docs/PROJECT_MANUAL.md` | 项目详细说明书 |
-| `config.py` | 配置文件（需编辑，位于仓库根目录） |
+| `config.py` | 配置文件（优先作为兼容和基础环境变量提取映射加载层） |
 | `etc/config.example.py` | 配置模板 |
-| `everythingsearch/` | Python 包（`app`、`search`、`indexer`、`incremental`、`embedding_cache` 等） |
+| `everythingsearch/` | Python 应用包总目录 |
+| `everythingsearch/app.py` | Flask Web 路由应用总控注册入口 |
+| `everythingsearch/services/` | 服务隔离层（SearchService、FileService 等组合管理控制） |
+| `everythingsearch/request_validation.py` | 入参请求与 JSON 有效性防投毒过滤器 (强制转400响应) |
+| `everythingsearch/infra/` | 基建支撑层（配置抽取与日志标准输出） |
+| `everythingsearch/search.py` | 底层匹配调度（受控于 Service 的统一超时信号拦截） |
 | `everythingsearch/templates/index.html` | 搜索页面 |
 | `everythingsearch/static/` | 静态资源 |
 | `scripts/run_app.sh` | 搜索服务管理（start/stop/restart/status/dev） |
-| `requirements.txt` | Python 依赖清单 |
+| `requirements.txt` | 兼容入口，默认安装开发环境依赖 |
+| `requirements/base.txt` | 运行时依赖清单 |
+| `requirements/dev.txt` | 开发/测试依赖清单 |
 | `scripts/launchd/*.plist` | launchd 配置参考副本 |
 | `~/.local/bin/everythingsearch_start.sh` | 搜索服务 launchd wrapper 脚本（安装时生成） |
 | `~/.local/bin/everythingsearch_index.sh` | 增量索引 launchd wrapper 脚本（安装时生成） |

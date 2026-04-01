@@ -6,7 +6,6 @@ import time
 import unicodedata
 import yaml
 from multiprocessing import Process, Queue
-import config
 
 try:
     from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -17,12 +16,20 @@ from langchain_chroma import Chroma
 from langchain_core.documents import Document
 
 from .embedding_cache import CachedEmbeddings
+from .infra.settings import (
+    apply_sdk_environment,
+    get_settings,
+    require_dashscope_api_key,
+    require_target_dirs,
+)
+from .logging_config import setup_cli_logging
 
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 
 import logging
 logging.getLogger("pypdf").setLevel(logging.ERROR)
+logger = logging.getLogger(__name__)
 
 import pypdf
 import docx
@@ -38,20 +45,19 @@ ZIP_MAGIC = b'PK\x03\x04'
 # DashScope text-embedding-v2 单行最大 2048 Token，混合文本可能 1 字>1 token，保守截断
 EMBED_MAX_CHARS = 600
 
-_splitter = RecursiveCharacterTextSplitter(
-    chunk_size=config.CHUNK_SIZE,
-    chunk_overlap=config.CHUNK_OVERLAP,
-)
+_splitter: RecursiveCharacterTextSplitter | None = None
 
 
-def _ensure_dashscope_api_key():
-    if os.environ.get("DASHSCOPE_API_KEY"):
-        return True
-    if getattr(config, "MY_API_KEY", ""):
-        os.environ["DASHSCOPE_API_KEY"] = config.MY_API_KEY
-        return True
-    print("❌ 未配置 DashScope API Key。请设置环境变量 DASHSCOPE_API_KEY 或在 config.py 中填写 MY_API_KEY。")
-    return False
+def _get_splitter() -> RecursiveCharacterTextSplitter:
+    """按需构建文本切分器，避免导入期绑定旧配置快照。"""
+    global _splitter
+    if _splitter is None:
+        settings = get_settings()
+        _splitter = RecursiveCharacterTextSplitter(
+            chunk_size=settings.chunk_size,
+            chunk_overlap=settings.chunk_overlap,
+        )
+    return _splitter
 
 
 def _truncate_for_embed(text: str) -> str:
@@ -161,14 +167,20 @@ def build_documents_for_path_cached(
     return docs
 
 
-def _read_file_worker(filepath: str, ext: str, q: Queue):
-    """在子进程中执行文件读取，返回 (content, headings)，可被父进程强制终止"""
+def _read_file_worker(
+    filepath: str,
+    ext: str,
+    text_extensions: frozenset[str],
+    media_extensions: frozenset[str],
+    q: Queue,
+):
+    """在子进程中执行文件读取，返回 (content, headings)，可被父进程强制终止。"""
     warnings.filterwarnings("ignore", category=UserWarning)
     logging.getLogger("pypdf").setLevel(logging.ERROR)
     text = ""
     headings = []
     try:
-        if ext in config.TEXT_EXTENSIONS:
+        if ext in text_extensions:
             with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
                 text = f.read()
 
@@ -187,7 +199,11 @@ def _read_file_worker(filepath: str, ext: str, q: Queue):
             try:
                 doc = docx.Document(filepath)
             except KeyError as e:
-                print(f"  ⚠️ docx 结构损坏，尝试部分提取 ({os.path.basename(filepath)}): {e}")
+                logger.warning(
+                    "docx 结构损坏，跳过结构化提取: %s: %s",
+                    os.path.basename(filepath),
+                    e,
+                )
                 q.put(("", []))
                 return
             for para in doc.paragraphs:
@@ -231,12 +247,17 @@ def _read_file_worker(filepath: str, ext: str, q: Queue):
                     if hasattr(shape, "text") and shape.text.strip():
                         text += shape.text + "\n"
 
-        elif ext in config.MEDIA_EXTENSIONS:
+        elif ext in media_extensions:
             pass
 
     except Exception as e:
         err_type = type(e).__name__
-        print(f"  ⚠️ 文件读取异常 ({os.path.basename(filepath)}): [{err_type}] {e}")
+        logger.warning(
+            "文件读取异常: %s: [%s] %s",
+            os.path.basename(filepath),
+            err_type,
+            e,
+        )
 
     q.put((text.strip(), headings))
 
@@ -249,8 +270,12 @@ def _read_text_direct(filepath: str) -> str:
 
 def _read_via_subprocess(filepath: str, ext: str) -> tuple[str, list[str]]:
     """通过子进程读取办公文档，防止 C 扩展死锁。返回 (content, headings)"""
+    settings = get_settings()
     q = Queue()
-    p = Process(target=_read_file_worker, args=(filepath, ext, q))
+    p = Process(
+        target=_read_file_worker,
+        args=(filepath, ext, settings.text_extensions, settings.media_extensions, q),
+    )
     p.start()
     p.join(timeout=FILE_READ_TIMEOUT)
 
@@ -261,7 +286,7 @@ def _read_via_subprocess(filepath: str, ext: str) -> tuple[str, list[str]]:
             p.kill()
             p.join()
         filename = normalize_path(os.path.basename(filepath))
-        print(f"  ⏰ 超时 ({FILE_READ_TIMEOUT}s): {filename}")
+        logger.warning("文件读取超时 (%ss): %s", FILE_READ_TIMEOUT, filename)
         return "", []
 
     try:
@@ -286,16 +311,17 @@ def _is_valid_zip(filepath: str) -> bool:
 
 def load_file_content(filepath: str, ext: str) -> tuple[str, list[str]]:
     """读取文件内容 + 标题。返回 (content, headings)"""
+    settings = get_settings()
     try:
         size_bytes = os.path.getsize(filepath)
         size_mb = size_bytes / (1024 * 1024)
         if size_mb > MAX_FILE_SIZE_MB:
-            print(f"  ⏭️ 跳过 ({size_mb:.0f}MB): {os.path.basename(filepath)}")
+            logger.warning("跳过超大文件 (%.0fMB): %s", size_mb, os.path.basename(filepath))
             return "", []
     except OSError:
         return "", []
 
-    if ext in config.TEXT_EXTENSIONS:
+    if ext in settings.text_extensions:
         try:
             content = _read_text_direct(filepath)
             headings = _extract_md_headings(content) if ext == '.md' else []
@@ -303,16 +329,23 @@ def load_file_content(filepath: str, ext: str) -> tuple[str, list[str]]:
         except Exception:
             return "", []
 
-    if ext in config.MEDIA_EXTENSIONS:
+    if ext in settings.media_extensions:
         return "", []
 
-    if ext in config.OFFICE_EXTENSIONS:
+    if ext in settings.office_extensions:
         if ext == '.xlsx' and size_mb > XLSX_SKIP_SIZE_MB:
-            print(f"  ⏭️ xlsx 过大 ({size_mb:.0f}MB), 仅索引文件名: {os.path.basename(filepath)}")
+            logger.warning(
+                "xlsx 文件过大 (%.0fMB)，仅索引文件名: %s",
+                size_mb,
+                os.path.basename(filepath),
+            )
             return "", []
 
         if ext in ('.xlsx', '.docx', '.pptx') and not _is_valid_zip(filepath):
-            print(f"  ⏭️ 非标准格式(加密/损坏), 仅索引文件名: {os.path.basename(filepath)}")
+            logger.warning(
+                "非标准格式(加密/损坏)，仅索引文件名: %s",
+                os.path.basename(filepath),
+            )
             return "", []
 
         return _read_via_subprocess(filepath, ext)
@@ -321,6 +354,7 @@ def load_file_content(filepath: str, ext: str) -> tuple[str, list[str]]:
 
 
 def build_documents_for_file(filepath: str, filename: str, ext: str, source_type: str = "file") -> list[Document]:
+    settings = get_settings()
     filepath_norm = normalize_path(filepath)
     filename_norm = normalize_path(filename)
     try:
@@ -343,7 +377,7 @@ def build_documents_for_file(filepath: str, filename: str, ext: str, source_type
 
     # 支持多目录：找到文件所属的 target_dir 并计算相对路径（优先匹配最长前缀）
     path_parts = filepath_norm
-    for d in sorted(config.get_target_dirs(), key=len, reverse=True):
+    for d in sorted(settings.target_dirs, key=len, reverse=True):
         if filepath_norm.startswith(d + "/") or filepath_norm == d:
             path_parts = filepath_norm[len(d) :].lstrip("/")
             break
@@ -363,10 +397,10 @@ def build_documents_for_file(filepath: str, filename: str, ext: str, source_type
     if not content:
         return documents
 
-    if len(content) > config.MAX_CONTENT_LENGTH:
-        content = content[:config.MAX_CONTENT_LENGTH]
+    if len(content) > settings.max_content_length:
+        content = content[:settings.max_content_length]
 
-    chunks = _splitter.split_text(content)
+    chunks = _get_splitter().split_text(content)
 
     for idx, chunk in enumerate(chunks):
         chunk_text = _truncate_for_embed(f"[{filename_norm}]\n{chunk}")
@@ -379,14 +413,15 @@ def build_documents_for_file(filepath: str, filename: str, ext: str, source_type
 
 
 def scan_files():
+    settings = get_settings()
     documents = []
-    target_dirs = config.get_target_dirs()
-    print(f"📂 开始扫描: {target_dirs}")
+    target_dirs = require_target_dirs(settings)
+    logger.info("开始扫描目录: %s", target_dirs)
 
-    if config.INDEX_ONLY_KEYWORDS:
-        print(f"🔎 过滤关键词: {config.INDEX_ONLY_KEYWORDS}")
+    if settings.index_only_keywords:
+        logger.info("过滤关键词: %s", settings.index_only_keywords)
 
-    cache_path = getattr(config, "SCAN_CACHE_PATH", None)
+    cache_path = settings.scan_cache_path
     conn = None
     if cache_path:
         conn = sqlite3.connect(cache_path)
@@ -399,7 +434,7 @@ def scan_files():
 
     for target_dir in target_dirs:
         if not os.path.isdir(target_dir):
-            print(f"  ⚠️ 跳过不存在的目录: {target_dir}")
+            logger.warning("跳过不存在的目录: %s", target_dir)
             continue
         for root, dirs, files in os.walk(target_dir):
             dirs[:] = [d for d in dirs if not d.startswith('.')]
@@ -412,17 +447,17 @@ def scan_files():
                 raw_path = os.path.join(root, file)
                 filepath = normalize_path(raw_path)
 
-                if config.INDEX_ONLY_KEYWORDS:
-                    if not any(kw in filepath for kw in config.INDEX_ONLY_KEYWORDS):
+                if settings.index_only_keywords:
+                    if not any(kw in filepath for kw in settings.index_only_keywords):
                         continue
 
                 _, ext = os.path.splitext(file)
                 ext = ext.lower()
-                if ext not in config.SUPPORTED_EXTENSIONS:
+                if ext not in settings.supported_extensions:
                     continue
 
                 # 大文件提前跳过，避免进入解析流程
-                if ext in (config.TEXT_EXTENSIONS | config.OFFICE_EXTENSIONS):
+                if ext in (settings.text_extensions | settings.office_extensions):
                     try:
                         if os.path.getsize(filepath) > MAX_FILE_SIZE_MB * 1024 * 1024:
                             continue
@@ -440,7 +475,13 @@ def scan_files():
                         documents.extend(cached)
                         file_count += 1
                         cache_hits += 1
-                        print(f"  已捕获 {file_count} 个文件 (扫描 {scanned}, 缓存 {cache_hits})...", end='\r')
+                        if file_count % 50 == 0:
+                            logger.info(
+                                "扫描进度: 已捕获 %s 个文件 (扫描 %s, 缓存命中 %s)",
+                                file_count,
+                                scanned,
+                                cache_hits,
+                            )
                         continue
 
                 file_docs = build_documents_for_file(filepath, file, ext)
@@ -451,7 +492,7 @@ def scan_files():
                 if file_count % 50 == 0:
                     if conn:
                         conn.commit()
-                    print(f"  已捕获 {file_count} 个文件 (扫描 {scanned})...", end='\r')
+                    logger.info("扫描进度: 已捕获 %s 个文件 (扫描 %s)", file_count, scanned)
 
     if conn:
         conn.commit()
@@ -459,7 +500,13 @@ def scan_files():
 
     duration = time.time() - start
     hit_info = f", 缓存命中 {cache_hits}" if cache_hits else ""
-    print(f"\n✅ 扫描完成: {file_count} 个文件 → {len(documents)} 个文档片段 (扫描 {scanned} 个{hit_info})")
+    logger.info(
+        "扫描完成: %s 个文件 -> %s 个文档片段 (扫描 %s 个%s)",
+        file_count,
+        len(documents),
+        scanned,
+        hit_info,
+    )
     return documents, duration
 
 
@@ -480,6 +527,7 @@ def _parse_front_matter(content: str) -> tuple[dict, str]:
 
 def build_documents_for_mweb(filepath: str, content: str) -> list[Document]:
     """Build document chunks for a single MWeb exported markdown note."""
+    settings = get_settings()
     filepath_norm = normalize_path(filepath)
     meta, body = _parse_front_matter(content)
 
@@ -523,10 +571,10 @@ def build_documents_for_mweb(filepath: str, content: str) -> list[Document]:
     if not body:
         return documents
 
-    if len(body) > config.MAX_CONTENT_LENGTH:
-        body = body[:config.MAX_CONTENT_LENGTH]
+    if len(body) > settings.max_content_length:
+        body = body[:settings.max_content_length]
 
-    chunks = _splitter.split_text(body)
+    chunks = _get_splitter().split_text(body)
     for idx, chunk in enumerate(chunks):
         chunk_text = _truncate_for_embed(f"[{title}]\n{chunk}")
         documents.append(Document(
@@ -539,22 +587,23 @@ def build_documents_for_mweb(filepath: str, content: str) -> list[Document]:
 
 def scan_mweb_notes():
     """Scan MWeb exported markdown notes."""
-    if not getattr(config, "ENABLE_MWEB", True):
-        print("ℹ️ 已关闭 MWeb 数据源（ENABLE_MWEB=False），跳过 MWeb 扫描。")
+    settings = get_settings()
+    if not settings.enable_mweb:
+        logger.info("已关闭 MWeb 数据源（ENABLE_MWEB=False），跳过 MWeb 扫描。")
         return [], 0.0
-    mweb_dir = config.MWEB_DIR
-    if not os.path.isdir(mweb_dir):
-        print(f"⚠️ MWeb 目录不存在: {mweb_dir}")
+    mweb_dir = settings.mweb_dir
+    if not mweb_dir or not os.path.isdir(mweb_dir):
+        logger.warning("MWeb 目录不存在: %s", mweb_dir)
         return [], 0.0
 
-    cache_path = getattr(config, "SCAN_CACHE_PATH", None)
+    cache_path = settings.scan_cache_path
     conn = None
     if cache_path:
         conn = sqlite3.connect(cache_path)
         _init_scan_cache(conn)
 
     documents = []
-    print(f"📓 开始扫描 MWeb 笔记: {mweb_dir}")
+    logger.info("开始扫描 MWeb 笔记: %s", mweb_dir)
     start = time.time()
     note_count = 0
     cache_hits = 0
@@ -577,7 +626,11 @@ def scan_mweb_notes():
                     note_count += 1
                     cache_hits += 1
                     if note_count % 50 == 0:
-                        print(f"  已捕获 {note_count} 篇笔记 (缓存 {cache_hits})...", end='\r')
+                        logger.info(
+                            "MWeb 扫描进度: 已捕获 %s 篇笔记 (缓存命中 %s)",
+                            note_count,
+                            cache_hits,
+                        )
                     continue
 
             try:
@@ -594,7 +647,7 @@ def scan_mweb_notes():
             if note_count % 50 == 0:
                 if conn:
                     conn.commit()
-                print(f"  已捕获 {note_count} 篇笔记...", end='\r')
+                logger.info("MWeb 扫描进度: 已捕获 %s 篇笔记", note_count)
 
     if conn:
         conn.commit()
@@ -602,14 +655,20 @@ def scan_mweb_notes():
 
     duration = time.time() - start
     hit_info = f", 缓存命中 {cache_hits}" if cache_hits else ""
-    print(f"\n✅ MWeb 扫描完成: {note_count} 篇笔记 → {len(documents)} 个文档片段{hit_info}")
+    logger.info(
+        "MWeb 扫描完成: %s 篇笔记 -> %s 个文档片段%s",
+        note_count,
+        len(documents),
+        hit_info,
+    )
     return documents, duration
 
 
 def _cleanup_orphaned_hnsw_dirs(client):
     """Remove orphaned HNSW segment directories left by previous index builds."""
+    settings = get_settings()
     import sqlite3 as _sqlite3
-    db_path = os.path.join(config.PERSIST_DIRECTORY, "chroma.sqlite3")
+    db_path = os.path.join(settings.persist_directory, "chroma.sqlite3")
     if not os.path.isfile(db_path):
         return
     try:
@@ -618,15 +677,19 @@ def _cleanup_orphaned_hnsw_dirs(client):
         conn.close()
     except Exception:
         return
-    for entry in os.listdir(config.PERSIST_DIRECTORY):
-        full = os.path.join(config.PERSIST_DIRECTORY, entry)
+    for entry in os.listdir(settings.persist_directory):
+        full = os.path.join(settings.persist_directory, entry)
         if os.path.isdir(full) and entry not in active_ids:
             import shutil
             shutil.rmtree(full, ignore_errors=True)
-            print(f"  已清理孤立索引目录: {entry}")
+            logger.info("已清理孤立索引目录: %s", entry)
 
 
 def build_index():
+    settings = get_settings()
+    require_target_dirs(settings)
+    require_dashscope_api_key(settings)
+    apply_sdk_environment(settings)
     total_start = time.time()
 
     docs, scan_time = scan_files()
@@ -636,7 +699,7 @@ def build_index():
     scan_time += mweb_time
 
     # 清理已删除文件的扫描缓存
-    cache_path = getattr(config, "SCAN_CACHE_PATH", None)
+    cache_path = settings.scan_cache_path
     if cache_path and docs:
         valid_sources = {d.metadata.get("source", "") for d in docs if d.metadata.get("source")}
         conn = sqlite3.connect(cache_path)
@@ -644,8 +707,20 @@ def build_index():
         _prune_scan_cache(conn, valid_sources)
         conn.close()
 
+    logger.info("开始清除旧索引。")
+    import chromadb
+    client = chromadb.PersistentClient(path=settings.persist_directory)
+    existing = [c.name for c in client.list_collections()]
+    if "local_files" in existing:
+        client.delete_collection("local_files")
+        logger.info("已删除旧 collection。")
+
+    _cleanup_orphaned_hnsw_dirs(client)
+
     if not docs:
-        print("❌ 未找到任何文档。请检查 config.py 中的 TARGET_DIR 和 INDEX_ONLY_KEYWORDS。")
+        logger.warning(
+            "扫描结果为空，旧索引已清空，当前索引为空。请检查 TARGET_DIR（环境变量或 config.py）和 INDEX_ONLY_KEYWORDS 的配置。"
+        )
         return
 
     # 最终校验：确保所有 doc 的 page_content 符合 API 限制
@@ -655,28 +730,16 @@ def build_index():
         if not d.page_content.strip():
             d.page_content = " "
 
-    print("🗑️ 清除旧索引...")
-    import chromadb
-    client = chromadb.PersistentClient(path=config.PERSIST_DIRECTORY)
-    existing = [c.name for c in client.list_collections()]
-    if "local_files" in existing:
-        client.delete_collection("local_files")
-        print("  已删除旧 collection。")
-
-    _cleanup_orphaned_hnsw_dirs(client)
-
-    print(f"🧠 正在生成向量 (模型: {config.EMBEDDING_MODEL})...")
+    logger.info("开始生成向量，模型: %s", settings.embedding_model)
     embed_start = time.time()
 
-    if not _ensure_dashscope_api_key():
-        return
     embeddings = CachedEmbeddings(
-        model=config.EMBEDDING_MODEL,
-        cache_path=config.EMBEDDING_CACHE_PATH,
+        model=settings.embedding_model,
+        cache_path=settings.embedding_cache_path,
     )
 
     batch_size = calculate_batch_size(docs)
-    print(f"  动态 batch_size: {batch_size} (基于文档平均长度)")
+    logger.debug("动态 batch_size: %s (基于文档平均长度)", batch_size)
     total = len(docs)
     max_retries = 3
     retry_delay = 5
@@ -693,7 +756,7 @@ def build_index():
                         db = Chroma.from_documents(
                             documents=batch,
                             embedding=embeddings,
-                            persist_directory=config.PERSIST_DIRECTORY,
+                            persist_directory=settings.persist_directory,
                             collection_name="local_files",
                             collection_metadata={"hnsw:space": "cosine"},
                         )
@@ -704,18 +767,26 @@ def build_index():
                     last_err = e
                     err_str = str(e)
                     if attempt < max_retries - 1:
-                        print(f"\n  ⚠️ 批次 {i}-{i+len(batch)} 失败，{retry_delay}s 后重试 ({attempt+1}/{max_retries}): {err_str[:80]}...")
+                        logger.warning(
+                            "批次 %s-%s 失败，%ss 后重试 (%s/%s): %s",
+                            i,
+                            i + len(batch),
+                            retry_delay,
+                            attempt + 1,
+                            max_retries,
+                            err_str[:80],
+                        )
                         time.sleep(retry_delay)
                     elif "2048" in err_str or "InvalidParameter" in err_str:
                         # 逐条重试，跳过仍失败的文档
-                        print(f"\n  ⚠️ 批次失败，逐条重试 (跳过异常文档)...")
+                        logger.warning("批次失败，开始逐条重试并跳过异常文档。")
                         for j, doc in enumerate(batch):
                             try:
                                 if db is None:
                                     db = Chroma.from_documents(
                                         documents=[doc],
                                         embedding=embeddings,
-                                        persist_directory=config.PERSIST_DIRECTORY,
+                                        persist_directory=settings.persist_directory,
                                         collection_name="local_files",
                                         collection_metadata={"hnsw:space": "cosine"},
                                     )
@@ -724,34 +795,43 @@ def build_index():
                             except Exception:
                                 skip_count += 1
                                 if skip_count <= 5:
-                                    print(f"  ⏭️ 跳过文档 (len={len(doc.page_content)}): {doc.page_content[:50]}...")
+                                    logger.warning(
+                                        "跳过文档 (len=%s): %s...",
+                                        len(doc.page_content),
+                                        doc.page_content[:50],
+                                    )
                         break
                     else:
                         raise last_err
 
             pct = min((i + batch_size) / total * 100, 100)
-            print(f"  进度: {pct:.0f}% ({min(i + batch_size, total)}/{total})", end='\r')
+            logger.info(
+                "向量化进度: %.0f%% (%s/%s)",
+                pct,
+                min(i + batch_size, total),
+                total,
+            )
 
             if i + batch_size < total:
                 time.sleep(0.3)
 
     except Exception as e:
-        print(f"\n❌ 向量化错误: {e}")
+        logger.error("向量化错误: %s", e)
         return
 
     embed_time = time.time() - embed_start
     total_time = time.time() - total_start
 
-    print("\n" + "=" * 40)
-    print("🎉 索引构建成功！")
-    print(f"  文件扫描: {scan_time:.2f}s")
-    print(f"  向量化与存储: {embed_time:.2f}s")
-    print(f"  总耗时: {total_time:.2f}s")
-    print(f"  文档片段: {total}" + (f" (跳过 {skip_count})" if skip_count else ""))
-    print(f"  嵌入缓存: {embeddings.stats_str()}")
-    print(f"  数据库: {os.path.abspath(config.PERSIST_DIRECTORY)}")
-    print("=" * 40)
+    skipped_suffix = f" (跳过 {skip_count})" if skip_count else ""
+    logger.info("索引构建成功。")
+    logger.info("文件扫描耗时: %.2fs", scan_time)
+    logger.info("向量化与存储耗时: %.2fs", embed_time)
+    logger.info("总耗时: %.2fs", total_time)
+    logger.info("文档片段数: %s%s", total, skipped_suffix)
+    logger.info("嵌入缓存: %s", embeddings.stats_str())
+    logger.info("数据库目录: %s", os.path.abspath(settings.persist_directory))
 
 
 if __name__ == "__main__":
+    setup_cli_logging()
     build_index()

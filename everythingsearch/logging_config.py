@@ -6,21 +6,32 @@ import logging
 import logging.handlers
 import os
 
+from .infra.paths import get_project_root
+
 _MARK = "_everythingsearch_daily_log"
+_CONSOLE_MARK = "_everythingsearch_console_log"
 
 
 def _project_root() -> str:
-    import config
-
-    return os.path.dirname(os.path.abspath(config.__file__))
+    return str(get_project_root())
 
 
 def log_directory() -> str:
     return os.path.join(_project_root(), "logs")
 
 
-def _logger_has_daily_handler(logger: logging.Logger) -> bool:
-    return any(getattr(h, _MARK, False) for h in logger.handlers)
+def _logger_has_daily_handler_for_path(logger: logging.Logger, log_path: str) -> bool:
+    normalized_path = os.path.abspath(log_path)
+    for handler in logger.handlers:
+        if not getattr(handler, _MARK, False):
+            continue
+        if os.path.abspath(getattr(handler, "baseFilename", "")) == normalized_path:
+            return True
+    return False
+
+
+def _logger_has_console_handler(logger: logging.Logger) -> bool:
+    return any(getattr(h, _CONSOLE_MARK, False) for h in logger.handlers)
 
 
 def attach_timed_rotating_file(
@@ -35,9 +46,9 @@ def attach_timed_rotating_file(
     log_dir = log_directory()
     os.makedirs(log_dir, exist_ok=True)
     logger = logging.getLogger(logger_name)
-    if _logger_has_daily_handler(logger):
-        return
     path = os.path.join(log_dir, relative_filename)
+    if _logger_has_daily_handler_for_path(logger, path):
+        return
     handler = logging.handlers.TimedRotatingFileHandler(
         path,
         when="midnight",
@@ -62,3 +73,23 @@ def setup_flask_dev_daily_file_logging() -> None:
         level=logging.INFO,
         fmt="%(message)s",
     )
+
+
+def setup_cli_logging(*, level: int = logging.INFO) -> None:
+    """为 CLI 任务挂接控制台与文件日志。"""
+    logger = logging.getLogger("everythingsearch")
+    logger.setLevel(level)
+
+    if not _logger_has_console_handler(logger):
+        handler = logging.StreamHandler()
+        setattr(handler, _CONSOLE_MARK, True)
+        handler.setLevel(level)
+        handler.setFormatter(
+            logging.Formatter(
+                "%(asctime)s %(levelname)s %(name)s: %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S",
+            )
+        )
+        logger.addHandler(handler)
+
+    attach_timed_rotating_file("everythingsearch", "cli.log", level=level)

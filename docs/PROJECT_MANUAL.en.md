@@ -11,7 +11,7 @@ It allows users to quickly find local documents, code, and knowledge files using
 
 - **Semantic search**: understands intent beyond exact keyword matching
 - **Hybrid indexing**: indexes both file content and filenames, so media files can still be found by name
-- **Optional MWeb integration**: supports indexed MWeb Markdown exports; can be fully disabled with `ENABLE_MWEB=False`
+- **Seamless MWeb Integration (Optional)**: Enable built-in MWeb note syncing with a single switch. Fully managed extraction and retrieval labeled in UI; disable entirely with `ENABLE_MWEB=False`
 - **Position weighting**: keywords in filename/headings receive higher ranking
 - **Embedding cache**: avoids repeated API embedding calls; SQLite uses WAL and connection pooling
 - **Incremental indexing**: updates only new/modified/deleted files on each run
@@ -29,13 +29,19 @@ It allows users to quickly find local documents, code, and knowledge files using
 │   index.html · search/filter/sort/paging/highlight    │
 └───────────────────────┬──────────────────────────────┘
                         │ HTTP (localhost:8000)
-┌───────────────────────▼──────────────────────────────┐
-│            Flask Backend (everythingsearch.app)       │
-│  /api/search · /api/health · /api/cache/clear · ...   │
-└───────────────────────┬──────────────────────────────┘
-                        │
-┌───────────────────────▼──────────────────────────────┐
-│            Search Engine (everythingsearch.search)    │
+┌─────────────────────────▼────────────────────────────┐
+│         Flask Routing System (everythingsearch.app)  │
+│ Request validation / 400 intercept (request_validation)│
+└─────────────────────────┬────────────────────────────┘
+                          │
+┌─────────────────────────▼────────────────────────────┐
+│             Core Service Layer (services/)           │
+│         SearchService · FileService · HealthService  │
+│        (Strict file_access / traversal defense)      │
+└─────────────────────────┬────────────────────────────┘
+                          │
+┌─────────────────────────▼────────────────────────────┐
+│            Search Engine (everythingsearch.search)   │
 │  vector search · position weight · keyword fallback   │
 └───────────────────────┬──────────────────────────────┘
                         │
@@ -77,8 +83,16 @@ EverythingSearch/
 ├── etc/
 │   └── config.example.py     # Config template
 ├── everythingsearch/         # Python application package
-│   ├── app.py                # Flask web app
-│   ├── search.py             # Search core
+│   ├── app.py                # Flask web routing entry
+│   ├── services/             # Core service layer (abstracting business logic)
+│   │   ├── file_service.py   # File lifecycle & access control
+│   │   ├── search_service.py # Search cache & concurrency
+│   │   └── health_service.py # Health & warmup orchestration
+│   ├── request_validation.py # Request logic parsing (unified HTTP 400 rules)
+│   ├── file_access.py        # Strict file access boundary & anti-traversal
+│   ├── infra/                # Infrastructure layer
+│   │   ├── settings.py       # (typed config injection)
+│   ├── search.py             # Base search engine algorithm
 │   ├── indexer.py            # Full indexing
 │   ├── incremental.py        # Incremental indexing
 │   ├── embedding_cache.py    # Embedding cache layer
@@ -104,6 +118,9 @@ EverythingSearch/
 │   └── UI_DESIGN_APPLE_GOOGLE.md      # Web UI design notes (Chinese)
 ├── Makefile                  # make shortcuts (make help lists targets)
 ├── requirements.txt
+├── requirements/
+│   ├── base.txt
+│   └── dev.txt
 ├── pytest.ini
 ├── tests/
 └── venv/
@@ -119,15 +136,15 @@ EverythingSearch/
 
 ### 4.1 `config.py` - Configuration Center
 
-All tunable parameters are centralized in this file:
+Local compatibility settings mainly live in this file; runtime load order is: environment variables > repository-root `config.py` > safe in-code defaults.
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `MY_API_KEY` | `sk-...` or `DASHSCOPE_API_KEY` env var | DashScope API key |
-| `TARGET_DIR` | `/path/to/documents` or `["/path1", "/path2"]` | Root directory/directories to index |
-| `ENABLE_MWEB` | `False/True` | Enables MWeb source; when disabled, export/scan and source filter entry are skipped |
-| `MWEB_DIR` | `/path/to/MWebMarkDown/File` | MWeb export directory |
-| `MWEB_EXPORT_SCRIPT` | `.../mweb_export.py` | MWeb export script path |
+| `MY_API_KEY` | empty string or `DASHSCOPE_API_KEY` env var | Legacy-compatible DashScope API key field; prefer env var first |
+| `TARGET_DIR` | `/path/to/documents` or `["/path1", "/path2"]` | Root directory/directories to index; `TARGET_DIR` env var takes precedence |
+| `ENABLE_MWEB` | `False/True` | Enables seamless built-in MWeb engine integration for automatic exports. |
+| `MWEB_LIBRARY_PATH`| macOS default path | [Optional] Target MWeb DB path (fallback for gigks) |
+| `MWEB_DIR` | `data/mweb_export` | Fully managed internal extraction vault |
 | `INDEX_STATE_DB` | `./index_state.db` | Incremental state database |
 | `SCAN_CACHE_PATH` | `./scan_cache.db` | Scan/parse cache DB |
 | `EMBEDDING_MODEL` | `text-embedding-v2` | Embedding model |
@@ -141,6 +158,7 @@ All tunable parameters are centralized in this file:
 
 **API key recommendation**:
 - Prefer environment variable `DASHSCOPE_API_KEY` over hardcoding key in file
+- The template no longer ships with a runnable placeholder secret; empty means "not configured"
 - Missing key intentionally causes clear startup/indexing errors
 
 ### 4.2 `indexer.py` - Index Builder
@@ -165,7 +183,7 @@ All tunable parameters are centralized in this file:
 
 **Memory cache**: caches results by `(query, source_filter, date_field, date_from, date_to)`; clear via `POST /api/cache/clear` when immediate consistency is needed.
 
-**Timeout on Unix**: uses `SIGALRM` around ~30s per search where supported; this is process-level timing and not ideal for strict per-request guarantees in multi-thread mode.
+**Timeout control**: search execution is wrapped in a shared in-process future-based timeout guard, using `SEARCH_TIMEOUT_SECONDS = 30` by default. A timeout is no longer treated as an empty result; it is surfaced as an observable error (`/api/search` returns HTTP 504). Timed-out searches are not written into the in-memory cache. Setting `SEARCH_TIMEOUT_SECONDS = 0` disables timeout enforcement, but single-flight execution and busy protection still remain in effect. Note that a future timeout does not forcibly kill an already running worker thread; the background task may continue until it finishes naturally. While that background task is still draining, new search requests may receive an HTTP 503 "busy" response to avoid unbounded task buildup.
 
 Search pipeline:
 1. **Vector retrieval** in one collection with source filter (`all|file|mweb`)
@@ -205,17 +223,19 @@ python -m everythingsearch.incremental --full   # full rebuild
 
 > After indexing, restart app to load fresh data: `./scripts/run_app.sh restart`
 
-### 4.6 `everythingsearch.app` - Web Service
+### 4.6 `everythingsearch.app` & Service Orchestration
 
-Flask routes:
+Recent updates significantly slimmed down `app.py`. It delegates core business logic to the `services/` layer and uses `request_validation.py` to filter all invalid JSON payloads directly into standard HTTP `400 Bad Request` responses, preventing 500 crashes. The underlying `file_access.py` adds a strict boundary: any external read/download/open action is forcefully restricted from traversing outside the indexed directories.
+
+Flask routes remain consistent:
 - `GET /` - main page
 - `GET /api/search?q=...&source=all|file|mweb` - search API (`limit=1..200` optional)
-- `GET /api/health` - runtime and DB/cache state summary
+- `GET /api/health` - State summary. If `vectordb.status` goes degraded, the top-level `ok` flag strictly returns `false` to maintain explicit monitoring consistency.
 - `POST /api/cache/clear` - clear in-memory search cache
-- `GET /api/file/read?filepath=...&max_bytes=...` - read indexed file text
-- `GET /api/file/download?filepath=...` - download indexed file
-- `POST /api/reveal` - reveal file in Finder
-- `POST /api/open` - open file with default app
+- `GET /api/file/read?filepath=...` - read text content of files **within indexed roots**
+- `GET /api/file/download?filepath=...` - download a file **within indexed roots**
+- `POST /api/reveal` - reveal file in Finder (secure path validation applied)
+- `POST /api/open` - open file with default app (secure path validation applied)
 
 > Intentionally not provided for security: `/api/config`, `/api/stats`, `/api/reload`.
 
@@ -350,6 +370,9 @@ tar xzf /path/to/EverythingSearch.tar.gz
 cd EverythingSearch
 python3.11 -m venv venv
 ./venv/bin/pip install -r requirements.txt
+
+# For runtime-only environments, you can use:
+# ./venv/bin/pip install -r requirements/base.txt
 nano config.py
 caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full
 ./scripts/run_app.sh start

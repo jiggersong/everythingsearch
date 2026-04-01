@@ -106,8 +106,8 @@ install_project() {
 
     log_info "复制项目文件到 ${INSTALL_DIR} ..."
     rsync -a --exclude='venv/' \
-             --exclude='data/chroma_db/' \
              --exclude='data/*.db' \
+             --exclude='data/mweb_export/' \
              --exclude='*.db' \
              --exclude='__pycache__/' \
              --exclude='.DS_Store' \
@@ -131,7 +131,7 @@ setup_venv() {
 
     log_info "安装 Python 依赖 (可能需要几分钟)..."
     ./venv/bin/pip install --upgrade pip -q
-    ./venv/bin/pip install -r requirements.txt -q
+    ./venv/bin/pip install -r requirements/base.txt -q
     log_ok "依赖安装完成"
 }
 
@@ -192,29 +192,7 @@ configure_project() {
 
     if [[ "$enable_mweb" =~ ^[Yy] ]]; then
         sed -i '' "s|^ENABLE_MWEB = .*|ENABLE_MWEB = True|" "$config_file" 2>/dev/null || true
-        echo -n "  请输入 MWeb 导出目录 (例如 ~/Documents/MWebMarkDown/File): "
-        read -r mweb_dir
-        echo -n "  请输入 MWeb 导出脚本路径 (例如 ~/Documents/MWebMarkDown/Tool/mweb_export.py): "
-        read -r mweb_script
-
-        if [[ -n "$mweb_dir" ]]; then
-            mweb_dir="${mweb_dir%/}"
-            mweb_dir_esc="$(escape_sed_repl "$mweb_dir")"
-            sed -i '' "s|^MWEB_DIR = .*|MWEB_DIR = \"${mweb_dir_esc}\"|" "$config_file"
-            log_ok "MWeb 目录已配置: $mweb_dir"
-        else
-            sed -i '' "s|^MWEB_DIR = .*|MWEB_DIR = \"\"|" "$config_file"
-            log_warn "未输入 MWeb 目录，已留空（后续可手动填写）"
-        fi
-
-        if [[ -n "$mweb_script" ]]; then
-            mweb_script_esc="$(escape_sed_repl "$mweb_script")"
-            sed -i '' "s|^MWEB_EXPORT_SCRIPT = .*|MWEB_EXPORT_SCRIPT = \"${mweb_script_esc}\"|" "$config_file"
-            log_ok "MWeb 导出脚本已配置"
-        else
-            sed -i '' "s|^MWEB_EXPORT_SCRIPT = .*|MWEB_EXPORT_SCRIPT = \"\"|" "$config_file"
-            log_warn "未输入导出脚本路径，已留空（后续可手动填写）"
-        fi
+        log_ok "已开启 MWeb 自动内部导出能力"
     else
         # 强制关闭并清空路径，确保在无 MWeb 的电脑上不报错/不提示
         if grep -q "^ENABLE_MWEB" "$config_file" 2>/dev/null; then
@@ -224,8 +202,6 @@ configure_project() {
             echo "" >> "$config_file"
             echo "ENABLE_MWEB = False" >> "$config_file"
         fi
-        sed -i '' "s|^MWEB_DIR = .*|MWEB_DIR = \"\"|" "$config_file" 2>/dev/null || true
-        sed -i '' "s|^MWEB_EXPORT_SCRIPT = .*|MWEB_EXPORT_SCRIPT = \"\"|" "$config_file" 2>/dev/null || true
         log_info "已关闭 MWeb 数据源（ENABLE_MWEB=False）"
     fi
 

@@ -3,17 +3,23 @@ import pytest
 import time
 import sys
 import os
+import threading
+from types import SimpleNamespace
 
 # 确保导入路径正确
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from everythingsearch.search import (
-    _get_cache_key, 
-    _get_cached_search, 
+    _get_cache_key,
+    _get_cached_search,
     _set_cached_search,
     clear_search_cache,
     _build_where_filter,
-    _apply_weights
+    _apply_weights,
+    SearchExecutionBusyError,
+    SearchTimeoutError,
+    _reset_search_executor_state_for_tests,
+    _run_with_timeout,
 )
 from langchain_core.documents import Document
 
@@ -212,8 +218,325 @@ class TestSearchIntegration:
             pytest.skip(f"搜索测试需要正确配置: {e}")
     
     def test_timeout_mechanism_exists(self):
-        """超时信号处理与异常类型存在（Unix 下由 SIGALRM 触发）"""
-        from everythingsearch.search import SearchTimeoutError, _timeout_handler
+        """超时包装器与异常类型存在。"""
 
         assert issubclass(SearchTimeoutError, Exception)
-        assert callable(_timeout_handler)
+        assert callable(_run_with_timeout)
+
+
+class TestSearchTimeoutControl:
+    """测试搜索超时控制。"""
+
+    def setup_method(self):
+        _reset_search_executor_state_for_tests()
+
+    def teardown_method(self):
+        _reset_search_executor_state_for_tests()
+
+    def test_run_with_timeout_returns_result_when_completed_in_time(self):
+        """执行在超时时间内完成时，应返回原结果。"""
+        result = _run_with_timeout(lambda: ["ok"], 1)
+
+        assert result == ["ok"]
+
+    def test_run_with_timeout_runs_inline_when_timeout_is_zero(self):
+        """timeout=0 时应关闭超时控制，直接在当前调用路径执行。"""
+        result = _run_with_timeout(lambda: ["inline"], 0)
+
+        assert result == ["inline"]
+
+    def test_run_with_timeout_zero_still_respects_busy_protection(self):
+        """timeout=0 时仍应保留单飞执行与繁忙保护。"""
+        started = threading.Event()
+        finish = threading.Event()
+
+        def blocking_task():
+            started.set()
+            finish.wait(timeout=1)
+            return ["inline"]
+
+        outcome = {}
+
+        def run_first_call():
+            outcome["result"] = _run_with_timeout(blocking_task, 0)
+
+        thread = threading.Thread(target=run_first_call)
+        thread.start()
+
+        assert started.wait(timeout=0.5) is True
+
+        with pytest.raises(SearchExecutionBusyError, match="繁忙"):
+            _run_with_timeout(lambda: ["second"], 0)
+
+        finish.set()
+        thread.join(timeout=0.5)
+
+        assert outcome["result"] == ["inline"]
+
+    def test_run_with_timeout_raises_search_timeout_error(self):
+        """执行超过超时时间时，应抛出显式超时异常。"""
+        def slow_task():
+            time.sleep(0.05)
+            return ["late"]
+
+        with pytest.raises(SearchTimeoutError, match="搜索操作超时"):
+            _run_with_timeout(slow_task, 0.01)
+
+    def test_search_core_does_not_cache_timeout_result(self, monkeypatch):
+        """搜索超时后不应写入缓存，避免污染后续查询。"""
+        import everythingsearch.search as search_mod
+
+        clear_search_cache()
+
+        settings = SimpleNamespace(search_timeout_seconds=1)
+        calls = {"count": 0}
+
+        monkeypatch.setattr(search_mod, "get_settings", lambda: settings)
+        monkeypatch.setattr(
+            search_mod,
+            "_get_cached_search",
+            lambda cache_key: None,
+        )
+
+        def fake_run_with_timeout(func, timeout_seconds):
+            calls["count"] += 1
+            raise search_mod.SearchTimeoutError("搜索操作超时（>1s）")
+
+        set_calls = {"count": 0}
+        monkeypatch.setattr(search_mod, "_run_with_timeout", fake_run_with_timeout)
+        monkeypatch.setattr(
+            search_mod,
+            "_set_cached_search",
+            lambda cache_key, result: set_calls.__setitem__("count", set_calls["count"] + 1),
+        )
+
+        with pytest.raises(search_mod.SearchTimeoutError):
+            search_mod.search_core("hello")
+
+        assert calls["count"] == 1
+        assert set_calls["count"] == 0
+
+    def test_search_core_passes_configured_timeout_to_timeout_runner(self, monkeypatch):
+        """search_core 应将 Settings 中的超时秒数透传给执行包装器。"""
+        import everythingsearch.search as search_mod
+
+        settings = SimpleNamespace(search_timeout_seconds=42)
+        captured = {}
+
+        monkeypatch.setattr(search_mod, "get_settings", lambda: settings)
+        monkeypatch.setattr(search_mod, "_get_cached_search", lambda cache_key: None)
+        monkeypatch.setattr(
+            search_mod,
+            "_set_cached_search",
+            lambda cache_key, result: None,
+        )
+
+        def fake_run_with_timeout(func, timeout_seconds):
+            captured["timeout_seconds"] = timeout_seconds
+            return [{"filename": "demo.txt"}]
+
+        monkeypatch.setattr(search_mod, "_run_with_timeout", fake_run_with_timeout)
+
+        results = search_mod.search_core("hello")
+
+        assert results == [{"filename": "demo.txt"}]
+        assert captured["timeout_seconds"] == 42
+
+    def test_run_with_timeout_reports_busy_while_previous_timed_out_task_is_still_running(self):
+        """前一个已超时任务仍在后台运行时，应返回繁忙错误而不是继续排队。"""
+        started = threading.Event()
+        finish = threading.Event()
+        outcome = {}
+
+        def slow_task():
+            started.set()
+            finish.wait(timeout=1)
+            return ["slow"]
+
+        def run_first_call():
+            with pytest.raises(SearchTimeoutError):
+                _run_with_timeout(slow_task, 0.01)
+            outcome["timed_out"] = True
+
+        thread = threading.Thread(target=run_first_call)
+        thread.start()
+
+        assert started.wait(timeout=0.5) is True
+        thread.join(timeout=0.5)
+        assert outcome["timed_out"] is True
+
+        with pytest.raises(SearchExecutionBusyError, match="繁忙"):
+            _run_with_timeout(lambda: ["fast"], 1)
+
+        finish.set()
+        time.sleep(0.05)
+
+        assert _run_with_timeout(lambda: ["recovered"], 1) == ["recovered"]
+
+
+class TestSearchFailureRecovery:
+    """测试搜索依赖故障与恢复路径。"""
+
+    def test_do_search_core_recovers_after_not_found_once(self, monkeypatch):
+        """首次检索遇到 NotFoundError 时，应清理缓存并重试。"""
+        import everythingsearch.search as search_mod
+
+        settings = SimpleNamespace(
+            search_top_k=3,
+            score_threshold=0.5,
+            position_weights={"content": 1.0},
+            keyword_freq_bonus=0.03,
+        )
+        calls = {"clear": 0, "search": 0}
+        doc = Document(
+            page_content="hello world",
+            metadata={
+                "source": "/tmp/demo.txt",
+                "filename": "demo.txt",
+                "type": ".txt",
+                "source_type": "file",
+                "mtime": 1.0,
+                "ctime": 2.0,
+                "chunk_type": "content",
+            },
+        )
+
+        class DummyVectorDb:
+            def similarity_search_with_score(self, query, k, filter=None):
+                calls["search"] += 1
+                if calls["search"] == 1:
+                    raise search_mod.NotFoundError("collection missing")
+                return [(doc, 0.2)]
+
+        monkeypatch.setattr(search_mod, "get_settings", lambda: settings)
+        monkeypatch.setattr(search_mod, "_get_vectordb", lambda: DummyVectorDb())
+        monkeypatch.setattr(
+            search_mod,
+            "_clear_vectordb_cache",
+            lambda: calls.__setitem__("clear", calls["clear"] + 1),
+        )
+        monkeypatch.setattr(search_mod, "_get_chroma_collection", lambda: None)
+
+        results = search_mod._do_search_core("hello")
+
+        assert len(results) == 1
+        assert results[0]["filename"] == "demo.txt"
+        assert calls == {"clear": 1, "search": 2}
+
+    def test_do_search_core_returns_empty_after_repeated_internal_error(self, monkeypatch):
+        """连续两次 InternalError 时，应安全降级为空结果。"""
+        import everythingsearch.search as search_mod
+
+        settings = SimpleNamespace(
+            search_top_k=3,
+            score_threshold=0.5,
+            position_weights={"content": 1.0},
+            keyword_freq_bonus=0.03,
+        )
+        calls = {"clear": 0, "search": 0}
+
+        class DummyVectorDb:
+            def similarity_search_with_score(self, query, k, filter=None):
+                calls["search"] += 1
+                raise search_mod.InternalError("db unavailable")
+
+        monkeypatch.setattr(search_mod, "get_settings", lambda: settings)
+        monkeypatch.setattr(search_mod, "_get_vectordb", lambda: DummyVectorDb())
+        monkeypatch.setattr(
+            search_mod,
+            "_clear_vectordb_cache",
+            lambda: calls.__setitem__("clear", calls["clear"] + 1),
+        )
+
+        results = search_mod._do_search_core("hello")
+
+        assert results == []
+        assert calls == {"clear": 1, "search": 2}
+
+    def test_keyword_fallback_internal_failure_does_not_break_search(self, monkeypatch):
+        """关键词回退内部失败时，主搜索结果仍应正常返回。"""
+        import everythingsearch.search as search_mod
+
+        settings = SimpleNamespace(
+            search_top_k=3,
+            score_threshold=0.5,
+            position_weights={"content": 1.0},
+            keyword_freq_bonus=0.03,
+        )
+        doc = Document(
+            page_content="hello world",
+            metadata={
+                "source": "/tmp/demo.txt",
+                "filename": "demo.txt",
+                "type": ".txt",
+                "source_type": "file",
+                "mtime": 1.0,
+                "ctime": 2.0,
+                "chunk_type": "content",
+            },
+        )
+
+        class DummyVectorDb:
+            def similarity_search_with_score(self, query, k, filter=None):
+                return [(doc, 0.2)]
+
+        class BrokenCollection:
+            def get(self, **kwargs):
+                raise RuntimeError("fallback broken")
+
+        monkeypatch.setattr(search_mod, "get_settings", lambda: settings)
+        monkeypatch.setattr(search_mod, "_get_vectordb", lambda: DummyVectorDb())
+        monkeypatch.setattr(search_mod, "_get_chroma_collection", lambda: BrokenCollection())
+
+        results = search_mod._do_search_core("hello")
+
+        assert len(results) == 1
+        assert results[0]["filepath"] == "/tmp/demo.txt"
+
+
+class TestVectorDbInitializationFailure:
+    """测试向量库初始化失败语义。"""
+
+    def test_get_vectordb_missing_key_does_not_cache_partial_state(self, monkeypatch):
+        """初始化在密钥校验阶段失败时，不应留下半初始化全局状态。"""
+        import everythingsearch.search as search_mod
+
+        settings = SimpleNamespace(
+            persist_directory="/tmp/chroma-db",
+            embedding_model="text-embedding-test",
+            embedding_cache_path="/tmp/embed-cache.db",
+        )
+
+        search_mod._embeddings = None
+        search_mod._vectordb = None
+        search_mod._chroma_client = None
+
+        monkeypatch.setattr(search_mod, "get_settings", lambda: settings)
+        monkeypatch.setattr(
+            search_mod,
+            "require_dashscope_api_key",
+            lambda passed_settings: (_ for _ in ()).throw(RuntimeError("missing key")),
+        )
+
+        with pytest.raises(RuntimeError, match="missing key"):
+            search_mod._get_vectordb()
+
+        assert search_mod._embeddings is None
+        assert search_mod._vectordb is None
+        assert search_mod._chroma_client is None
+
+    @pytest.mark.parametrize("exc_factory", [
+        lambda mod: mod.NotFoundError("collection missing"),
+        lambda mod: mod.InternalError("backend unavailable"),
+    ])
+    def test_get_chroma_collection_returns_none_on_vectordb_errors(self, monkeypatch, exc_factory):
+        """collection 访问入口应将初始化/后端错误统一降级为 None。"""
+        import everythingsearch.search as search_mod
+
+        monkeypatch.setattr(
+            search_mod,
+            "_get_vectordb",
+            lambda: (_ for _ in ()).throw(exc_factory(search_mod)),
+        )
+
+        assert search_mod._get_chroma_collection() is None

@@ -16,6 +16,7 @@ config.py
 
 # 数据与缓存
 data/chroma_db/
+data/mweb_export/
 data/*.db
 data/*.db-journal
 *.db-wal
@@ -42,3 +43,6 @@ logs/
 
 # 安装时生成的快捷启动脚本
 start.sh
+
+# 远期演进规划与内部开发文档（避免杂音提交至开源仓库）
+dev_docs/

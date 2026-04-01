@@ -29,8 +29,14 @@ EverythingSearch 是一个运行在 macOS 上的**本地文件语义搜索引擎
 └───────────────────────┬──────────────────────────────┘
                         │ HTTP (localhost:8000)
 ┌───────────────────────▼──────────────────────────────┐
-│            Flask 后端 (everythingsearch.app)           │
-│  /api/search · /api/health · /api/cache/clear · …     │
+│            Flask 路由系统 (everythingsearch.app)       │
+│  请求剥密、统一参数校验拦截 (request_validation) 返回400  │
+└───────────────────────┬──────────────────────────────┘
+                        │
+┌───────────────────────▼──────────────────────────────┐
+│                核心业务编排层 (services/)               │
+│         SearchService · FileService · HealthService  │
+│        (含 file_access 统一文件越权防御及寻址保护)        │
 └───────────────────────┬──────────────────────────────┘
                         │
 ┌───────────────────────▼──────────────────────────────┐
@@ -76,10 +82,18 @@ EverythingSearch/
 ├── etc/
 │   └── config.example.py     # 配置模板
 ├── everythingsearch/         # Python 应用包
-│   ├── app.py                # Flask Web 服务
-│   ├── search.py             # 搜索核心
+│   ├── app.py                # Flask Web 路由入口及总线组装
+│   ├── services/             # 业务服务层（抽象解耦核心逻辑）
+│   │   ├── file_service.py   # 文件生命周期控制
+│   │   ├── search_service.py # 搜索缓存控制及并发调度
+│   │   └── health_service.py # 数据探活与预热调度
+│   ├── request_validation.py # 入参验证协议 (提供统一400失败规范)
+│   ├── file_access.py        # 强一致文件存取控制边界与防路径穿越
+│   ├── infra/                # 基础设施层
+│   │   ├── settings.py       # (含强类型配置提取封装)
+│   ├── search.py             # 底层搜索核心算法
 │   ├── indexer.py            # 全量索引构建
-│   ├── incremental.py      # 增量索引
+│   ├── incremental.py        # 增量索引
 │   ├── embedding_cache.py    # Embedding 缓存层
 │   ├── templates/
 │   │   └── index.html
@@ -103,6 +117,9 @@ EverythingSearch/
 │   └── UI_DESIGN_APPLE_GOOGLE.en.md   # Web UI 设计说明（英文）
 ├── Makefile                  # make 快捷命令（make help 列出说明）
 ├── requirements.txt
+├── requirements/
+│   ├── base.txt
+│   └── dev.txt
 ├── pytest.ini
 ├── tests/
 └── venv/
@@ -118,15 +135,15 @@ EverythingSearch/
 
 ### 4.1 config.py — 配置中心
 
-所有可调参数集中在此文件：
+本地兼容配置主要集中在此文件；运行时加载顺序为：环境变量 > 仓库根目录 `config.py` > 代码内安全默认值。
 
 | 配置项 | 默认值 | 说明 |
 |-------|--------|------|
-| `MY_API_KEY` | `sk-...` 或 `DASHSCOPE_API_KEY` 环境变量 | 阿里通义千问 DashScope API Key |
-| `TARGET_DIR` | `/path/to/documents` 或 `["/path1", "/path2"]` | 要索引的根目录（支持单目录或列表） |
-| `ENABLE_MWEB` | `False/True` | 是否启用 MWeb 数据源；关闭后不会运行 MWeb 导出/扫描，且搜索页不会展示 MWeb 来源 |
-| `MWEB_DIR` | `/path/to/MWebMarkDown/File` | MWeb 笔记导出目录 |
-| `MWEB_EXPORT_SCRIPT` | `.../mweb_export.py` | MWeb 导出脚本路径 |
+| `MY_API_KEY` | 空字符串或 `DASHSCOPE_API_KEY` 环境变量 | 阿里通义千问 DashScope API Key 的兼容字段；推荐优先使用环境变量 |
+| `TARGET_DIR` | `/path/to/documents` 或 `["/path1", "/path2"]` | 要索引的根目录（支持单目录或列表；环境变量 `TARGET_DIR` 优先） |
+| `ENABLE_MWEB` | `False/True` | 是否一键无缝开启内置 MWeb 笔记整合；开启后系统即接管内部自动导出 |
+| `MWEB_LIBRARY_PATH`| 默认系统库路径 | 指定 MWeb 主数据库目录（备用选项） |
+| `MWEB_DIR` | `data/mweb_export` | 闭环自动管理的 MWeb 笔记存落地区 |
 | `INDEX_STATE_DB` | `./index_state.db` | 增量索引状态数据库 |
 | `SCAN_CACHE_PATH` | `./scan_cache.db` | 扫描解析缓存（未变更文件跳过解析） |
 | `EMBEDDING_MODEL` | `text-embedding-v2` | 向量模型名称 |
@@ -140,6 +157,7 @@ EverythingSearch/
 
 **关于 API Key 的推荐做法**：
 - 推荐使用环境变量 `DASHSCOPE_API_KEY`，避免把真实 Key 写进 `config.py`（尤其是在打包/传给其他电脑时）
+- 配置模板不再提供可运行的伪默认值；留空表示“未配置”，不是异常
 - 若 Key 未配置：索引与搜索会直接报错并提示如何设置（这是预期行为）
 
 ### 4.2 indexer.py — 索引构建
@@ -164,7 +182,7 @@ EverythingSearch/
 
 **内存缓存**：对 `(query, source_filter, date_field, date_from, date_to)` 的搜索结果做短期缓存（默认 TTL 与条数见代码中 `CACHE_TTL_SECONDS`、`MAX_CACHE_SIZE`）。重建索引或需立即一致时，可调用 `POST /api/cache/clear`；清空向量库进程内缓存时也会清空该缓存。
 
-**超时（Unix）**：在支持 `SIGALRM` 的系统上为单次搜索设置约 30 秒闹钟，超时返回空列表并记日志；**闹钟为进程级**，多线程并发请求下不宜指望对每个请求独立可靠计时。不支持 `SIGALRM` 的环境跳过闹钟，仅执行搜索。
+**超时控制**：搜索执行会通过进程内共享的 future 包装器施加超时控制，默认使用 `SEARCH_TIMEOUT_SECONDS = 30`。超时不会再伪装成空结果，而是沿 service / route 层映射为可观测的错误响应（`/api/search` 返回 504）。搜索超时结果不会写入内存缓存。若将 `SEARCH_TIMEOUT_SECONDS = 0`，则表示关闭搜索超时控制，但仍保留单飞执行与繁忙保护。需要注意：future 超时后后台工作线程可能继续运行到自然结束，这是当前实现的已知取舍；在该后台任务结束前，新的搜索请求可能收到 `503` 的“执行繁忙”响应，以避免后台任务无界堆积。
 
 搜索管道流程：
 1. **向量搜索**：在同一 collection 内进行相似度检索；可通过 `source=all|file|mweb` 过滤来源（若 `ENABLE_MWEB=False` 则仅返回文件来源）
@@ -204,17 +222,19 @@ python -m everythingsearch.incremental --full   # 完整重建
 
 > **注意**：索引完成后需重启搜索服务以加载新数据：`./scripts/run_app.sh restart`
 
-### 4.6 `everythingsearch.app` — Web 服务
+### 4.6 `everythingsearch.app` 与服务编排层
 
-Flask 应用，路由：
+最新的改动大幅瘦身了 `app.py` 路由绑定层的职责：它剥离了裸业务逻辑代码并委派到 `services/` 子层统一处理；同时借由 `request_validation.py` 将所有异常、不合法 JSON 请求类型过滤出标准的 HTTP `400 Bad Request`，从而防止脏数据向下渗透带来 500 系统级崩溃。底层的 `file_access.py` 补充了一道屏障：无论外部调用如何发起文件读取、下载或者打开操作，均强制鉴权对应路径不能跨越索引边界（禁止路径穿越探测）。
+
+Flask 应用路由保持不变：
 - `GET /` — 返回搜索页面
 - `GET /api/search?q=xxx&source=all|file|mweb` — 搜索 API（可选 `limit=1..200` 限制条数，便于 Agent/脚本消费）
-- `GET /api/health` — 健康与状态摘要（运行时间、向量库文档数、搜索内存缓存条目数等）；**勿对公网暴露未鉴权服务**
-- `POST /api/cache/clear` — 清空搜索**内存缓存**（索引更新后若需立即避免命中旧结果可调用；与重启进程作用类似，按需选用）
-- `GET /api/file/read?filepath=...&max_bytes=...` — 读取**已索引根目录内**文件的文本内容（用于 Skills / 自动化；二进制会提示改用 download）
-- `GET /api/file/download?filepath=...` — 下载**已索引根目录内**文件（`Content-Disposition: attachment`）
-- `POST /api/reveal` — 在 Finder 中显示文件（含路径安全校验）
-- `POST /api/open` — 用默认应用打开文件（含路径安全校验）
+- `GET /api/health` — 监控状态。其中当 `vectordb.status` 不等于 `"ok"` (如有损或降级)时，顶层 `ok` 标识会严格返回 `false`，保持内外状态的监控健康强一致性。
+- `POST /api/cache/clear` — 清空搜索**内存缓存**
+- `GET /api/file/read?filepath=...` — 读取**已索引根目录内**文件的文本内容
+- `GET /api/file/download?filepath=...` — 下载**已索引根目录内**文件
+- `POST /api/reveal` — 在 Finder 中显示文件
+- `POST /api/open` — 用默认应用打开文件
 
 > 出于安全考虑，以下接口仍不提供：`/api/config`、`/api/stats`、`/api/reload`。
 > 索引重建后需重启搜索服务以加载新数据：`./scripts/run_app.sh restart`
@@ -380,6 +400,9 @@ tar xzf /path/to/EverythingSearch.tar.gz
 cd EverythingSearch
 python3.11 -m venv venv
 ./venv/bin/pip install -r requirements.txt
+
+# 仅运行时环境可改用：
+# ./venv/bin/pip install -r requirements/base.txt
 
 # 4. 编辑配置文件
 # 必须修改以下内容：

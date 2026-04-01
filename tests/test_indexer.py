@@ -3,6 +3,8 @@ import pytest
 import sys
 import os
 import tempfile
+import sqlite3
+from types import SimpleNamespace
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
@@ -11,9 +13,17 @@ from everythingsearch.indexer import (
     _extract_md_headings,
     _parse_front_matter,
     _truncate_for_embed,
+    _init_scan_cache,
+    _load_cached_docs,
+    _save_cached_docs,
+    _prune_scan_cache,
+    build_documents_for_path_cached,
+    load_file_content,
     calculate_batch_size,
+    build_index,
     EMBED_MAX_CHARS,
 )
+from langchain_core.documents import Document
 
 
 class TestNormalizePath:
@@ -226,3 +236,143 @@ class TestBatchSizeCalculation:
         assert calculate_batch_size(short_docs) == 55
 
         assert calculate_batch_size([]) == 50
+
+
+class TestScanCache:
+    """测试扫描缓存边界与故障降级。"""
+
+    def test_load_cached_docs_returns_none_when_mtime_mismatch(self, tmp_path):
+        db_path = tmp_path / "scan_cache.db"
+        conn = sqlite3.connect(db_path)
+        _init_scan_cache(conn)
+        docs = [Document(page_content="hello", metadata={"source": "/tmp/a.txt"})]
+        _save_cached_docs(conn, "/tmp/a.txt", 100.0, "file", docs)
+
+        cached = _load_cached_docs(conn, "/tmp/a.txt", 100.5)
+
+        assert cached is None
+        conn.close()
+
+    def test_load_cached_docs_returns_none_when_json_is_invalid(self, tmp_path):
+        db_path = tmp_path / "scan_cache.db"
+        conn = sqlite3.connect(db_path)
+        _init_scan_cache(conn)
+        conn.execute(
+            "INSERT OR REPLACE INTO scan_cache (filepath, mtime, source_type, chunks_json) VALUES (?, ?, ?, ?)",
+            ("/tmp/a.txt", 100.0, "file", "{broken json"),
+        )
+        conn.commit()
+
+        cached = _load_cached_docs(conn, "/tmp/a.txt", 100.0)
+
+        assert cached is None
+        conn.close()
+
+    def test_build_documents_for_path_cached_uses_cache_without_rebuilding(self, tmp_path, monkeypatch):
+        db_path = tmp_path / "scan_cache.db"
+        conn = sqlite3.connect(db_path)
+        _init_scan_cache(conn)
+        cached_docs = [Document(page_content="cached", metadata={"source": "/tmp/a.txt"})]
+        _save_cached_docs(conn, "/tmp/a.txt", 100.0, "file", cached_docs)
+
+        monkeypatch.setattr(
+            "everythingsearch.indexer.build_documents_for_file",
+            lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("不应重建文档")),
+        )
+
+        docs = build_documents_for_path_cached("/tmp/a.txt", 100.0, "file", conn)
+
+        assert len(docs) == 1
+        assert docs[0].page_content == "cached"
+        conn.close()
+
+    def test_prune_scan_cache_removes_orphans_only(self, tmp_path):
+        db_path = tmp_path / "scan_cache.db"
+        conn = sqlite3.connect(db_path)
+        _init_scan_cache(conn)
+        docs = [Document(page_content="hello", metadata={"source": "/tmp/a.txt"})]
+        _save_cached_docs(conn, "/tmp/a.txt", 100.0, "file", docs)
+        _save_cached_docs(conn, "/tmp/b.txt", 100.0, "file", docs)
+
+        _prune_scan_cache(conn, {"/tmp/a.txt"})
+
+        rows = conn.execute("SELECT filepath FROM scan_cache ORDER BY filepath").fetchall()
+        assert rows == [("/tmp/a.txt",)]
+        conn.close()
+
+
+class TestLoadFileContentFailurePaths:
+    """测试文件读取故障与降级路径。"""
+
+    def test_load_file_content_returns_empty_for_invalid_office_zip(self, tmp_path, monkeypatch):
+        office_file = tmp_path / "broken.docx"
+        office_file.write_bytes(b"not-a-zip")
+        settings = SimpleNamespace(
+            text_extensions=frozenset({".txt", ".md"}),
+            media_extensions=frozenset({".png"}),
+            office_extensions=frozenset({".docx", ".xlsx", ".pptx", ".pdf"}),
+        )
+
+        monkeypatch.setattr("everythingsearch.indexer.get_settings", lambda: settings)
+
+        content, headings = load_file_content(str(office_file), ".docx")
+
+        assert content == ""
+        assert headings == []
+
+    def test_load_file_content_returns_empty_when_subprocess_reader_returns_empty(self, tmp_path, monkeypatch):
+        office_file = tmp_path / "demo.pdf"
+        office_file.write_bytes(b"%PDF-1.4")
+        settings = SimpleNamespace(
+            text_extensions=frozenset({".txt", ".md"}),
+            media_extensions=frozenset({".png"}),
+            office_extensions=frozenset({".docx", ".xlsx", ".pptx", ".pdf"}),
+        )
+
+        monkeypatch.setattr("everythingsearch.indexer.get_settings", lambda: settings)
+        monkeypatch.setattr("everythingsearch.indexer._read_via_subprocess", lambda filepath, ext: ("", []))
+
+        content, headings = load_file_content(str(office_file), ".pdf")
+
+        assert content == ""
+        assert headings == []
+
+
+class TestBuildIndex:
+    """测试全量索引构建边界行为。"""
+
+    def test_build_index_clears_existing_collection_when_scan_result_is_empty(self, monkeypatch, tmp_path):
+        settings = SimpleNamespace(
+            persist_directory=str(tmp_path / "chroma_db"),
+            scan_cache_path="",
+            embedding_model="text-embedding-v2",
+            embedding_cache_path=str(tmp_path / "embedding_cache.db"),
+        )
+        deleted = []
+
+        class FakeCollection:
+            def __init__(self, name):
+                self.name = name
+
+        class FakeClient:
+            def __init__(self, path):
+                self.path = path
+
+            def list_collections(self):
+                return [FakeCollection("local_files")]
+
+            def delete_collection(self, name):
+                deleted.append(name)
+
+        monkeypatch.setattr("everythingsearch.indexer.get_settings", lambda: settings)
+        monkeypatch.setattr("everythingsearch.indexer.require_target_dirs", lambda _settings: ("/tmp/docs",))
+        monkeypatch.setattr("everythingsearch.indexer.require_dashscope_api_key", lambda _settings: "fake-key")
+        monkeypatch.setattr("everythingsearch.indexer.apply_sdk_environment", lambda _settings: None)
+        monkeypatch.setattr("everythingsearch.indexer.scan_files", lambda: ([], 0.1))
+        monkeypatch.setattr("everythingsearch.indexer.scan_mweb_notes", lambda: ([], 0.0))
+        monkeypatch.setattr("everythingsearch.indexer._cleanup_orphaned_hnsw_dirs", lambda client: None)
+        monkeypatch.setattr("chromadb.PersistentClient", FakeClient)
+
+        build_index()
+
+        assert deleted == ["local_files"]

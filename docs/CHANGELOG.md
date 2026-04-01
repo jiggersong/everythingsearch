@@ -6,6 +6,29 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.4.0] - 2026-04-01
+
+**GitHub Release**：[v1.4.0](https://github.com/jiggersong/everythingsearch/releases/tag/v1.4.0)
+
+这一版本带来了项目有史以来最大的一次基础架构重整与极客体验升级。我们解耦了底层的代码结构，将 MWeb 同步能力实现了 “零配置” 内置集成，并大幅加强了系统的异常拦截韧性。
+
+### 🚀 特性更新 (Features)
+
+- **“零配置”的 MWeb 本地内置支持**：我们移除了对外部脚本的强依赖和繁琐的手工导出路径配置。现在，只需在配置中打开 `ENABLE_MWEB=True` 这个开关，程序会自动接管内置库的扫描转化并默认隔离归档，真正实现了一键配置开箱即用。
+- **配置与基建标准化**：系统引入 `infra/settings.py` 承载具有强类型校验和容错退化处理的配置注射网关，所有松散的环境配置得到了统一收敛。
+- **内核拆分解耦**：彻底告别冗长的单文件路由。文件管理、搜索并发缓存以及健康探针等功能被系统地抽离为了抽象服务层 (`services/`)，项目骨架更清晰，测试维护更稳定。
+- **全新 CLI/Make 集成**：支持单独一键操作触发内置的笔记本强制重读缓存导出工作流 (`make mweb-export`)。
+
+### 🛡 安全与稳定性加固 (Security & Reliability)
+
+- **高强度请求边界阻断墙**：正式上线基于严谨字段规约的入参断言模块 (`request_validation.py`)。过去由于非法搜索或畸形 JSON 请求引发的服务端 **500 崩溃被彻底取缔**，现已统一规范拦截并返回清晰温和的 `HTTP 400 Bad Request` 指引。
+- **绝对防御路径穿越（Path Traversal）**：在文件核心访问入口 (`file_access.py`) 设立隔离结界——任何试图利用 API 拉取、窥视甚至读取非系统索引名录之外越权资源的企图，均将在最底层被立刻熔断拒绝，确保宿主机环境的私密与稳定。
+
+### 🐞 修复 (Bug Fixes)
+
+- 修复了 `/api/health` 探针中无法正确暴露向量数据库 (VectorDB) 降级/超时状态语义的顽疾，现在探测状态更真实准确了。
+- 修复了在无明确索引触发源配置时错误清理留存记录的不稳定问题；优化了对依赖升级与审查的管理机制。
+
 ## [1.3.3] - 2026-03-31
 
 **GitHub Release**：[v1.3.3](https://github.com/jiggersong/everythingsearch/releases/tag/v1.3.3)

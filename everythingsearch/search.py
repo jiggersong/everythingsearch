@@ -1,29 +1,39 @@
-import os
 import argparse
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeoutError
 import logging
 import threading
 import time
-import signal
 import hashlib
-import config
+from typing import Callable, TypeVar
 import chromadb
 from chromadb.errors import NotFoundError, InternalError
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
 
 from .embedding_cache import CachedEmbeddings
+from .infra.settings import (
+    Settings,
+    apply_sdk_environment,
+    get_settings,
+    require_dashscope_api_key,
+)
 
 logger = logging.getLogger(__name__)
 
 _embeddings = None
 _vectordb = None
 _chroma_client = None
+_search_executor: ThreadPoolExecutor | None = None
+_search_executor_lock = threading.Lock()
+_search_execution_slot = threading.BoundedSemaphore(value=1)
 
 # ================= 搜索缓存 =================
 _search_cache: dict[str, tuple[list[dict], float]] = {}
 _cache_lock = threading.Lock()
 CACHE_TTL_SECONDS = 1200  # 20分钟缓存
 MAX_CACHE_SIZE = 100  # 最大缓存条目数
+_TimeoutResultT = TypeVar("_TimeoutResultT")
 
 
 def _get_cache_key(query: str, source_filter: str | None, date_field: str | None,
@@ -65,37 +75,101 @@ def clear_search_cache():
         logger.info("搜索缓存已清空")
 
 
+def get_search_cache_size() -> int:
+    """返回当前搜索缓存条目数。"""
+    with _cache_lock:
+        return len(_search_cache)
+
+
+def get_search_cache_max_size() -> int:
+    """返回搜索缓存最大容量。"""
+    return MAX_CACHE_SIZE
+
+
 # ================= 超时控制 =================
 class SearchTimeoutError(Exception):
-    """搜索超时（SIGALRM）；勿与内置 TimeoutError 混淆。"""
+    """搜索执行超时。"""
 
 
-def _timeout_handler(signum, frame):
-    """信号处理函数"""
-    raise SearchTimeoutError("搜索操作超时")
+class SearchExecutionBusyError(Exception):
+    """搜索执行器仍忙，当前请求未进入执行。"""
 
 
-def _ensure_dashscope_api_key():
-    """Ensure DashScope API key exists in environment (used by langchain)."""
-    if os.environ.get("DASHSCOPE_API_KEY"):
-        return
-    if getattr(config, "MY_API_KEY", ""):
-        os.environ["DASHSCOPE_API_KEY"] = config.MY_API_KEY
-        return
-    raise RuntimeError(
-        "未配置 DashScope API Key。请在环境变量 DASHSCOPE_API_KEY 或 config.py 的 MY_API_KEY 中设置。"
-    )
+def _get_search_executor() -> ThreadPoolExecutor:
+    """返回共享搜索执行器，避免每次请求创建新线程池。"""
+    global _search_executor
+    with _search_executor_lock:
+        if _search_executor is None:
+            _search_executor = ThreadPoolExecutor(
+                max_workers=1,
+                thread_name_prefix="everythingsearch-search",
+            )
+    return _search_executor
+
+
+def _acquire_search_execution_slot() -> None:
+    """尝试获取单飞执行槽位。"""
+    if not _search_execution_slot.acquire(blocking=False):
+        raise SearchExecutionBusyError("搜索执行繁忙，请稍后重试")
+
+
+def _release_search_execution_slot(_future=None) -> None:
+    """释放单飞执行槽位。"""
+    try:
+        _search_execution_slot.release()
+    except ValueError:
+        logger.debug("搜索执行槽位已处于空闲状态，忽略重复释放")
+
+
+def _reset_search_executor_state_for_tests() -> None:
+    """重置搜索执行器状态，仅供测试使用。"""
+    global _search_executor, _search_execution_slot
+    with _search_executor_lock:
+        executor = _search_executor
+        _search_executor = None
+    if executor is not None:
+        executor.shutdown(wait=False, cancel_futures=True)
+    _search_execution_slot = threading.BoundedSemaphore(value=1)
+
+
+def _run_with_timeout(
+    func: Callable[[], _TimeoutResultT],
+    timeout_seconds: int | float,
+) -> _TimeoutResultT:
+    """在独立线程中执行函数，并在超时时抛出显式异常。``timeout_seconds <= 0`` 时仅关闭超时，不关闭单飞保护。"""
+    _acquire_search_execution_slot()
+
+    if timeout_seconds <= 0:
+        try:
+            return func()
+        finally:
+            _release_search_execution_slot()
+
+    executor = _get_search_executor()
+    try:
+        future = executor.submit(func)
+    except Exception:
+        _release_search_execution_slot()
+        raise
+    future.add_done_callback(_release_search_execution_slot)
+    try:
+        return future.result(timeout=timeout_seconds)
+    except FutureTimeoutError as exc:
+        future.cancel()
+        raise SearchTimeoutError(f"搜索操作超时（>{timeout_seconds}s）") from exc
 
 
 def _get_vectordb():
     """Get vectordb, clearing cache if collection was rebuilt (NotFoundError)."""
     global _embeddings, _vectordb, _chroma_client
     if _vectordb is None:
-        _ensure_dashscope_api_key()
-        _chroma_client = chromadb.PersistentClient(path=config.PERSIST_DIRECTORY)
+        settings = get_settings()
+        require_dashscope_api_key(settings)
+        apply_sdk_environment(settings)
+        _chroma_client = chromadb.PersistentClient(path=settings.persist_directory)
         _embeddings = CachedEmbeddings(
-            model=config.EMBEDDING_MODEL,
-            cache_path=config.EMBEDDING_CACHE_PATH,
+            model=settings.embedding_model,
+            cache_path=settings.embedding_cache_path,
         )
         _vectordb = Chroma(
             client=_chroma_client,
@@ -120,8 +194,8 @@ def _clear_vectordb_cache():
         try:
             _chroma_client.clear_system_cache()
             _chroma_client.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("清理 ChromaDB 客户端缓存失败: %s", exc)
     _embeddings = None
     _vectordb = None
     _chroma_client = None
@@ -130,18 +204,21 @@ def _clear_vectordb_cache():
 
 
 def _apply_weights(
-    results: list[tuple[Document, float]], query: str
+    results: list[tuple[Document, float]],
+    query: str,
+    settings: Settings | None = None,
 ) -> list[tuple[Document, float]]:
     """Apply position-based weight and keyword frequency bonus to raw scores."""
+    effective_settings = settings or get_settings()
     weighted = []
     query_lower = query.lower()
     for doc, score in results:
         chunk_type = doc.metadata.get("chunk_type", "content")
-        factor = config.POSITION_WEIGHTS.get(chunk_type, 1.0)
+        factor = effective_settings.position_weights.get(chunk_type, 1.0)
 
         freq = doc.page_content.lower().count(query_lower)
         if freq > 1:
-            freq_factor = max(0.85, 1.0 - config.KEYWORD_FREQ_BONUS * (freq - 1))
+            freq_factor = max(0.85, 1.0 - effective_settings.keyword_freq_bonus * (freq - 1))
             factor *= freq_factor
 
         weighted.append((doc, score * factor))
@@ -161,9 +238,11 @@ def _dedup_by_file(results: list[tuple[Document, float]], threshold: float) -> d
 
 def _keyword_fallback(
     query: str,
+    settings: Settings | None = None,
     where_filter: dict | None = None,
 ) -> dict[str, tuple[Document, float]]:
     """Keyword exact-match fallback, reusing shared Chroma client."""
+    effective_settings = settings or get_settings()
     col = _get_chroma_collection()
     if col is None:
         return {}
@@ -179,7 +258,7 @@ def _keyword_fallback(
             where_document=where_doc,
             where=where_filter,
             include=["documents", "metadatas"],
-            limit=config.SEARCH_TOP_K,
+            limit=effective_settings.search_top_k,
         )
     except Exception as e:
         logger.debug("Keyword fallback failed: %s", e)
@@ -194,9 +273,13 @@ def _keyword_fallback(
         doc = Document(page_content=hits["documents"][i], metadata=meta)
 
         chunk_type = meta.get("chunk_type", "content")
-        pos_factor = config.POSITION_WEIGHTS.get(chunk_type, 1.0)
+        pos_factor = effective_settings.position_weights.get(chunk_type, 1.0)
         freq = doc.page_content.lower().count(query_lower)
-        freq_factor = max(0.85, 1.0 - config.KEYWORD_FREQ_BONUS * (freq - 1)) if freq > 1 else 1.0
+        freq_factor = (
+            max(0.85, 1.0 - effective_settings.keyword_freq_bonus * (freq - 1))
+            if freq > 1
+            else 1.0
+        )
         adjusted = base_score * pos_factor * freq_factor
 
         if source not in best or adjusted < best[source][1]:
@@ -239,11 +322,12 @@ def _do_search_core(
     """
     实际的搜索核心逻辑（内部使用，支持超时控制）
     """
+    settings = get_settings()
     where_filter = _build_where_filter(source_filter, date_field, date_from, date_to)
 
     def _do_search():
         vectordb = _get_vectordb()
-        k = config.SEARCH_TOP_K
+        k = settings.search_top_k
         if where_filter:
             return vectordb.similarity_search_with_score(
                 query, k=k, filter=where_filter)
@@ -258,10 +342,10 @@ def _do_search_core(
         except (NotFoundError, InternalError):
             return []
 
-    weighted_results = _apply_weights(vector_results, query)
-    best_by_file = _dedup_by_file(weighted_results, config.SCORE_THRESHOLD)
+    weighted_results = _apply_weights(vector_results, query, settings)
+    best_by_file = _dedup_by_file(weighted_results, settings.score_threshold)
 
-    keyword_hits = _keyword_fallback(query, where_filter=where_filter)
+    keyword_hits = _keyword_fallback(query, settings, where_filter=where_filter)
     for source, (doc, score) in keyword_hits.items():
         if source not in best_by_file:
             best_by_file[source] = (doc, score)
@@ -343,7 +427,7 @@ def search_core(
 ) -> list[dict]:
     """
     Core search: returns a list of result dicts, sorted by relevance.
-    添加缓存和超时控制（30秒超时）
+    添加缓存与超时控制；超时秒数由 SEARCH_TIMEOUT_SECONDS 配置，默认 30 秒。
     
     Each dict: {filename, filepath, relevance, tag, preview, filetype, mtime, ctime, source_type, categories}
 
@@ -357,27 +441,22 @@ def search_core(
     if cached is not None:
         return cached
 
-    # 2. 执行搜索；SIGALRM 仅适用于 Unix，且不宜与多线程并发共用同一进程闹钟
-    timeout_seconds = 30
-    if not hasattr(signal, "SIGALRM"):
-        results = _do_search_core(query, source_filter, date_field, date_from, date_to)
-        _set_cached_search(cache_key, results)
-        return results
+    settings = get_settings()
 
-    original_handler = signal.signal(signal.SIGALRM, _timeout_handler)
-    signal.alarm(timeout_seconds)
+    def _execute_search() -> list[dict]:
+        return _do_search_core(query, source_filter, date_field, date_from, date_to)
+
     try:
-        results = _do_search_core(query, source_filter, date_field, date_from, date_to)
-        signal.alarm(0)
+        results = _run_with_timeout(_execute_search, settings.search_timeout_seconds)
         _set_cached_search(cache_key, results)
         return results
     except SearchTimeoutError:
-        logger.warning("搜索超时 (>%ds): query='%s'", timeout_seconds, query[:50])
-        signal.alarm(0)
-        return []
-    finally:
-        signal.signal(signal.SIGALRM, original_handler)
-        signal.alarm(0)
+        logger.warning(
+            "搜索超时 (>%ss): query='%s'",
+            settings.search_timeout_seconds,
+            query[:50],
+        )
+        raise
 
 
 # ---- CLI ----

@@ -4,6 +4,29 @@
 
 This file records user-visible changes of EverythingSearch and is intended to stay in sync with GitHub Releases tags.
 
+## [1.4.0] - 2026-04-01
+
+**GitHub Release**: [v1.4.0](https://github.com/jiggersong/everythingsearch/releases/tag/v1.4.0)
+
+This version introduces the most significant architectural restructuring and geek-experience upgrade in the project's history. We decoupled the codebase, built a zero-configuration "out-of-the-box" MWeb sync capability, and greatly bolstered API resiliency.
+
+### 🚀 Features
+
+- **"Zero-Config" Built-in MWeb Integrations**: Completely removed external dependencies and tedious manual export path configurations. By simply toggling `ENABLE_MWEB=True` in the configuration, the system seamlessly takes over scanning target built-in repositories and safely defaults to isolated extraction zones—achieving true out-of-the-box operation smoothly.
+- **Infrastructure Standardization**: Bootstrapped `infra/settings.py` serving as the centralized point for strictly-typed injection and fault-tolerant configs, fully eliminating loosely managed fallback variables across codebases.
+- **Decoupled Service Layers**: Say goodbye to a monolithic routing app. File management, cached concurrency search logic, and health probing are now modularized extensively into abstracted domains (`services/`).
+- **New CLI integrations**: Added support for standalone MWeb sync overrides without rebuilding indexes via new `make mweb-export` command.
+
+### 🛡 Security & Reliability
+
+- **High-Resiliency Request Validation Wall**: Officially rolled out a rigorously designed validation interceptor (`request_validation.py`) over all API entries. Past scenarios involving malformed JSON leading to fatal HTTP `500` server meltdowns are completely outlawed and replaced by robust, friendly `HTTP 400 Bad Request` guidance.
+- **Path Traversal Nullification**: Instituted absolute isolation barriers at the core file reader (`file_access.py`). Any arbitrary malicious attempts pulling directories explicitly outside the indexing boundaries face immediate rejection to fully protect host OS privacy and runtime steadiness.
+
+### 🐞 Bug Fixes
+
+- Fixed health-probe `/api/health` failing to accurately expose Degraded/Timeout statuses of the underlying VectorDB, improving the reliability of metrics reporting.
+- Addressed an instability during cleanup of stale documents lacking distinct file triggers; enhanced dependency audits.
+
 ## [1.3.3] - 2026-03-31
 
 [GitHub Release](https://github.com/jiggersong/everythingsearch/releases/tag/v1.3.3)

@@ -1,5 +1,6 @@
 # config.example.py - 配置模板
 # 复制到仓库根目录: cp etc/config.example.py config.py
+# 配置优先级：环境变量 > 仓库根目录 config.py > 代码内安全默认值
 
 import os
 
@@ -13,8 +14,10 @@ _ROOT = _project_root()
 
 # ================= 必填配置 =================
 
-# 1. 阿里通义千问 API Key（优先从环境变量 DASHSCOPE_API_KEY 读取）
-MY_API_KEY = os.environ.get("DASHSCOPE_API_KEY", "sk-your-api-key-here")
+# 1. 阿里通义千问 API Key
+# 推荐仅设置环境变量 DASHSCOPE_API_KEY，把这里留空；
+# 若你必须把 Key 写入本地 config.py，可直接填写真实值，例如 "sk-xxxx"。
+MY_API_KEY = os.environ.get("DASHSCOPE_API_KEY", "").strip()
 
 # 2. 你想要索引的根目录（支持单个路径或路径列表）
 # 单目录: TARGET_DIR = "/path/to/your/documents"
@@ -29,15 +32,21 @@ INDEX_ONLY_KEYWORDS = []
 # - 需要检索 MWeb：设为 True，并配置 MWEB_DIR / MWEB_EXPORT_SCRIPT
 ENABLE_MWEB = False
 
-# 4. [可选] MWeb 笔记导出目录与导出脚本（仅在 ENABLE_MWEB=True 时使用）
+# 4. [可选] MWeb 笔记配置（仅在 ENABLE_MWEB=True 时生效）
+# MWEB_LIBRARY_PATH: MWeb数据库目录（留空则默认 macOS 标准路径）
+# MWEB_DIR: 导出的 Markdown 文件存放地（留空则默认为内置的 data/mweb_export）
+MWEB_LIBRARY_PATH = ""
 MWEB_DIR = ""
-MWEB_EXPORT_SCRIPT = ""
 
 # [可选] 服务监听地址与端口（用于本地域名等）
 # HOST: "127.0.0.1" 仅本机；"0.0.0.0" 允许局域网访问。配合 /etc/hosts 可绑定本地域名
 # PORT: 默认 8000；若改为 80 需 root 或反向代理
 # HOST = "127.0.0.1"
 # PORT = 8000
+
+# 说明：
+# - TARGET_DIR 与 MY_API_KEY 在运行时都会优先读取环境变量
+# - 若 DASHSCOPE_API_KEY / TARGET_DIR 缺失，搜索或索引会显式报错，这是预期行为
 
 # [可选] Skills / HTTP 客户端：/api/file/read 单次读取正文的最大字节数（防止一次读入过大文件）
 API_MAX_READ_BYTES = 524288
@@ -56,6 +65,8 @@ EMBEDDING_MODEL = "text-embedding-v2"
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 80
 MAX_CONTENT_LENGTH = 20000
+# 搜索超时秒数；设为 0 表示关闭搜索超时控制，但仍保留单飞执行与繁忙保护
+SEARCH_TIMEOUT_SECONDS = 30
 SEARCH_TOP_K = 250
 SCORE_THRESHOLD = 0.35
 EMBEDDING_CACHE_PATH = os.path.join(_ROOT, "data", "embedding_cache.db")
