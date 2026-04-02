@@ -11,11 +11,8 @@ from everythingsearch import logging_config
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
-def _count_console_marks(logger: logging.Logger) -> int:
-    return sum(
-        1 for handler in logger.handlers
-        if getattr(handler, logging_config._CONSOLE_MARK, False)
-    )
+def _count_root_stream_handlers() -> int:
+    return sum(1 for h in logging.root.handlers if isinstance(h, logging.StreamHandler))
 
 
 def _count_daily_marks(logger: logging.Logger) -> int:
@@ -31,29 +28,39 @@ class TestLoggingConfig:
     def test_setup_cli_logging_does_not_duplicate_handlers(self):
         """CLI 日志初始化不应重复挂接 handler。"""
         logger = logging.getLogger("everythingsearch")
-        original_handlers = list(logger.handlers)
-        original_level = logger.level
+        original_es_handlers = list(logger.handlers)
+        original_es_level = logger.level
+        original_root_handlers = list(logging.root.handlers)
+        original_root_level = logging.root.level
         try:
             logger.handlers = []
             logger.setLevel(logging.NOTSET)
+            logging.root.handlers = []
+            logging.root.setLevel(logging.WARNING)
 
             logging_config.setup_cli_logging()
             logging_config.setup_cli_logging()
 
-            assert _count_console_marks(logger) == 1
+            assert _count_root_stream_handlers() == 1
             assert _count_daily_marks(logger) == 1
         finally:
-            logger.handlers = original_handlers
-            logger.setLevel(original_level)
+            logger.handlers = original_es_handlers
+            logger.setLevel(original_es_level)
+            logging.root.handlers = original_root_handlers
+            logging.root.setLevel(original_root_level)
 
     def test_cli_logging_can_attach_separate_file_after_flask_logging(self):
         """同一 logger 上应允许挂接不同文件的日滚动 handler。"""
         logger = logging.getLogger("everythingsearch")
-        original_handlers = list(logger.handlers)
-        original_level = logger.level
+        original_es_handlers = list(logger.handlers)
+        original_es_level = logger.level
+        original_root_handlers = list(logging.root.handlers)
+        original_root_level = logging.root.level
         try:
             logger.handlers = []
             logger.setLevel(logging.NOTSET)
+            logging.root.handlers = []
+            logging.root.setLevel(logging.WARNING)
 
             logging_config.setup_flask_dev_daily_file_logging()
             logging_config.setup_cli_logging()
@@ -65,8 +72,10 @@ class TestLoggingConfig:
             )
             assert filenames == ["app_dev.log", "cli.log"]
         finally:
-            logger.handlers = original_handlers
-            logger.setLevel(original_level)
+            logger.handlers = original_es_handlers
+            logger.setLevel(original_es_level)
+            logging.root.handlers = original_root_handlers
+            logging.root.setLevel(original_root_level)
 
 
 class TestLoggingPrintUsage:

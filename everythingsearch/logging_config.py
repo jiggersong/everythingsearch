@@ -5,11 +5,11 @@ from __future__ import annotations
 import logging
 import logging.handlers
 import os
+import sys
 
 from .infra.paths import get_project_root
 
 _MARK = "_everythingsearch_daily_log"
-_CONSOLE_MARK = "_everythingsearch_console_log"
 
 
 def _project_root() -> str:
@@ -28,10 +28,6 @@ def _logger_has_daily_handler_for_path(logger: logging.Logger, log_path: str) ->
         if os.path.abspath(getattr(handler, "baseFilename", "")) == normalized_path:
             return True
     return False
-
-
-def _logger_has_console_handler(logger: logging.Logger) -> bool:
-    return any(getattr(h, _CONSOLE_MARK, False) for h in logger.handlers)
 
 
 def attach_timed_rotating_file(
@@ -76,20 +72,39 @@ def setup_flask_dev_daily_file_logging() -> None:
 
 
 def setup_cli_logging(*, level: int = logging.INFO) -> None:
-    """为 CLI 任务挂接控制台与文件日志。"""
-    logger = logging.getLogger("everythingsearch")
-    logger.setLevel(level)
+    """CLI 任务（增量/全量索引、indexer 直跑等）：统一日志格式。
 
-    if not _logger_has_console_handler(logger):
-        handler = logging.StreamHandler()
-        setattr(handler, _CONSOLE_MARK, True)
-        handler.setLevel(level)
-        handler.setFormatter(
-            logging.Formatter(
-                "%(asctime)s %(levelname)s %(name)s: %(message)s",
-                datefmt="%Y-%m-%d %H:%M:%S",
-            )
-        )
-        logger.addHandler(handler)
+    - 在 **root** 上配置 stdout Handler（``%(asctime)s … [%(name)s] …``），launchd 重定向到
+      ``incremental_*.log`` 时也有时间戳；第三方库走 root 时不再出现无时间的 LastResort 行。
+    - 仍写入按天滚动的 ``logs/cli.log``（与 stdout 同格式）。
+    - 压低 chromadb/httpx 等噪音。
+    """
+    fmt = "%(asctime)s %(levelname)s [%(name)s] %(message)s"
+    datefmt = "%Y-%m-%d %H:%M:%S"
 
-    attach_timed_rotating_file("everythingsearch", "cli.log", level=level)
+    logging.basicConfig(
+        level=level,
+        format=fmt,
+        datefmt=datefmt,
+        stream=sys.stdout,
+        force=True,
+    )
+
+    log_es = logging.getLogger("everythingsearch")
+    log_es.setLevel(level)
+    attach_timed_rotating_file(
+        "everythingsearch",
+        "cli.log",
+        level=level,
+        fmt=fmt,
+        datefmt=datefmt,
+    )
+
+    for name in (
+        "chromadb",
+        "chromadb.telemetry",
+        "httpx",
+        "httpcore",
+        "urllib3",
+    ):
+        logging.getLogger(name).setLevel(logging.WARNING)
