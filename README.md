@@ -40,6 +40,18 @@ make app-restart   # restart launchd-managed app
 make app-stop      # stop launchd-managed app
 ```
 
+## System Permissions & Automation
+
+After installation, complete these three system-level configurations for fully hands-free background operation:
+
+| Feature | Description |
+|---------|-------------|
+| **Auto-start on login** | The search service (Web UI) is launched automatically by launchd after you log in |
+| **Scheduled index updates** | Incremental indexing runs daily at 10:00 AM to keep search results up to date |
+| **Full Disk Access** | Grant Python permission to read protected directories (e.g. MWeb data) and avoid repeated permission dialogs |
+
+> For detailed setup steps, see [`PROJECT_MANUAL.en.md`](docs/PROJECT_MANUAL.en.md) §6.5 "System Permissions & Automation Setup".
+
 ## Documentation Matrix
 
 | No  | Document                                                                                                                                    | Role                              | Best For                                                        | What You Get                                                                                                             |

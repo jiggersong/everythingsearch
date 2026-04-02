@@ -329,7 +329,84 @@ ls -1 logs/incremental_*.log
 tail -n 200 logs/incremental_$(date +%Y-%m-%d).log
 ```
 
----
+### 6.5 System Permissions & Automation Setup
+
+This section explains how to configure auto-start on login, scheduled daily indexing, and how to resolve the macOS permission dialog that appears when Python runs as a background process.
+
+#### Auto-start on Login (Search Service)
+
+The search service uses launchd's `RunAtLoad + KeepAlive` mechanism to start automatically after login. The installer (`install.sh`) handles this automatically:
+
+1. Generates `~/.local/bin/everythingsearch_start.sh` wrapper script
+2. Copies `com.jigger.everythingsearch.app.plist` to `~/Library/LaunchAgents/`
+3. Registers the service via `launchctl bootstrap`
+
+Once registered, the service starts on every login and restarts automatically if it crashes.
+
+**Manual registration (e.g. after migrating to a new machine)**:
+```bash
+mkdir -p ~/.local/bin
+cp scripts/launchd/com.jigger.everythingsearch.app.plist ~/Library/LaunchAgents/
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jigger.everythingsearch.app.plist
+
+# Verify registration
+launchctl list | grep everythingsearch
+```
+
+> **Why use wrapper scripts instead of direct paths in the plist?**  
+> macOS TCC (Transparency, Consent, and Control) prevents LaunchAgents from using `~/Documents/` paths in plist fields such as `WorkingDirectory` or `StandardOutPath`. The wrapper scripts live in `~/.local/bin/` (unrestricted), and internally `cd` into the project directory before launching gunicorn or Python.
+
+#### Scheduled Indexing (Daily Automatic Incremental Update)
+
+Incremental indexing is controlled by `com.jigger.everythingsearch.plist` and runs daily at **10:00 AM** by default. If the Mac is asleep at that time, launchd will execute the task the next time the machine wakes up.
+
+**Manual registration**:
+```bash
+mkdir -p ~/.local/bin
+cp scripts/launchd/com.jigger.everythingsearch.plist ~/Library/LaunchAgents/
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jigger.everythingsearch.plist
+```
+
+**Change schedule time** (e.g. to 8:30 AM):
+```bash
+# 1. Edit the plist — update Hour and Minute values
+nano ~/Library/LaunchAgents/com.jigger.everythingsearch.plist
+
+# 2. Reload to apply changes
+launchctl bootout gui/$(id -u)/com.jigger.everythingsearch
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jigger.everythingsearch.plist
+
+# Verify
+launchctl list | grep everythingsearch
+```
+
+#### Full Disk Access Authorization (Suppress Permission Dialogs)
+
+**Symptom**: Every time the scheduled indexer runs, macOS shows a dialog: *"python3.11 wants to access data from other apps."* — requiring manual approval each time.
+
+**Cause**: When launchd runs Python as a background process, macOS TCC intercepts any access to protected directories (such as MWeb's `~/Library/...` database files) until the user explicitly grants permission in System Settings.
+
+**Fix: Grant Full Disk Access to Python**
+
+First, find the real Python executable path used by the project:
+```bash
+readlink -f ./venv/bin/python
+# Example output: /opt/homebrew/Cellar/python@3.11/3.11.15/Frameworks/Python.framework/Versions/3.11/bin/python3.11
+```
+
+Then grant access in System Settings:
+
+1. Open **System Settings** → **Privacy & Security** → **Full Disk Access**
+2. Click the **「＋」** button at the bottom left
+3. Press `Cmd+Shift+G` and paste the full path from the command above, then click **Open**
+4. Repeat to also add `/bin/bash` (launchd calls bash first to run the wrapper script)
+5. Make sure both entries are **toggled on**
+
+Once granted, the scheduled indexer will run silently in the background with no permission prompts.
+
+> **Watch out for Homebrew Python upgrades**: When Homebrew upgrades Python's minor version (e.g. `3.11.15` → `3.11.16`), the versioned install path changes. You will need to remove the old entry and add the new path in Full Disk Access. Run `readlink -f ./venv/bin/python` again to get the updated path.
+
+
 
 ## 7. Maintenance and Tuning Guide
 

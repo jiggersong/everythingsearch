@@ -346,7 +346,85 @@ ls -1 logs/incremental_*.log
 tail -n 200 logs/incremental_$(date +%Y-%m-%d).log
 ```
 
----
+### 6.5 系统权限与自动化设置
+
+本节说明如何在 macOS 上配置开机自动启动、定时索引调度，以及解决 Python 后台进程的磁盘访问权限弹框问题。
+
+#### 开机自动启动（搜索服务）
+
+搜索服务通过 launchd 的 `RunAtLoad + KeepAlive` 机制实现开机自启。安装脚本（`install.sh`）会自动完成以下操作：
+
+1. 生成 `~/.local/bin/everythingsearch_start.sh` wrapper 脚本
+2. 将 `com.jigger.everythingsearch.app.plist` 复制到 `~/Library/LaunchAgents/`
+3. 通过 `launchctl bootstrap` 注册服务
+
+注册后，每次登录 macOS 时搜索服务将自动启动，崩溃后也会自动重启。无需手动干预。
+
+**手动注册或重新注册**：
+```bash
+# 如需手动注册（迁移新机器时）
+mkdir -p ~/.local/bin
+cp scripts/launchd/com.jigger.everythingsearch.app.plist ~/Library/LaunchAgents/
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jigger.everythingsearch.app.plist
+
+# 验证是否已注册
+launchctl list | grep everythingsearch
+```
+
+> **为什么通过 wrapper 脚本而非直接写路径？**  
+> macOS TCC（隐私保护）限制 LaunchAgent 不能直接将 `~/Documents/` 下的路径写在 plist 的 `WorkingDirectory` 或 `StandardOutPath` 等字段中。Wrapper 脚本放在 `~/.local/bin/`（不受限制），由 bash 执行后在内部 `cd` 到项目目录，从而绕过限制。
+
+#### 定时索引（每日自动增量更新）
+
+增量索引由 `com.jigger.everythingsearch.plist` 控制，默认每天 **10:00** 执行，电脑睡眠期间错过的任务会在唤醒后自动补执行。
+
+**手动注册或重新注册**：
+```bash
+mkdir -p ~/.local/bin
+cp scripts/launchd/com.jigger.everythingsearch.plist ~/Library/LaunchAgents/
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jigger.everythingsearch.plist
+```
+
+**修改执行时间**（例如改为 8:30）：
+```bash
+# 1. 编辑 plist，修改 Hour 和 Minute 的值
+nano ~/Library/LaunchAgents/com.jigger.everythingsearch.plist
+
+# 2. 重新加载使配置生效
+launchctl bootout gui/$(id -u)/com.jigger.everythingsearch
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jigger.everythingsearch.plist
+
+# 验证
+launchctl list | grep everythingsearch
+```
+
+#### 完全磁盘访问授权（解决权限弹框）
+
+**问题现象**：每次定时索引执行时，macOS 弹出"python3.11 想访问其他 App 的数据"弹框，需要手动点击"允许"。
+
+**原因**：launchd 以后台进程方式运行 Python，macOS 的 TCC（透明度、同意和控制）机制会拦截对受保护目录（如 MWeb 的 `~/Library/...` 数据库）的访问，直到用户在系统设置中显式授权。
+
+**解决方法：授予 Python 完全磁盘访问权限**
+
+首先确认实际使用的 Python 可执行文件路径：
+```bash
+readlink -f ./venv/bin/python
+# 示例输出：/opt/homebrew/Cellar/python@3.11/3.11.15/Frameworks/Python.framework/Versions/3.11/bin/python3.11
+```
+
+然后在系统设置中完成授权：
+
+1. 打开 **系统设置** → **隐私与安全性** → **完全磁盘访问**
+2. 点击左下角「**＋**」按钮
+3. 按 `Cmd+Shift+G` 输入上方命令输出的完整路径，点击「打开」
+4. 同样方式再添加 `/bin/bash`（launchd 先通过 bash 调用 wrapper 脚本）
+5. 确保两个条目的开关均处于「**开启**」状态
+
+授权完成后，定时索引将静默在后台运行，不再弹出权限确认框。
+
+> **注意 Homebrew Python 升级**：Homebrew 升级 Python 小版本时（如 `3.11.15` → `3.11.16`），安装路径中的版本号会变，需重新在"完全磁盘访问"中移除旧条目、添加新路径。可以通过再次运行 `readlink -f ./venv/bin/python` 确认最新路径。
+
+
 
 ## 7. 维护与调参指南
 
