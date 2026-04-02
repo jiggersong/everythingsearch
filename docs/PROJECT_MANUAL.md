@@ -257,7 +257,7 @@ Flask 应用路由保持不变：
 - 通过 `~/.local/bin/everythingsearch_start.sh` 启动 gunicorn，端口 8000
 
 **定时索引**（`com.jigger.everythingsearch.plist`）：
-- 每天 10:00 执行增量索引，睡眠唤醒后补执行
+- 每 **30 分钟**执行一次增量索引，睡眠唤醒后补执行
 - 通过 `~/.local/bin/everythingsearch_index.sh` 启动 `python -m everythingsearch.incremental`
 
 **管理命令**（推荐使用 `launchctl bootstrap/bootout` 而非旧版 `load/unload`）：
@@ -376,7 +376,7 @@ launchctl list | grep everythingsearch
 
 #### 定时索引（每日自动增量更新）
 
-增量索引由 `com.jigger.everythingsearch.plist` 控制，默认每天 **10:00** 执行，电脑睡眠期间错过的任务会在唤醒后自动补执行。
+增量索引由 `com.jigger.everythingsearch.plist` 控制，默认每 **30 分钟**执行一次，电脑睡眠期间错过的任务会在唤醒后自动补执行。
 
 **手动注册或重新注册**：
 ```bash

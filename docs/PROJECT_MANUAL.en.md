@@ -254,7 +254,7 @@ Run modes:
 - Starts gunicorn via `~/.local/bin/everythingsearch_start.sh`
 
 **Scheduled indexing** (`com.jigger.everythingsearch.plist`):
-- runs daily at 10:00
+- runs every **30 minutes**
 - starts `python -m everythingsearch.incremental` via wrapper
 
 **Management commands**:
@@ -358,7 +358,7 @@ launchctl list | grep everythingsearch
 
 #### Scheduled Indexing (Daily Automatic Incremental Update)
 
-Incremental indexing is controlled by `com.jigger.everythingsearch.plist` and runs daily at **10:00 AM** by default. If the Mac is asleep at that time, launchd will execute the task the next time the machine wakes up.
+Incremental indexing is controlled by `com.jigger.everythingsearch.plist` and runs every **30 minutes** by default. If the Mac is asleep at that time, launchd will execute the task the next time the machine wakes up.
 
 **Manual registration**:
 ```bash

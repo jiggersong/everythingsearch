@@ -10,12 +10,7 @@
         <!-- 安装脚本 install.sh 会自动生成此路径，手动安装请替换为你的实际路径 -->
         <string>/Users/YOUR_USERNAME/.local/bin/everythingsearch_index.sh</string>
     </array>
-    <key>StartCalendarInterval</key>
-    <dict>
-        <key>Hour</key>
-        <integer>10</integer>
-        <key>Minute</key>
-        <integer>0</integer>
-    </dict>
+    <key>StartInterval</key>
+    <integer>1800</integer>
 </dict>
 </plist>
