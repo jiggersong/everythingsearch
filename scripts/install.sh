@@ -270,7 +270,7 @@ PLIST_EOF
     fi
 
     echo ""
-    echo -e "${BLUE}[可选]${NC} 是否安装每日自动增量索引? (每天 10:00 AM 自动执行)"
+    echo -e "${BLUE}[可选]${NC} 是否安装定时自动增量索引? (约每 30 分钟一次；登录后也会尽快跑一轮)"
     echo -n "  安装定时索引任务? (y/N): "
     read -r install_cron
 
@@ -302,20 +302,17 @@ WRAPPER_EOF
         <string>/bin/bash</string>
         <string>${wrapper_dir}/everythingsearch_index.sh</string>
     </array>
-    <key>StartCalendarInterval</key>
-    <dict>
-        <key>Hour</key>
-        <integer>10</integer>
-        <key>Minute</key>
-        <integer>0</integer>
-    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StartInterval</key>
+    <integer>1800</integer>
 </dict>
 </plist>
 PLIST_EOF
         launchctl bootout gui/$(id -u)/com.jigger.everythingsearch 2>/dev/null || true
         sleep 1
         launchctl bootstrap gui/$(id -u) "$plist_target"
-        log_ok "定时任务已安装 (每天 10:00 AM 执行增量索引)"
+        log_ok "定时任务已安装 (约每 30 分钟执行增量索引；修改 plist 后需 bootout + bootstrap 才生效)"
         echo "  Wrapper: ${wrapper_dir}/everythingsearch_index.sh"
         echo "  Plist:   $plist_target"
     else

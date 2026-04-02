@@ -10,6 +10,8 @@
         <!-- 安装脚本 install.sh 会自动生成此路径，手动安装请替换为你的实际路径 -->
         <string>/Users/YOUR_USERNAME/.local/bin/everythingsearch_index.sh</string>
     </array>
+    <key>RunAtLoad</key>
+    <true/>
     <key>StartInterval</key>
     <integer>1800</integer>
 </dict>

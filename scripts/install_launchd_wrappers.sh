@@ -86,13 +86,10 @@ cat > "${LAUNCH_AGENTS}/com.jigger.everythingsearch.plist" << PLIST_INDEX
         <string>/bin/bash</string>
         <string>${WRAPPER_DIR}/everythingsearch_index.sh</string>
     </array>
-    <key>StartCalendarInterval</key>
-    <dict>
-        <key>Hour</key>
-        <integer>10</integer>
-        <key>Minute</key>
-        <integer>0</integer>
-    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StartInterval</key>
+    <integer>1800</integer>
 </dict>
 </plist>
 PLIST_INDEX
@@ -101,5 +98,5 @@ echo "注册 launchd..."
 launchctl bootstrap "gui/${UID_GUI}" "${LAUNCH_AGENTS}/com.jigger.everythingsearch.app.plist"
 launchctl bootstrap "gui/${UID_GUI}" "${LAUNCH_AGENTS}/com.jigger.everythingsearch.plist"
 
-echo "完成。搜索服务: ${LABEL_APP}，定时索引: ${LABEL_INDEX}（每日 10:00）。"
+echo "完成。搜索服务: ${LABEL_APP}，定时索引: ${LABEL_INDEX}（约每 30 分钟；修改 plist 后请 bootout + bootstrap）。"
 echo "查看状态: ./scripts/run_app.sh status"
