@@ -13,9 +13,9 @@ It lets users find local documents, code, and materials quickly using natural la
 - **Hybrid indexing**: Indexes both file content and filenames, so you can find information that lives inside files, not just in names
 - **Position weighting**: Matches in filenames and headings rank higher
 - **Caching model**: The first full index after install can take a while while the disk is scanned; afterward, incremental updates keep the index fast
-- **Privacy**: All data and operations stay on your machine; a cloud API is used only when generating embeddings
-- **Web UI**: Search in the browser with a familiar, Google-like flow; filter by file time for tighter results
-- **MWeb support**: If you use MWeb for notes and Markdown, flip one switch to integrate and index your MWeb content in one step
+- **Privacy**: All data and operations stay on your machine; a cloud API is used only when generating embeddings, so you need not worry about data security for local search and storage
+- **Web UI**: Search in the browser the way you use Google to find information on the web—except your files are local, with a simple, friendly flow. Filter by file time for more precise results
+- **MWeb support**: If you are already using MWeb for your notes and as a Markdown editor, flip one switch to take over integration and index your MWeb content in one step
 
 ---
 
@@ -93,7 +93,7 @@ EverythingSearch/
 │   ├── request_validation.py # Input validation protocol (unified HTTP 400 contract)
 │   ├── file_access.py        # Strict file access boundary; anti path traversal
 │   ├── infra/                # Infrastructure layer
-│   │   └── settings.py       # Typed config accessors
+│   │   └── settings.py       # Strongly typed config extraction / accessors
 │   ├── search.py             # Core search algorithms
 │   ├── indexer.py            # Full index build
 │   ├── incremental.py        # Incremental indexing
@@ -142,7 +142,7 @@ Local settings are concentrated here. Load order: environment variables > reposi
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `MY_API_KEY` | empty string or `DASHSCOPE_API_KEY` env var | Legacy-compatible DashScope API key field; prefer environment variables |
+| `MY_API_KEY` | empty string or `DASHSCOPE_API_KEY` env var | Legacy-compatible Alibaba Tongyi DashScope API key field; prefer environment variables |
 | `TARGET_DIR` | `/path/to/documents` or `["/path1", "/path2"]` | Root directory or list of roots to index; `TARGET_DIR` env var wins |
 | `ENABLE_MWEB` | `False` / `True` | One-switch seamless built-in MWeb note integration; when on, the system takes over automatic export |
 | `MWEB_LIBRARY_PATH` | Default macOS library path | MWeb main database directory (optional override) |
@@ -274,11 +274,14 @@ Routes:
 **Management** (prefer `launchctl bootstrap` / `bootout` over legacy `load` / `unload`):
 
 ```bash
+# Status
 launchctl list | grep everythingsearch
 
+# Reload search service
 launchctl bootout gui/$(id -u)/com.jigger.everythingsearch.app
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jigger.everythingsearch.app.plist
 
+# Reload scheduled indexing
 launchctl bootout gui/$(id -u)/com.jigger.everythingsearch
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jigger.everythingsearch.plist
 ```
@@ -467,7 +470,7 @@ Set `EMBEDDING_MODEL` to a DashScope-supported name, then full rebuild; cache ke
 
 ```bash
 launchctl bootout gui/$(id -u)/com.jigger.everythingsearch
-cp com.jigger.everythingsearch.plist ~/Library/LaunchAgents/
+cp scripts/launchd/com.jigger.everythingsearch.plist ~/Library/LaunchAgents/
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jigger.everythingsearch.plist
 ```
 

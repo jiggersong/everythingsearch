@@ -10,9 +10,9 @@ EverythingSearch is a **local semantic file search engine for macOS**. It offers
 - **Hybrid indexing**: Indexes both file content and filenames, so you can find information that lives inside files, not just in names
 - **Position weighting**: Matches in filenames and headings rank higher
 - **Caching model**: The first full index after install can take a while while the disk is scanned; afterward, incremental updates keep the index fast
-- **Privacy**: All data and operations stay on your machine; a cloud API is used only when generating embeddings—no separate data-privacy concern for search storage
-- **Web UI**: Search in the browser with a familiar, Google-like flow; filter by file time for tighter results
-- **MWeb support**: If you use MWeb for notes and Markdown, flip one switch to integrate and index your MWeb content in one step
+- **Privacy**: All data and operations stay on your machine; a cloud API is used only when generating embeddings, so you need not worry about data security for local search and storage
+- **Web UI**: Search in the browser the way you use Google to find information on the web—except your files are local, with a simple, friendly flow. Filter by file time for more precise results
+- **MWeb support**: If you are already using MWeb for your notes and as a Markdown editor, flip one switch to take over integration and index your MWeb content in one step
 
 ---
 
@@ -53,7 +53,7 @@ After installation, complete these three system-level configurations for stable,
 | No | Document | Role | Best For | What You Get |
 | --- | --- | --- | --- | --- |
 | 1 | [`INSTALL.en.md`](docs/INSTALL.en.md) | Installation and operations guide | First install, new machine migration, environment setup | Prerequisites, API key setup, install flow, launchd wrapper scripts, day-to-day commands |
-| 2 | [`PROJECT_MANUAL.en.md`](docs/PROJECT_MANUAL.en.md) | Technical reference manual | Development, maintenance, customization | Architecture, module boundaries, configuration matrix, indexing/search flow, tuning and deployment |
+| 2 | [`PROJECT_MANUAL.en.md`](docs/PROJECT_MANUAL.en.md) | Technical reference manual | Development, maintenance, customization or extension | Architecture, module boundaries, configuration matrix, indexing/search flow, tuning and deployment |
 | 3 | [`UI_DESIGN_APPLE_GOOGLE.en.md`](docs/UI_DESIGN_APPLE_GOOGLE.en.md) | Web UI design notes | UI upkeep, HIG/Material alignment, accessibility and motion | Design principles and tokens; bilingual pages linked at the top |
 
 ## Technical Manual Scope
