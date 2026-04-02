@@ -5,19 +5,17 @@
 ## 1. Project Overview
 
 EverythingSearch is a **local semantic file search engine** running on macOS.
-It allows users to quickly find local documents, code, and knowledge files using natural language or keywords.
+It lets users find local documents, code, and materials quickly using natural language or keywords.
 
 ### Core Capabilities
 
-- **Semantic search**: understands intent beyond exact keyword matching
-- **Hybrid indexing**: indexes both file content and filenames, so media files can still be found by name
-- **Seamless MWeb Integration (Optional)**: Enable built-in MWeb note syncing with a single switch. Fully managed extraction and retrieval labeled in UI; disable entirely with `ENABLE_MWEB=False`
-- **Position weighting**: keywords in filename/headings receive higher ranking
-- **Embedding cache**: avoids repeated API embedding calls; SQLite uses WAL and connection pooling
-- **Incremental indexing**: updates only new/modified/deleted files on each run
-- **Search memory cache and health API**: repeated queries can hit memory cache; includes `/api/health` and `POST /api/cache/clear`
-- **Privacy-first with controlled cloud usage**: index and vector DB stay local (ChromaDB); cloud API is used only for embedding generation
-- **Web UI**: source filter, sorting, pagination, highlights, Finder reveal
+- **File search**: Fuzzy keyword search across all files with sub-second results—addressing the common pain that macOS built-in search is often ineffective
+- **Hybrid indexing**: Indexes both file content and filenames, so you can find information that lives inside files, not just in names
+- **Position weighting**: Matches in filenames and headings rank higher
+- **Caching model**: The first full index after install can take a while while the disk is scanned; afterward, incremental updates keep the index fast
+- **Privacy**: All data and operations stay on your machine; a cloud API is used only when generating embeddings
+- **Web UI**: Search in the browser with a familiar, Google-like flow; filter by file time for tighter results
+- **MWeb support**: If you use MWeb for notes and Markdown, flip one switch to integrate and index your MWeb content in one step
 
 ---
 
@@ -26,38 +24,42 @@ It allows users to quickly find local documents, code, and knowledge files using
 ```
 ┌──────────────────────────────────────────────────────┐
 │                    WebUI (Browser)                    │
-│   index.html · search/filter/sort/paging/highlight    │
+│   index.html · search / filter / sort / paging /      │
+│   highlights / reveal in Finder                       │
 └───────────────────────┬──────────────────────────────┘
                         │ HTTP (localhost:8000)
-┌─────────────────────────▼────────────────────────────┐
-│         Flask Routing System (everythingsearch.app)  │
-│ Request validation / 400 intercept (request_validation)│
-└─────────────────────────┬────────────────────────────┘
-                          │
-┌─────────────────────────▼────────────────────────────┐
-│             Core Service Layer (services/)           │
-│         SearchService · FileService · HealthService  │
-│        (Strict file_access / traversal defense)      │
-└─────────────────────────┬────────────────────────────┘
-                          │
-┌─────────────────────────▼────────────────────────────┐
-│            Search Engine (everythingsearch.search)   │
-│  vector search · position weight · keyword fallback   │
+┌───────────────────────▼──────────────────────────────┐
+│         Flask routing (everythingsearch.app)          │
+│   Request validation; unified 400 intercept             │
+│   (request_validation)                                │
 └───────────────────────┬──────────────────────────────┘
                         │
 ┌───────────────────────▼──────────────────────────────┐
-│            ChromaDB (local vector database)           │
-│  collection: local_files · cosine distance            │
+│             Core service layer (services/)            │
+│         SearchService · FileService · HealthService   │
+│   (file_access: unified traversal defense & path      │
+│    resolution guard)                                  │
+└───────────────────────┬──────────────────────────────┘
+                        │
+┌───────────────────────▼──────────────────────────────┐
+│           Search engine (everythingsearch.search)     │
+│   Vector search · position weights · keyword fallback │
+│   · per-file dedup · source filter                    │
+└───────────────────────┬──────────────────────────────┘
+                        │
+┌───────────────────────▼──────────────────────────────┐
+│            ChromaDB (local vector database)          │
+│   collection: local_files · cosine distance           │
 └───────────────────────┬──────────────────────────────┘
                         │
 ┌───────────────────────▼──────────────────────────────┐
 │      Indexing (indexer / incremental modules)         │
-│  scan · parse · heading extract · chunk · embedding   │
+│   Scan · parse · heading extract · chunk · embed     │
 └───────────────────────┬──────────────────────────────┘
                         │
 ┌───────────────────────▼──────────────────────────────┐
-│      Embedding Service (embedding_cache module)       │
-│  CachedEmbeddings -> SQLite cache -> DashScope API    │
+│      Embedding service (embedding_cache module)       │
+│   CachedEmbeddings → SQLite cache → DashScope API     │
 └──────────────────────────────────────────────────────┘
 ```
 
@@ -65,13 +67,13 @@ It allows users to quickly find local documents, code, and knowledge files using
 
 | Component | Choice | Description |
 |-----------|--------|-------------|
-| Language | Python 3.11 | Recommended 3.11 (or 3.10); use virtualenv |
-| Orchestration | LangChain | Document load/chunk/vector pipeline |
+| Language | Python 3.11 | Recommended 3.11 (or 3.10); install dependencies in a virtual environment |
+| Orchestration | LangChain | Document load, chunking, and vectorization pipeline |
 | Embedding model | Aliyun DashScope text-embedding-v2 | Strong Chinese understanding, low cost |
-| Vector database | ChromaDB | Local file-based DB, no Docker required |
-| Web framework | Flask + Gunicorn | Dev/prod HTTP service |
-| File parsing | pypdf / python-docx / openpyxl / python-pptx | Parse PDF/Word/Excel/PPT |
-| Frontend | Single HTML + CSS + JS file | No Node.js build required |
+| Vector database | ChromaDB | Local file-based database; no Docker required |
+| Web framework | Flask + Gunicorn | Dev / production HTTP service |
+| File parsing | pypdf / python-docx / openpyxl / python-pptx | Extract content from PDF, Word, Excel, PPT |
+| Frontend | Single-file HTML + CSS + JS | No Node.js build step |
 
 ---
 
@@ -79,44 +81,44 @@ It allows users to quickly find local documents, code, and knowledge files using
 
 ```text
 EverythingSearch/
-├── config.py                 # Local config (copied from etc/config.example.py)
+├── config.py                 # Local config (copy from etc/config.example.py; do not commit secrets)
 ├── etc/
 │   └── config.example.py     # Config template
 ├── everythingsearch/         # Python application package
-│   ├── app.py                # Flask web routing entry
-│   ├── services/             # Core service layer (abstracting business logic)
-│   │   ├── file_service.py   # File lifecycle & access control
-│   │   ├── search_service.py # Search cache & concurrency
-│   │   └── health_service.py # Health & warmup orchestration
-│   ├── request_validation.py # Request logic parsing (unified HTTP 400 rules)
-│   ├── file_access.py        # Strict file access boundary & anti-traversal
+│   ├── app.py                # Flask entry and app assembly
+│   ├── services/             # Business service layer (decoupled core logic)
+│   │   ├── file_service.py   # File lifecycle control
+│   │   ├── search_service.py # Search cache, concurrency, scheduling
+│   │   └── health_service.py # Liveness checks and warmup scheduling
+│   ├── request_validation.py # Input validation protocol (unified HTTP 400 contract)
+│   ├── file_access.py        # Strict file access boundary; anti path traversal
 │   ├── infra/                # Infrastructure layer
-│   │   ├── settings.py       # (typed config injection)
-│   ├── search.py             # Base search engine algorithm
-│   ├── indexer.py            # Full indexing
+│   │   └── settings.py       # Typed config accessors
+│   ├── search.py             # Core search algorithms
+│   ├── indexer.py            # Full index build
 │   ├── incremental.py        # Incremental indexing
 │   ├── embedding_cache.py    # Embedding cache layer
 │   ├── templates/
 │   │   └── index.html
 │   └── static/
 │       └── icon.png
-├── data/                     # Local data/cache (default paths, do not commit)
+├── data/                     # Local data and cache (default paths; do not commit)
 │   ├── chroma_db/            # ChromaDB
 │   ├── embedding_cache.db
 │   ├── scan_cache.db
 │   └── index_state.db
-├── logs/                     # Runtime and scheduled task logs
+├── logs/                     # Runtime and scheduled job logs
 ├── scripts/
 │   ├── install.sh
-│   ├── run_app.sh            # Service management (start/stop/restart/dev)
+│   ├── run_app.sh            # Search service control (start/stop/restart/dev)
 │   ├── run_tests.sh
-│   └── launchd/              # launchd plist reference copies
+│   └── launchd/              # Reference launchd plist copies
 ├── docs/
-│   ├── INSTALL.en.md
-│   ├── PROJECT_MANUAL.en.md
-│   ├── UI_DESIGN_APPLE_GOOGLE.en.md   # Web UI design notes (English)
-│   └── UI_DESIGN_APPLE_GOOGLE.md      # Web UI design notes (Chinese)
-├── Makefile                  # make shortcuts (make help lists targets)
+│   ├── INSTALL.md
+│   ├── PROJECT_MANUAL.md
+│   ├── UI_DESIGN_APPLE_GOOGLE.md      # Web UI design notes (Chinese)
+│   └── UI_DESIGN_APPLE_GOOGLE.en.md   # Web UI design notes (English)
+├── Makefile                  # make shortcuts (`make help` lists targets)
 ├── requirements.txt
 ├── requirements/
 │   ├── base.txt
@@ -126,142 +128,157 @@ EverythingSearch/
 └── venv/
 
 ~/.local/bin/
-├── everythingsearch_start.sh  # launchd wrapper for app service
-└── everythingsearch_index.sh  # launchd wrapper for incremental indexing
+├── everythingsearch_start.sh  # App launchd wrapper (created at install)
+└── everythingsearch_index.sh  # Incremental index launchd wrapper (created at install)
 ```
 
 ---
 
 ## 4. Core Module Details
 
-### 4.1 `config.py` - Configuration Center
+### 4.1 `config.py` — Configuration hub
 
-Local compatibility settings mainly live in this file; runtime load order is: environment variables > repository-root `config.py` > safe in-code defaults.
+Local settings are concentrated here. Load order: environment variables > repository-root `config.py` > safe in-code defaults.
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `MY_API_KEY` | empty string or `DASHSCOPE_API_KEY` env var | Legacy-compatible DashScope API key field; prefer env var first |
-| `TARGET_DIR` | `/path/to/documents` or `["/path1", "/path2"]` | Root directory/directories to index; `TARGET_DIR` env var takes precedence |
-| `ENABLE_MWEB` | `False/True` | Enables seamless built-in MWeb engine integration for automatic exports. |
-| `MWEB_LIBRARY_PATH`| macOS default path | [Optional] Target MWeb DB path (fallback for gigks) |
-| `MWEB_DIR` | `data/mweb_export` | Fully managed internal extraction vault |
-| `INDEX_STATE_DB` | `./index_state.db` | Incremental state database |
-| `SCAN_CACHE_PATH` | `./scan_cache.db` | Scan/parse cache DB |
-| `EMBEDDING_MODEL` | `text-embedding-v2` | Embedding model |
-| `CHUNK_SIZE` | `500` | Text chunk size (chars) |
-| `CHUNK_OVERLAP` | `80` | Chunk overlap (chars) |
-| `MAX_CONTENT_LENGTH` | `20000` | Max indexed chars per file |
-| `SEARCH_TOP_K` | `250` | Candidate chunks from vector retrieval |
+| `MY_API_KEY` | empty string or `DASHSCOPE_API_KEY` env var | Legacy-compatible DashScope API key field; prefer environment variables |
+| `TARGET_DIR` | `/path/to/documents` or `["/path1", "/path2"]` | Root directory or list of roots to index; `TARGET_DIR` env var wins |
+| `ENABLE_MWEB` | `False` / `True` | One-switch seamless built-in MWeb note integration; when on, the system takes over automatic export |
+| `MWEB_LIBRARY_PATH` | Default macOS library path | MWeb main database directory (optional override) |
+| `MWEB_DIR` | `data/mweb_export` | Managed export landing zone for MWeb notes |
+| `INDEX_STATE_DB` | `./index_state.db` | Incremental indexing state database |
+| `SCAN_CACHE_PATH` | `./scan_cache.db` | Scan/parse cache (skip unchanged files) |
+| `EMBEDDING_MODEL` | `text-embedding-v2` | Embedding model name |
+| `CHUNK_SIZE` | `500` | Text chunk size (characters) |
+| `CHUNK_OVERLAP` | `80` | Chunk overlap (characters) |
+| `MAX_CONTENT_LENGTH` | `20000` | Max characters indexed per file |
+| `SEARCH_TOP_K` | `250` | Vector retrieval candidate chunks (higher = more recall, slower) |
 | `SCORE_THRESHOLD` | `0.45` | Cosine distance threshold (smaller = stricter) |
 | `POSITION_WEIGHTS` | `filename:0.6, heading:0.8, content:1.0` | Position weighting factors |
-| `KEYWORD_FREQ_BONUS` | `0.03` | Keyword frequency bonus |
+| `KEYWORD_FREQ_BONUS` | `0.03` | Keyword frequency bonus coefficient |
 
-**API key recommendation**:
-- Prefer environment variable `DASHSCOPE_API_KEY` over hardcoding key in file
-- The template no longer ships with a runnable placeholder secret; empty means "not configured"
-- Missing key intentionally causes clear startup/indexing errors
+**API key best practices**
 
-### 4.2 `indexer.py` - Index Builder
+- Prefer `DASHSCOPE_API_KEY` in the environment instead of a real key in `config.py` (especially when copying the project to another machine)
+- The template does not ship a runnable fake default; empty means “not configured,” not an error by itself
+- If the key is missing, indexing and search fail with instructions—this is expected
 
-**File scan** recursively walks `TARGET_DIR` and categorizes by extension:
-- **Text files** (`.txt`, `.md`, `.py`, etc.): direct read
-- **Office files** (`.pdf`, `.docx`, `.xlsx`, `.pptx`): subprocess parser (30s timeout)
-- **Media files** (`.jpg`, `.mp4`, etc.): filename-only indexing
+### 4.2 `indexer.py` — Index builder
 
-**Heading extraction** stores headings as independent chunks for ranking bonus.
+**File scan**: Recursively walks `TARGET_DIR` (supports multiple roots), classifying by extension:
 
-**Batch sizing for full indexing**: `calculate_batch_size(docs)` adapts batch size by average content length (roughly 25 / 40 / 55).
+- **Text** (`.txt`, `.md`, `.py`, …): read directly
+- **Office** (`.pdf`, `.docx`, `.xlsx`, `.pptx`): parsed in a subprocess (avoids C-extension deadlocks; 30s timeout)
+- **Media** (`.jpg`, `.mp4`, …): filename only
 
-**MWeb note scan** parses YAML front matter (`title`, `categories`, `mweb_uuid`) and heading structure similarly to files.
+**Heading extraction**: Titles/headings become their own chunks and receive ranking weight in search.
 
-**Each file generates 3 chunk types**:
-1. `chunk_type: "filename"` - filename + path summary
-2. `chunk_type: "heading"` - extracted headings
-3. `chunk_type: "content"` - body chunks (~500 chars each)
+**Full-index batch sizing**: `calculate_batch_size(docs)` picks batch size from average `page_content` length (roughly 25 / 40 / 55 for long / medium / short docs) to balance API throughput and payload size.
 
-### 4.3 `search.py` - Search Engine
+**MWeb notes**: Parses YAML front matter (`title`, `categories`, `mweb_uuid`), extracts Markdown headings, same chunk layout as files.
 
-**Memory cache**: caches results by `(query, source_filter, date_field, date_from, date_to)`; clear via `POST /api/cache/clear` when immediate consistency is needed.
+**Three chunk types per file**:
 
-**Timeout control**: search execution is wrapped in a shared in-process future-based timeout guard, using `SEARCH_TIMEOUT_SECONDS = 30` by default. A timeout is no longer treated as an empty result; it is surfaced as an observable error (`/api/search` returns HTTP 504). Timed-out searches are not written into the in-memory cache. Setting `SEARCH_TIMEOUT_SECONDS = 0` disables timeout enforcement, but single-flight execution and busy protection still remain in effect. Note that a future timeout does not forcibly kill an already running worker thread; the background task may continue until it finishes naturally. While that background task is still draining, new search requests may receive an HTTP 503 "busy" response to avoid unbounded task buildup.
+1. `chunk_type: "filename"` — filename + path summary  
+2. `chunk_type: "heading"` — extracted headings  
+3. `chunk_type: "content"` — body chunks (~500 characters each)
+
+### 4.3 `search.py` — Search engine
+
+**In-memory cache**: Caches results keyed by `(query, source_filter, date_field, date_from, date_to)` with TTL and max size from `CACHE_TTL_SECONDS` and `MAX_CACHE_SIZE` in code. After a reindex or when you need immediate consistency, call `POST /api/cache/clear`. Clearing the in-process vector DB cache also clears this cache.
+
+**Timeout control**: Search runs under a shared in-process future-based timeout (`SEARCH_TIMEOUT_SECONDS = 30` by default). Timeouts are **not** turned into empty results; they surface as observable errors (`/api/search` returns HTTP 504). Timed-out searches are not cached. `SEARCH_TIMEOUT_SECONDS = 0` disables timeout enforcement but keeps single-flight and busy protection. Note: after a future times out, the worker thread may still run to completion—known trade-off; until it finishes, new requests may get HTTP 503 (“busy”) to avoid unbounded queue growth.
 
 Search pipeline:
-1. **Vector retrieval** in one collection with source filter (`all|file|mweb`)
-2. **Position weighting** by `chunk_type`
-3. **Keyword frequency bonus**
-4. **File-level deduplication**
-5. **Keyword exact fallback** using ChromaDB `$contains`
-6. **Merge and rerank**
 
-### 4.4 `embedding_cache.py` - Embedding Cache
+1. **Vector search**: Similarity search in one collection; `source=all|file|mweb` (if `ENABLE_MWEB=False`, only file-sourced results are returned)
+2. **Position weighting**: Multiply scores by `chunk_type` weights; filename matches get ~40% boost
+3. **Keyword frequency bonus**: Extra score when query terms repeat in a chunk
+4. **Per-file dedup**: Keep the best chunk per file
+5. **Keyword exact fallback**: ChromaDB `$contains` for documents containing the literal text (multi-term OR)
+6. **Merge and sort**: Combine exact and semantic hits, sort by score
 
-`CachedEmbeddings` extends `DashScopeEmbeddings` and checks SQLite before API call:
+### 4.4 `embedding_cache.py` — Embedding cache
+
+`CachedEmbeddings` subclasses `DashScopeEmbeddings` and checks SQLite before calling the API:
+
 - Key: `SHA256(model_name + "::" + text)`
-- Value: JSON-serialized vector with `created_at` timestamp
-- Uses **WAL** and **connection pool**
-- Legacy two-column schema auto-migrates with `ALTER TABLE` to add `created_at`
-- Hit/call counters use `PrivateAttr` + lock for safety
+- Value: JSON-serialized vector; `created_at` (Unix timestamp) on write
+- **WAL** mode and a **connection pool** (fixed pool size); legacy two-column tables get `created_at` via `ALTER TABLE`
+- Hit/call counters use `PrivateAttr` + `threading.Lock` so Pydantic defaults do not deep-copy badly
+- After the first full index, later rebuilds rarely need API calls
 
-### 4.5 `everythingsearch.incremental` - Incremental Indexing
+### 4.5 `everythingsearch.incremental` — Incremental indexing
 
-Tracks `(filepath, mtime, source_type)` in `file_index`:
-- **new file**: index and insert
-- **modified file**: delete old chunks then reindex
-- **deleted file**: remove from ChromaDB and state DB
-- **unchanged file**: skip
+SQLite table `file_index` tracks `(filepath, mtime, source_type)`:
 
-**MWeb optional switch**:
-- With `ENABLE_MWEB=False`, no MWeb export/scan is executed
+- **New file**: embed and write to ChromaDB  
+- **Modified** (mtime changed): delete old chunks, reindex  
+- **Deleted** (missing on disk): remove from ChromaDB and state table  
+- **Unchanged**: skip  
 
-Run modes:
+**MWeb toggle**:
+
+- `ENABLE_MWEB = False`: no export script, no MWeb directory scan, no MWeb source on the search UI
+
+Run:
+
 ```bash
-python -m everythingsearch.incremental          # incremental update
+python -m everythingsearch.incremental          # incremental
 python -m everythingsearch.incremental --full   # full rebuild
-# or (from repo root):
+# or from repo root:
 ./venv/bin/python everythingsearch/incremental.py
 ```
 
-> After indexing, restart app to load fresh data: `./scripts/run_app.sh restart`
+> After indexing, restart the search service to load new data: `./scripts/run_app.sh restart`
 
-### 4.6 `everythingsearch.app` & Service Orchestration
+### 4.6 `everythingsearch.app` and service layer
 
-Recent updates significantly slimmed down `app.py`. It delegates core business logic to the `services/` layer and uses `request_validation.py` to filter all invalid JSON payloads directly into standard HTTP `400 Bad Request` responses, preventing 500 crashes. The underlying `file_access.py` adds a strict boundary: any external read/download/open action is forcefully restricted from traversing outside the indexed directories.
+`app.py` is slim: routes delegate to `services/`, and `request_validation.py` maps bad JSON and invalid parameters to HTTP `400 Bad Request` instead of letting junk hit core code and produce 500s. `file_access.py` enforces that reads, downloads, and open/reveal paths stay inside indexed roots (no traversal).
 
-Flask routes remain consistent:
-- `GET /` - main page
-- `GET /api/search?q=...&source=all|file|mweb` - search API (`limit=1..200` optional)
-- `GET /api/health` - State summary. If `vectordb.status` goes degraded, the top-level `ok` flag strictly returns `false` to maintain explicit monitoring consistency.
-- `POST /api/cache/clear` - clear in-memory search cache
-- `GET /api/file/read?filepath=...` - read text content of files **within indexed roots**
-- `GET /api/file/download?filepath=...` - download a file **within indexed roots**
-- `POST /api/reveal` - reveal file in Finder (secure path validation applied)
-- `POST /api/open` - open file with default app (secure path validation applied)
+Routes:
 
-> Intentionally not provided for security: `/api/config`, `/api/stats`, `/api/reload`.
+- `GET /` — search page  
+- `GET /api/search?q=...&source=all|file|mweb` — search API (optional `limit=1..200` for agents/scripts)  
+- `GET /api/health` — health payload; if `vectordb.status` is not `"ok"`, top-level `ok` is strictly `false` for monitoring consistency  
+- `POST /api/cache/clear` — clear **in-memory** search cache  
+- `GET /api/file/read?filepath=...` — read text from a file **under indexed roots**  
+- `GET /api/file/download?filepath=...` — download a file **under indexed roots**  
+- `POST /api/reveal` — show file in Finder  
+- `POST /api/open` — open file with default app  
 
-Run modes:
-- Dev: `./venv/bin/python -m everythingsearch.app` or `./scripts/run_app.sh dev`
-- Background: `./scripts/run_app.sh start` (gunicorn)
-- Management: `./scripts/run_app.sh stop|restart|status`
+> For security, these are **not** exposed: `/api/config`, `/api/stats`, `/api/reload`.  
+> After rebuilding the index, restart the search service: `./scripts/run_app.sh restart`
 
-### 4.7 launchd Background Services
+**How to run**
 
-> **macOS TCC limitation**: LaunchAgent cannot directly access scripts/log paths under `~/Documents` on newer macOS versions.
-> Wrapper scripts under `~/.local/bin/` are used to `cd` into project and start gunicorn/incremental jobs.
+- Dev: `./venv/bin/python -m everythingsearch.app` or `./scripts/run_app.sh dev`  
+- Daemon: `./scripts/run_app.sh start` (gunicorn background)  
+- Control: `./scripts/run_app.sh stop|restart|status`
 
-**App service** (`com.jigger.everythingsearch.app.plist`):
-- `RunAtLoad` + `KeepAlive`
-- Starts gunicorn via `~/.local/bin/everythingsearch_start.sh`
+### 4.7 launchd background services
+
+> **macOS TCC**: On macOS Ventura and later, `~/Documents` is protected. LaunchAgent processes **cannot** use scripts, `WorkingDirectory`, or log paths under that tree directly. Plists therefore call wrapper scripts in `~/.local/bin/`—bash `cd`s into the project and starts gunicorn or incremental indexing. `StandardOutPath` / `StandardErrorPath` in the plist point at `/tmp/`; application logs still go to `logs/` via gunicorn.
+
+**Search service** (`com.jigger.everythingsearch.app.plist`):
+
+- `RunAtLoad` + `KeepAlive`: start at login, restart on crash  
+- `~/.local/bin/everythingsearch_start.sh` starts gunicorn on port 8000  
 
 **Scheduled indexing** (`com.jigger.everythingsearch.plist`):
-- runs every **30 minutes**
-- starts `python -m everythingsearch.incremental` via wrapper
 
-**Management commands**:
+- Runs incremental indexing every **30 minutes**; runs after wake if a run was missed  
+- `~/.local/bin/everythingsearch_index.sh` runs `python -m everythingsearch.incremental`  
+
+**Management** (prefer `launchctl bootstrap` / `bootout` over legacy `load` / `unload`):
+
 ```bash
 launchctl list | grep everythingsearch
+
 launchctl bootout gui/$(id -u)/com.jigger.everythingsearch.app
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jigger.everythingsearch.app.plist
+
 launchctl bootout gui/$(id -u)/com.jigger.everythingsearch
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jigger.everythingsearch.plist
 ```
@@ -270,198 +287,273 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jigger.everythingsea
 
 ## 5. Dependencies
 
-### External Service
-- **DashScope API** for embeddings (`text-embedding-v2`)
-  - obtain by creating API key in DashScope console
-  - cost is low (about RMB 0.0007 / 1000 tokens)
+### External services
 
-### Local Resources
-- macOS 10.15+
-- Python 3.10/3.11 (3.11 recommended)
-- ~500MB disk space for venv and local DBs
-- internet required only during indexing (embedding API calls)
+- **Alibaba Cloud DashScope API**: text embeddings (`text-embedding-v2`); requires a valid API key  
+  - Sign up → enable DashScope → create an API key  
+  - Cost is very low (about ¥0.0007 / 1000 tokens)
+
+### Local resources
+
+- macOS 10.15+  
+- Python 3.10 or 3.11 (3.11 recommended)  
+- ~500MB disk (venv + databases)  
+- Network only while indexing (embedding API); search is offline
 
 ---
 
-## 6. Daily Usage
+## 6. Daily usage
 
 ### Makefile shortcuts
+
 ```bash
 cd /path/to/EverythingSearch
 make help          # list all make targets with one-line descriptions
-make index
-make index-full
-make app
-make app-status
-make app-restart
-make app-stop
+make index         # incremental index
+make index-full    # full rebuild
+make app           # foreground app
+make app-status    # launchd service status
+make app-restart   # restart launchd service
+make app-stop      # stop launchd service
 ```
 
-`make help` is defined in the root `Makefile` and should stay in sync with available targets; use it when you forget command names.
+Keep `make help` in sync with the root `Makefile` `help` target; run `make help` when you forget a subcommand.
 
-### Start search service
+### Start the search service
+
 ```bash
 cd /path/to/EverythingSearch
+# Option A: dev (foreground)
 ./venv/bin/python -m everythingsearch.app
 # or ./scripts/run_app.sh dev
+
+# Option B: daemon (background, restartable)
 ./scripts/run_app.sh start
 ./scripts/run_app.sh status
 ./scripts/run_app.sh restart
 ./scripts/run_app.sh stop
 ```
 
-### Manual incremental indexing
+Open [http://127.0.0.1:8000](http://127.0.0.1:8000) in a browser.
+
+### Manual incremental index
+
 ```bash
 cd /path/to/EverythingSearch
 ./venv/bin/python -m everythingsearch.incremental
+# After indexing, restart to load new data
 ./scripts/run_app.sh restart
 ```
 
-### Full rebuild
+### Full rebuild (first time or after large changes)
+
 ```bash
 cd /path/to/EverythingSearch
 caffeinate -i nohup ./venv/bin/python -m everythingsearch.incremental --full >> "logs/full_rebuild_$(date +%Y-%m-%d).log" 2>&1 &
+# After indexing, restart the search service to load new data
+# ./scripts/run_app.sh restart
 ```
 
-### View incremental logs
+`caffeinate -i` prevents sleep from killing the job.
+
+### Incremental index logs
+
 ```bash
+# Daily file: incremental_YYYY-MM-DD.log (stdout/stderr merged)
 ls -1 logs/incremental_*.log
 tail -n 200 logs/incremental_$(date +%Y-%m-%d).log
 ```
 
-### 6.5 System Permissions & Automation Setup
+### 6.5 System permissions and automation
 
-This section explains how to configure auto-start on login, scheduled daily indexing, and how to resolve the macOS permission dialog that appears when Python runs as a background process.
+Configure login auto-start, scheduled incremental indexing, and stop repeated “Python wants to access…” dialogs for background jobs.
 
-#### Auto-start on Login (Search Service)
+#### Auto-start (search service)
 
-The search service uses launchd's `RunAtLoad + KeepAlive` mechanism to start automatically after login. The installer (`install.sh`) handles this automatically:
+Uses launchd `RunAtLoad + KeepAlive`. `install.sh` typically:
 
-1. Generates `~/.local/bin/everythingsearch_start.sh` wrapper script
-2. Copies `com.jigger.everythingsearch.app.plist` to `~/Library/LaunchAgents/`
-3. Registers the service via `launchctl bootstrap`
+1. Writes `~/.local/bin/everythingsearch_start.sh`  
+2. Copies `com.jigger.everythingsearch.app.plist` to `~/Library/LaunchAgents/`  
+3. Registers with `launchctl bootstrap`  
 
-Once registered, the service starts on every login and restarts automatically if it crashes.
+After registration, the service starts at login and restarts if it crashes.
 
-**Manual registration (e.g. after migrating to a new machine)**:
+**Manual registration (e.g. new machine)**:
+
 ```bash
 mkdir -p ~/.local/bin
 cp scripts/launchd/com.jigger.everythingsearch.app.plist ~/Library/LaunchAgents/
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jigger.everythingsearch.app.plist
 
-# Verify registration
 launchctl list | grep everythingsearch
 ```
 
-> **Why use wrapper scripts instead of direct paths in the plist?**  
-> macOS TCC (Transparency, Consent, and Control) prevents LaunchAgents from using `~/Documents/` paths in plist fields such as `WorkingDirectory` or `StandardOutPath`. The wrapper scripts live in `~/.local/bin/` (unrestricted), and internally `cd` into the project directory before launching gunicorn or Python.
+> **Why wrappers instead of paths in the plist?**  
+> TCC blocks LaunchAgents from putting `~/Documents/` in `WorkingDirectory`, `StandardOutPath`, etc. Wrappers live in `~/.local/bin/`, run under bash, then `cd` into the project.
 
-#### Scheduled Indexing (Daily Automatic Incremental Update)
+#### Scheduled indexing (automatic incremental updates)
 
-Incremental indexing is controlled by `com.jigger.everythingsearch.plist` and runs every **30 minutes** by default. If the Mac is asleep at that time, launchd will execute the task the next time the machine wakes up.
+`com.jigger.everythingsearch.plist` runs incremental indexing every **30 minutes** by default; missed runs execute after wake.
 
 **Manual registration**:
+
 ```bash
 mkdir -p ~/.local/bin
 cp scripts/launchd/com.jigger.everythingsearch.plist ~/Library/LaunchAgents/
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jigger.everythingsearch.plist
 ```
 
-**Change schedule time** (e.g. to 8:30 AM):
-```bash
-# 1. Edit the plist — update Hour and Minute values
-nano ~/Library/LaunchAgents/com.jigger.everythingsearch.plist
+**Change schedule (example: 08:30)**:
 
-# 2. Reload to apply changes
+```bash
+nano ~/Library/LaunchAgents/com.jigger.everythingsearch.plist
+# Edit Hour and Minute
+
 launchctl bootout gui/$(id -u)/com.jigger.everythingsearch
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jigger.everythingsearch.plist
 
-# Verify
 launchctl list | grep everythingsearch
 ```
 
-#### Full Disk Access Authorization (Suppress Permission Dialogs)
+#### Full Disk Access (stop permission popups)
 
-**Symptom**: Every time the scheduled indexer runs, macOS shows a dialog: *"python3.11 wants to access data from other apps."* — requiring manual approval each time.
+**Symptom**: Each scheduled run shows “python3.11 wants to access data from other apps” until you click Allow.
 
-**Cause**: When launchd runs Python as a background process, macOS TCC intercepts any access to protected directories (such as MWeb's `~/Library/...` database files) until the user explicitly grants permission in System Settings.
+**Cause**: launchd runs Python in the background; TCC blocks protected locations (e.g. MWeb under `~/Library/...`) until you grant Full Disk Access.
 
-**Fix: Grant Full Disk Access to Python**
+**Fix**
 
-First, find the real Python executable path used by the project:
+Resolve the real interpreter:
+
 ```bash
 readlink -f ./venv/bin/python
-# Example output: /opt/homebrew/Cellar/python@3.11/3.11.15/Frameworks/Python.framework/Versions/3.11/bin/python3.11
+# e.g. /opt/homebrew/Cellar/python@3.11/3.11.15/Frameworks/Python.framework/Versions/3.11/bin/python3.11
 ```
 
-Then grant access in System Settings:
+In **System Settings → Privacy & Security → Full Disk Access**:
 
-1. Open **System Settings** → **Privacy & Security** → **Full Disk Access**
-2. Click the **「＋」** button at the bottom left
-3. Press `Cmd+Shift+G` and paste the full path from the command above, then click **Open**
-4. Repeat to also add `/bin/bash` (launchd calls bash first to run the wrapper script)
-5. Make sure both entries are **toggled on**
+1. Click **+**  
+2. `Cmd+Shift+G`, paste the path above, **Open**  
+3. Add `/bin/bash` as well (launchd invokes bash → wrapper)  
+4. Enable both toggles  
 
-Once granted, the scheduled indexer will run silently in the background with no permission prompts.
+After that, scheduled indexing runs quietly.
 
-> **Watch out for Homebrew Python upgrades**: When Homebrew upgrades Python's minor version (e.g. `3.11.15` → `3.11.16`), the versioned install path changes. You will need to remove the old entry and add the new path in Full Disk Access. Run `readlink -f ./venv/bin/python` again to get the updated path.
-
-
-
-## 7. Maintenance and Tuning Guide
-
-### Adjust search strictness
-- Decrease `SCORE_THRESHOLD` (e.g. `0.35`) -> stricter
-- Increase `SCORE_THRESHOLD` (e.g. `0.60`) -> more results
-
-### Add more target directories
-Update `TARGET_DIR` then run full rebuild.
-
-### Change embedding model
-Set `EMBEDDING_MODEL` to supported DashScope model and rebuild.
-
-### Change schedule time
-Edit `Hour` and `Minute` in `com.jigger.everythingsearch.plist`, then reload with `launchctl`.
-
-### Add new file extension support
-Update extension sets in `config.py`; add parser branch in `_read_file_worker` if needed.
+> **Homebrew Python upgrades**: Patch bumps (e.g. `3.11.15` → `3.11.16`) change the path—remove the old Full Disk Access entry and add the new path from `readlink -f ./venv/bin/python`.
 
 ---
 
-## 8. Fresh Deployment Guide
+## 7. Maintenance and tuning
 
-Suitable for deploying on a clean Mac.
+### Search strictness
 
-### Prerequisites
-- macOS 10.15+
-- Homebrew installed
-- DashScope API key
+Edit `SCORE_THRESHOLD` in `config.py`:
 
-### Installation Steps
+- Lower (e.g. `0.35`) → stricter, higher-precision set  
+- Higher (e.g. `0.60`) → more results, more noise  
+
+### More roots
+
+Change `TARGET_DIR`, then `python -m everythingsearch.incremental --full`.
+
+### Different embedding model
+
+Set `EMBEDDING_MODEL` to a DashScope-supported name, then full rebuild; cache keys include the model name.
+
+### Cron / plist schedule
+
+1. Edit `Hour` / `Minute` in `com.jigger.everythingsearch.plist`  
+2. Reload:
 
 ```bash
+launchctl bootout gui/$(id -u)/com.jigger.everythingsearch
+cp com.jigger.everythingsearch.plist ~/Library/LaunchAgents/
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jigger.everythingsearch.plist
+```
+
+### New file types
+
+Add extensions in `config.py` (`TEXT_EXTENSIONS`, `OFFICE_EXTENSIONS`, `MEDIA_EXTENSIONS`); add a branch in `indexer.py` `_read_file_worker` if a custom parser is needed.
+
+---
+
+## 8. Fresh deployment checklist
+
+For a brand-new Mac.
+
+### Prerequisites
+
+- macOS 10.15+  
+- Homebrew (if missing: `/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"`)  
+- DashScope API key  
+
+### Steps
+
+```bash
+# 1. Install Python 3.11
 brew install python@3.11
+
+# 2. Place the project (e.g. tarball)
 mkdir -p ~/Documents/code
 cd ~/Documents/code
 tar xzf /path/to/EverythingSearch.tar.gz
+
+# 3. Virtualenv and dependencies
 cd EverythingSearch
 python3.11 -m venv venv
 ./venv/bin/pip install -r requirements.txt
 
-# For runtime-only environments, you can use:
+# Runtime-only option:
 # ./venv/bin/pip install -r requirements/base.txt
-nano config.py
-caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full
-./scripts/run_app.sh start
-```
 
-Optional launchd wrappers:
-```bash
-./scripts/install_launchd_wrappers.sh
+# 4. Edit config — at minimum:
+#    MY_API_KEY: your DashScope API key
+#    TARGET_DIR: directories to index
+#    MWEB_DIR: MWeb export dir (ignore if unused)
+nano config.py
+
+# 5. First full index
+caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full
+
+# 6. Start search service
+./scripts/run_app.sh start
+# or dev: ./venv/bin/python -m everythingsearch.app
+# Browser: http://127.0.0.1:8000
+
+# 7. (Optional) Auto-start at login
+#     TCC: LaunchAgent cannot point straight at ~/Documents; use ~/.local/bin wrappers.
+mkdir -p ~/.local/bin
+cat > ~/.local/bin/everythingsearch_start.sh << 'EOF'
+#!/usr/bin/env bash
+APP_DIR="$HOME/Documents/code/EverythingSearch"
+mkdir -p "$APP_DIR/logs"
+cd "$APP_DIR" || exit 1
+LOG_DATE=$(date +%Y-%m-%d)
+exec >>"$APP_DIR/logs/launchd_app_${LOG_DATE}.log" 2>&1
+exec "$APP_DIR/venv/bin/python" -m gunicorn -c "$APP_DIR/gunicorn.conf.py" \
+  -w 1 -b 127.0.0.1:8000 --timeout 120 everythingsearch.app:app
+EOF
+chmod +x ~/.local/bin/everythingsearch_start.sh
+cp scripts/launchd/com.jigger.everythingsearch.app.plist ~/Library/LaunchAgents/
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jigger.everythingsearch.app.plist
+
+# 8. (Optional) Scheduled incremental indexing
+cat > ~/.local/bin/everythingsearch_index.sh << 'EOF'
+#!/usr/bin/env bash
+APP_DIR="$HOME/Documents/code/EverythingSearch"
+mkdir -p "$APP_DIR/logs"
+cd "$APP_DIR" || exit 1
+LOG_DATE=$(date +%Y-%m-%d)
+exec >>"$APP_DIR/logs/incremental_${LOG_DATE}.log" 2>&1
+exec "$APP_DIR/venv/bin/python" -m everythingsearch.incremental
+EOF
+chmod +x ~/.local/bin/everythingsearch_index.sh
+cp scripts/launchd/com.jigger.everythingsearch.plist ~/Library/LaunchAgents/
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jigger.everythingsearch.plist
 ```
 
 ---
 
 ## 9. Copyright
 
-Copyright (c) 2026 jiggersong. Licensed under the MIT License.
+© 2026 jiggersong. Licensed under the MIT License.

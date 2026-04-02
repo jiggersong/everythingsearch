@@ -2,21 +2,17 @@
 
 [English](README.md) | [中文](README.zh-CN.md)
 
-EverythingSearch is a **local semantic file search engine for macOS**.
-Equivalent to the capabilities of the 'Everything' software on Windows. It supports natural-language and keyword queries over your local files, code, and notes.
+EverythingSearch is a **local semantic file search engine for macOS**. It offers capabilities comparable to the Everything utility on Windows: use natural language or keywords to search local documents, code, materials, and notes.
 
 ## Core Capabilities
 
-- **Semantic search**: understands intent beyond exact keyword matching
-- **Hybrid indexing**: indexes both file content and filenames, so media files can still be found by name
-- **Seamless MWeb Integration (Optional)**: Enable built-in MWeb note syncing with a single switch. Fully managed extraction and retrieval labeled in UI; disable entirely with `ENABLE_MWEB=False`
-- **Position weighting**: keywords in filename/headings receive higher ranking
-- **Embedding cache**: avoids repeated API embedding calls; SQLite uses WAL and connection pooling
-- **Incremental indexing**: updates only new/modified/deleted files on each run
-- **Search memory cache and health API**: repeated queries can hit memory cache; includes `/api/health` and `POST /api/cache/clear`
-- **Robust security boundaries**: enforces strict pre-request validation (HTTP 400 intercepts) and bulletproof path traversal prohibition, ensuring local file operations strictly reside within indexed boundaries
-- **Privacy-first with controlled cloud usage**: index and vector DB stay local (ChromaDB); cloud API is used only for embedding generation
-- **Web UI**: source filter, sorting, pagination, highlights, Finder reveal
+- **File search**: Fuzzy keyword search across all indexed files with sub-second results—addressing the common pain that macOS built-in search is often ineffective
+- **Hybrid indexing**: Indexes both file content and filenames, so you can find information that lives inside files, not just in names
+- **Position weighting**: Matches in filenames and headings rank higher
+- **Caching model**: The first full index after install can take a while while the disk is scanned; afterward, incremental updates keep the index fast
+- **Privacy**: All data and operations stay on your machine; a cloud API is used only when generating embeddings—no separate data-privacy concern for search storage
+- **Web UI**: Search in the browser with a familiar, Google-like flow; filter by file time for tighter results
+- **MWeb support**: If you use MWeb for notes and Markdown, flip one switch to integrate and index your MWeb content in one step
 
 ---
 
@@ -42,38 +38,38 @@ make app-stop      # stop launchd-managed app
 
 ## System Permissions & Automation
 
-After installation, complete these three system-level configurations for fully hands-free background operation:
+After installation, complete these three system-level configurations for stable, hands-free background operation:
 
 | Feature | Description |
 |---------|-------------|
-| **Auto-start on login** | The search service (Web UI) is launched automatically by launchd after you log in |
-| **Scheduled index updates** | Incremental indexing runs every 30 minutes to keep search results up to date |
-| **Full Disk Access** | Grant Python permission to read protected directories (e.g. MWeb data) and avoid repeated permission dialogs |
+| **Auto-start on login** | The search service (Web UI) is launched automatically by launchd after you log in—no manual steps |
+| **Scheduled index updates** | Incremental indexing runs every 30 minutes so search stays up to date |
+| **Full Disk Access** | Grant Python access to protected locations (e.g. MWeb data) so you are not prompted on every run |
 
-> For detailed setup steps, see [`PROJECT_MANUAL.en.md`](docs/PROJECT_MANUAL.en.md) §6.5 "System Permissions & Automation Setup".
+> For detailed setup steps, see [`PROJECT_MANUAL.en.md`](docs/PROJECT_MANUAL.en.md) §6.5 “System Permissions & Automation Setup”.
 
 ## Documentation Matrix
 
-| No  | Document                                                                                                                                    | Role                              | Best For                                                        | What You Get                                                                                                             |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| 1   | [`INSTALL.en.md`](docs/INSTALL.en.md)                                                                                                       | Installation and operations guide | First installation, machine migration, environment setup        | prerequisites, API key setup, install workflow, launchd wrapper setup, daily operation commands                          |
-| 2   | [`PROJECT_MANUAL.en.md`](docs/PROJECT_MANUAL.en.md)                                                                                         | Technical reference manual        | Developers, maintainers, contributors                           | architecture diagram, module boundaries, configuration matrix, indexing/search pipeline, tuning and deployment practices |
-| 3   | [`UI_DESIGN_APPLE_GOOGLE.en.md`](docs/UI_DESIGN_APPLE_GOOGLE.en.md)                                                                           | Web UI design notes               | UI maintenance, HIG/Material alignment, a11y/motion conventions | design principles and tokens; bilingual pages cross-linked at the top                                                  |
+| No | Document | Role | Best For | What You Get |
+| --- | --- | --- | --- | --- |
+| 1 | [`INSTALL.en.md`](docs/INSTALL.en.md) | Installation and operations guide | First install, new machine migration, environment setup | Prerequisites, API key setup, install flow, launchd wrapper scripts, day-to-day commands |
+| 2 | [`PROJECT_MANUAL.en.md`](docs/PROJECT_MANUAL.en.md) | Technical reference manual | Development, maintenance, customization | Architecture, module boundaries, configuration matrix, indexing/search flow, tuning and deployment |
+| 3 | [`UI_DESIGN_APPLE_GOOGLE.en.md`](docs/UI_DESIGN_APPLE_GOOGLE.en.md) | Web UI design notes | UI upkeep, HIG/Material alignment, accessibility and motion | Design principles and tokens; bilingual pages linked at the top |
 
 ## Technical Manual Scope
 
-[`PROJECT_MANUAL.en.md`](docs/PROJECT_MANUAL.en.md) is the canonical technical reference and covers:
+[`PROJECT_MANUAL.en.md`](docs/PROJECT_MANUAL.en.md) is the core technical manual for this project. It covers:
 
-| Area               | Highlights                                                                    |
-| ------------------ | ----------------------------------------------------------------------------- |
-| Core understanding | project goals, core capabilities, architecture overview                       |
-| System design      | architecture diagram, technology stack, repository structure                  |
-| Module internals   | `app`, `search`, `indexer`, `incremental`, `embedding_cache` responsibilities |
-| Runtime behavior   | configuration matrix, indexing/search lifecycle, API surface                  |
-| Operations         | launchd service model, daily commands, tuning, fresh deployment checklist     |
+| Area | Highlights |
+| ---- | ---------- |
+| Foundations | Project goals, core capabilities, overall architecture |
+| System design | Architecture diagram, stack, repository layout |
+| Module internals | Responsibilities of `app`, `search`, `indexer`, `incremental`, `embedding_cache` |
+| Runtime behavior | Configuration matrix, indexing/search lifecycle, API surface |
+| Operations | launchd service model, common commands, tuning, fresh-deployment checklist |
 
-For Chinese docs, switch via the language link at the top of this page.
+Switch to Chinese via the language link at the top of this page.
 
 ## License
 
-[MIT License](LICENSE).
+This project is licensed under the [MIT License](LICENSE).
