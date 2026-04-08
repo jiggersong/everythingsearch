@@ -4,6 +4,17 @@
 
 This file records user-visible changes of EverythingSearch and is intended to stay in sync with GitHub Releases tags.
 
+## [1.5.0] - 2026-04-08
+
+**GitHub Release**: [v1.5.0](https://github.com/jiggersong/everythingsearch/releases/tag/v1.5.0)
+
+### Changed
+
+- Web search defaults to `POST /api/search/nl` when a DashScope API key is configured (intent + search + optional interpretation). Removed the “enable smart semantic search” checkbox and the `NL_SEARCH_ENABLED` setting.
+- Intent JSON supports `slots.match_mode = "exact_focus"` for keyword-first retrieval, falling back to vector + keyword hybrid when no rows survive filtering.
+- Search cache keys include `exact_focus`. Docs across README, `docs/INSTALL*.md`, and `docs/PROJECT_MANUAL*.md` now match the current NL-search, network, launchd, and version behavior; added `docs/NL_SEARCH_AND_WEB_UI.en.md`.
+- Fixed three review findings: `猜你想找` now marks only the global top-ranked result; new searches cancel the previous interpretation stream; new POST routes return `400` for top-level non-object JSON instead of `500`.
+
 ## [1.4.0] - 2026-04-01
 
 **GitHub Release**: [v1.4.0](https://github.com/jiggersong/everythingsearch/releases/tag/v1.4.0)

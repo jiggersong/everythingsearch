@@ -16,6 +16,7 @@ from .request_validation import (
     map_validation_error,
     parse_file_body_request,
     parse_file_query_request,
+    parse_json_object_body,
     parse_search_request,
 )
 from .services.file_service import BinaryPreviewNotAllowedError, FileService
@@ -26,6 +27,10 @@ from .services.search_service import (
     SearchService,
     SearchSourceNotAvailableError,
 )
+from .infra.rate_limiting import rate_limit
+from .services.nl_search_service import NLSearchService, NLSearchServiceError
+from .services.search_interpret_service import SearchInterpretService, SearchInterpretServiceError
+from flask import Response, stream_with_context
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +38,9 @@ _PKG_DIR = os.path.dirname(os.path.abspath(__file__))
 file_service = FileService()
 search_service = SearchService()
 health_service = HealthService(search_service=search_service)
+nl_search_service = NLSearchService()
+search_interpret_service = SearchInterpretService()
+
 app = Flask(
     __name__,
     template_folder=os.path.join(_PKG_DIR, "templates"),
@@ -61,8 +69,12 @@ def before_request():
 
 @app.route("/")
 def index():
-    enable_mweb = get_settings().enable_mweb
-    return render_template("index.html", enable_mweb=enable_mweb)
+    settings = get_settings()
+    return render_template(
+        "index.html",
+        enable_mweb=settings.enable_mweb,
+        smart_search_available=bool(settings.dashscope_api_key),
+    )
 
 
 @app.route("/api/health")
@@ -119,6 +131,144 @@ def api_search():
             "query": parsed_request.query,
             "error": str(e),
         }), 500
+
+
+@app.route("/api/search/nl", methods=["POST"])
+@rate_limit(lambda: get_settings().rate_limit_nl_per_min)
+def api_search_nl():
+    try:
+        req_json = parse_json_object_body(request)
+        message = req_json.get("message", "")
+        # Get UI state to merge later
+        ui_state = {
+            "sidebar_source": req_json.get("sidebar_source"),
+            "date_field": req_json.get("date_field"),
+            "date_from": req_json.get("date_from"),
+            "date_to": req_json.get("date_to"),
+            "limit": req_json.get("limit")
+        }
+        
+        result = nl_search_service.resolve_intent(message, ui_state)
+        
+        if result["kind"] == "out_of_scope":
+            return jsonify({
+                "kind": "capability_notice",
+                "message": result["message"],
+                "capabilities": result["capabilities"]
+            })
+            
+        # It's search_intent
+        resolved = result["resolved"]
+        
+        # Validate source enum
+        source = resolved.get("source")
+        if source not in ("all", "file", "mweb"):
+            source = "all"
+            
+        # Clamp limit
+        limit = resolved.get("limit")
+        if limit is not None:
+            try:
+                limit = max(1, min(int(limit), 200))
+            except (ValueError, TypeError):
+                limit = None
+                
+        # Validate date_field
+        date_field = resolved.get("date_field")
+        if date_field not in ("mtime", "ctime"):
+            date_field = "mtime"
+                
+        exact_focus = bool(resolved.get("exact_focus"))
+
+        sanitized_resolved = {
+            **resolved,
+            "source": source,
+            "limit": limit,
+            "date_field": date_field,
+            "exact_focus": exact_focus,
+        }
+
+        from .request_validation import SearchRequest
+        search_req = SearchRequest(
+            query=resolved["q"],
+            source=source,
+            date_field=date_field,
+            date_from=resolved.get("date_from"),
+            date_to=resolved.get("date_to"),
+            limit=limit,
+            exact_focus=exact_focus,
+        )
+        
+        search_res = search_service.search(search_req)
+        
+        return jsonify({
+            "kind": "search_results",
+            "query": search_res.query,
+            "results": search_res.results,
+            "resolved": sanitized_resolved
+        })
+    except RequestValidationError as exc:
+        error_message, status = map_validation_error(exc)
+        return jsonify({"error": error_message}), status
+    except NLSearchServiceError as exc:
+        return jsonify({"code": exc.code, "error": str(exc), "detail": exc.detail}), exc.status_code
+    except SearchSourceNotAvailableError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except SearchExecutionTimeoutError as exc:
+        return jsonify({"error": str(exc)}), 504
+    except SearchExecutionBusyServiceError as exc:
+        return jsonify({"error": str(exc)}), 503
+    except Exception as e:
+        logger.exception("NL 搜索失败: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/search/interpret/stream", methods=["POST"])
+@rate_limit(lambda: get_settings().rate_limit_interpret_per_min)
+def api_search_interpret_stream():
+    try:
+        req_json = parse_json_object_body(request)
+        user_text = req_json.get("user_text", "")
+        results = req_json.get("results", [])
+
+        def generate():
+            try:
+                for chunk in search_interpret_service.interpret_stream(user_text, results):
+                    yield chunk
+            except Exception as e:
+                logger.exception("生成解读发生异常: %s", e)
+                import json
+                yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
+
+        return Response(stream_with_context(generate()), mimetype="text/event-stream")
+    except RequestValidationError as exc:
+        error_message, status = map_validation_error(exc)
+        return jsonify({"error": error_message}), status
+    except SearchInterpretServiceError as exc:
+        return jsonify({"code": exc.code, "error": str(exc), "detail": exc.detail}), exc.status_code
+    except Exception as e:
+        logger.exception("流式解读失败: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/search/interpret", methods=["POST"])
+@rate_limit(lambda: get_settings().rate_limit_interpret_per_min)
+def api_search_interpret():
+    try:
+        req_json = parse_json_object_body(request)
+        user_text = req_json.get("user_text", "")
+        results = req_json.get("results", [])
+        
+        interpretation = search_interpret_service.interpret(user_text, results)
+        return jsonify({"interpretation": interpretation})
+    except RequestValidationError as exc:
+        error_message, status = map_validation_error(exc)
+        return jsonify({"error": error_message}), status
+    except SearchInterpretServiceError as exc:
+        return jsonify({"code": exc.code, "error": str(exc), "detail": exc.detail}), exc.status_code
+    except Exception as e:
+        logger.exception("解读失败: %s", e)
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/reveal", methods=["POST"])

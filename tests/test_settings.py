@@ -64,7 +64,7 @@ class TestSettings:
 
     def test_enable_mweb_false_ignores_empty_mweb_dir(self, monkeypatch):
         monkeypatch.setattr(config, "ENABLE_MWEB", False)
-        monkeypatch.setattr(config, "MWEB_DIR", "")
+        monkeypatch.setattr(config, "MWEB_DIR", "", raising=False)
 
         settings = get_settings()
 

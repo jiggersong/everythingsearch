@@ -43,7 +43,7 @@ def indexed_client(tmp_path, monkeypatch):
 
     monkeypatch.setattr(config, "TARGET_DIR", [str(indexed_root)])
     monkeypatch.setattr(config, "ENABLE_MWEB", False)
-    monkeypatch.setattr(config, "MWEB_DIR", "")
+    monkeypatch.setattr(config, "MWEB_DIR", "", raising=False)
     reset_settings_cache()
 
     from everythingsearch.app import app
@@ -296,6 +296,62 @@ class TestSearchAPI:
             "results": [],
             "query": "test",
             "error": "搜索执行繁忙，请稍后重试",
+        }
+
+
+class TestNlSearchAPI:
+    """测试自然语言搜索接口。"""
+
+    def test_nl_search_non_object_json_returns_400(self, client):
+        rv = client.post(
+            '/api/search/nl',
+            data=json.dumps([]),
+            content_type='application/json',
+        )
+
+        assert rv.status_code == 400
+        assert rv.get_json() == {
+            "error": "请求体必须是 JSON 对象",
+        }
+
+    def test_nl_search_string_json_returns_400(self, client):
+        rv = client.post(
+            '/api/search/nl',
+            data=json.dumps("hello"),
+            content_type='application/json',
+        )
+
+        assert rv.status_code == 400
+        assert rv.get_json() == {
+            "error": "请求体必须是 JSON 对象",
+        }
+
+
+class TestInterpretAPI:
+    """测试搜索结果解读接口。"""
+
+    def test_interpret_non_object_json_returns_400(self, client):
+        rv = client.post(
+            '/api/search/interpret',
+            data=json.dumps([]),
+            content_type='application/json',
+        )
+
+        assert rv.status_code == 400
+        assert rv.get_json() == {
+            "error": "请求体必须是 JSON 对象",
+        }
+
+    def test_interpret_stream_non_object_json_returns_400(self, client):
+        rv = client.post(
+            '/api/search/interpret/stream',
+            data=json.dumps(123),
+            content_type='application/json',
+        )
+
+        assert rv.status_code == 400
+        assert rv.get_json() == {
+            "error": "请求体必须是 JSON 对象",
         }
 
 

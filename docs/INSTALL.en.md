@@ -4,121 +4,195 @@
 
 ## Overview
 
-This document explains how to install EverythingSearch on a fresh macOS machine and how to operate it in daily use.
+This guide explains how to install EverythingSearch on a fresh macOS machine and how to run it in daily use. EverythingSearch indexes local files, optionally indexes MWeb exports, and exposes a browser UI on `http://127.0.0.1:8000`.
 
 ## System Requirements
 
 | Item | Requirement |
-|------|-------------|
+| --- | --- |
 | OS | macOS 10.15 or newer |
 | Disk space | At least 500MB |
-| Network | Required during installation/indexing; search itself is local |
+| Network | Required for install and indexing; browser smart search and interpretation also need DashScope; `GET /api/search` can run without outbound calls once vectors already exist |
 | Python | 3.10 or 3.11 |
 | External account | DashScope API key |
-| Optional software | MWeb (only if you need MWeb source indexing) |
+| Optional software | MWeb, only if you want MWeb source indexing |
 
-## 1. Get API Key (Before Installation)
+## 1. Get an API Key
 
-1. Open [DashScope Console](https://dashscope.console.aliyun.com)
-2. Sign in and create an API key
-3. Save the key for installation (`sk-...`)
+1. Open [DashScope Console](https://dashscope.console.aliyun.com).
+2. Sign in with your Alibaba Cloud account.
+3. Create a new API key.
+4. Save the generated key for installation, for example `sk-...`.
 
-## 2. Automatic Installation (Recommended)
+## 2. Automatic Installation
 
 ```bash
 cd /path/to/EverythingSearch
 ./scripts/install.sh
 ```
 
-The installer helps you configure API key, index directory, optional MWeb integration, launchd setup, and first full indexing.
+The installer can:
+
+1. Check or install Homebrew and Python.
+2. Create the virtual environment and install dependencies.
+3. Guide you through API key, target directory, and optional MWeb setup.
+4. Optionally install launchd services.
+5. Optionally start the first full indexing run.
 
 ## 3. Manual Installation
 
+### 3.1 Create the Virtual Environment
+
 ```bash
+cd /path/to/EverythingSearch
 python3.11 -m venv venv
 ./venv/bin/pip install --upgrade pip
 ./venv/bin/pip install -r requirements.txt
+```
 
-# For runtime-only installation, you can use:
-# ./venv/bin/pip install -r requirements/base.txt
+Runtime-only deployment can use:
+
+```bash
+./venv/bin/pip install -r requirements/base.txt
+```
+
+### 3.2 Configure the API Key and Local Settings
+
+If `config.py` does not exist yet:
+
+```bash
 cp etc/config.example.py config.py
 ```
 
-Prefer setting the API key via environment variable first:
+Prefer the API key through an environment variable:
 
 ```bash
 export DASHSCOPE_API_KEY="sk-your-real-api-key"
 ```
 
-Then edit `config.py`:
+Then confirm the main local settings in `config.py`:
 
-- Required: `TARGET_DIR`
-- Recommended: keep `MY_API_KEY = ""` and let `DASHSCOPE_API_KEY` supply the key
-- Optional: `ENABLE_MWEB`, `MWEB_LIBRARY_PATH`
+```python
+MY_API_KEY = ""
+TARGET_DIR = "/Users/your-name/Documents/your-folder"
 
-Config precedence:
+# Optional when ENABLE_MWEB = True
+# MWEB_LIBRARY_PATH = "..."
+# MWEB_DIR = "..."
+```
+
+Configuration precedence:
 
 - Environment variables override `config.py`
-- `config.py` is still supported during the migration window
-- `DASHSCOPE_API_KEY`, `MY_API_KEY`, and `TARGET_DIR` no longer ship with runnable placeholder defaults
-- If `PERSIST_DIRECTORY`, `INDEX_STATE_DB`, `SCAN_CACHE_PATH`, or `EMBEDDING_CACHE_PATH` are not set explicitly, they default under the current repository's `data/` directory; for packaged or non-repo deployments, set them explicitly
+- `config.py` is still supported as the compatibility layer
+- `DASHSCOPE_API_KEY`, `MY_API_KEY`, and `TARGET_DIR` no longer ship with runnable placeholder values
+- If `PERSIST_DIRECTORY`, `INDEX_STATE_DB`, `SCAN_CACHE_PATH`, or `EMBEDDING_CACHE_PATH` are not set, they default under the repository `data/` directory
 
-Build first index:
+### 3.3 Build the First Index
 
 ```bash
 caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full
 ```
 
-Start app:
+### 3.4 Start the Search Service
+
+Foreground development mode:
+
+```bash
+./venv/bin/python -m everythingsearch.app
+# or
+./scripts/run_app.sh dev
+```
+
+Background service mode:
 
 ```bash
 ./scripts/run_app.sh start
 ./scripts/run_app.sh status
+./scripts/run_app.sh restart
+./scripts/run_app.sh stop
 ```
 
-Foreground mode:
+Then open [http://127.0.0.1:8000](http://127.0.0.1:8000).
+
+### 3.5 Optional Local Hostname
+
+To use a memorable local hostname such as `everythingsearch.local`, add it to `/etc/hosts`:
 
 ```bash
-./venv/bin/python -m everythingsearch.app
+sudo nano /etc/hosts
 ```
 
-## 4. Configuration
+Append:
 
-Main local config file: `config.py`
+```text
+127.0.0.1   everythingsearch.local
+```
 
-Runtime load order:
+Then visit [http://everythingsearch.local:8000](http://everythingsearch.local:8000).
 
-- environment variables
-- repository-root `config.py`
-- safe in-code defaults for non-sensitive options only
+## 4. Configuration Notes
 
-- Core: API key, target directories
-- Search tuning: `SEARCH_TOP_K`, `SCORE_THRESHOLD`
-- Index tuning: `CHUNK_SIZE`, `MAX_CONTENT_LENGTH`
-- Data source: `ENABLE_MWEB`
+The full configuration matrix lives in [PROJECT_MANUAL.en.md](PROJECT_MANUAL.en.md). The most common options are below.
 
-For non-repo or packaged deployments, explicitly configure `PERSIST_DIRECTORY`, `INDEX_STATE_DB`, `SCAN_CACHE_PATH`, and `EMBEDDING_CACHE_PATH` instead of relying on inferred defaults.
+### Required Settings
 
-## 5. Scheduled Incremental Indexing
+| Key | Notes |
+| --- | --- |
+| `TARGET_DIR` | Root directory or list of roots to index |
+| `DASHSCOPE_API_KEY` or `MY_API_KEY` | Required for indexing embeddings; browser smart search also needs it |
 
-Use launchd wrappers:
+### Common Optional Settings
+
+| Key | Default | Notes |
+| --- | --- | --- |
+| `ENABLE_MWEB` | `False` | Enable MWeb export and indexing |
+| `MWEB_LIBRARY_PATH` | macOS default path | Override only if MWeb is installed in a non-standard location |
+| `MWEB_DIR` | `data/mweb_export` | Local export landing zone for MWeb notes |
+| `SEARCH_TOP_K` | `250` | Candidate chunk count |
+| `SCORE_THRESHOLD` | `0.35` | Lower is stricter |
+| `CHUNK_SIZE` | `500` | Chunk size for indexing |
+| `MAX_CONTENT_LENGTH` | `20000` | Max indexed characters per file |
+| `NL_INTENT_MODEL` | `qwen-turbo` | Intent model for `POST /api/search/nl` |
+| `SEARCH_INTERPRET_MODEL` | `qwen-turbo` | Interpretation model |
+| `RATE_LIMIT_NL_PER_MIN` | `10` | Per-IP limit for NL search |
+| `RATE_LIMIT_INTERPRET_PER_MIN` | `10` | Per-IP limit for interpretation routes |
+| `TRUST_PROXY` | `False` | Trust `X-Forwarded-For` only behind a controlled reverse proxy |
+
+## 5. launchd and Scheduled Incremental Indexing
+
+The recommended way to install launchd wrappers and plist files is:
 
 ```bash
 ./scripts/install_launchd_wrappers.sh
 ```
 
-This installs:
+This script:
 
-- app service: `com.jigger.everythingsearch.app`
-- scheduled indexing: `com.jigger.everythingsearch`
+- generates `~/.local/bin/everythingsearch_start.sh`
+- generates `~/.local/bin/everythingsearch_index.sh`
+- writes `~/Library/LaunchAgents/com.jigger.everythingsearch.app.plist`
+- writes `~/Library/LaunchAgents/com.jigger.everythingsearch.plist`
+
+Scheduling behavior:
+
+- the app service uses `RunAtLoad + KeepAlive`
+- scheduled indexing uses `RunAtLoad + StartInterval`
+- the default interval is `1800` seconds, which is about every 30 minutes
+
+Reference plist templates live under [`scripts/launchd/`](../scripts/launchd/), but the generated files in `~/Library/LaunchAgents/` are the ones actually used at runtime.
+
+macOS TCC note:
+
+- LaunchAgent processes should not point directly at scripts or log paths under protected locations such as `~/Documents`
+- the wrapper scripts under `~/.local/bin/` avoid that restriction and `cd` into the repo internally
 
 ## 6. Daily Operations
 
-### Makefile shortcuts
+### Make Shortcuts
 
 ```bash
-cd /path/to/EverythingSearch
-make help          # list all make targets with one-line descriptions
+make help
 make index
 make index-full
 make app
@@ -127,27 +201,44 @@ make app-restart
 make app-stop
 ```
 
-When you are unsure which targets exist, run **`make help`** (kept in sync with the root `Makefile`).
+### Manual Incremental Index
 
-Equivalent commands are available through `./scripts/run_app.sh` and Python module entrypoints.
+```bash
+./venv/bin/python -m everythingsearch.incremental
+./scripts/run_app.sh restart
+```
 
-## 7. FAQ / Common Issues
+### Full Rebuild
 
-- **Occasional 400 Bad Request from API?**: This strictly means the request payload/parameters were invalid (e.g., malformed JSON, missing filepath, or unauthorized path traversal beyond the indexed boundary). Check your client or script inputs.
-- **Index changes not reflected in search**: restart app (`make app-restart`)
-- **Long full rebuild interrupted by sleep**: run with `caffeinate -i`
-- **launchd startup issues**: regenerate wrappers with `./scripts/install_launchd_wrappers.sh`
+```bash
+caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full
+./scripts/run_app.sh restart
+```
 
-## 8. File List (Key Components)
+## 7. FAQ
 
-- `scripts/install.sh`: installer
-- `scripts/run_app.sh`: app lifecycle management
-- `scripts/install_launchd_wrappers.sh`: launchd wrapper setup
-- `docs/PROJECT_MANUAL.en.md`: technical manual
-- `everythingsearch/app.py`: Flask routing entry and application bus
-- `everythingsearch/services/`: Core service logic decoupling
-- `everythingsearch/request_validation.py`: HTTP JSON validation intercepting bad requests
-- `everythingsearch/infra/`: Infrastructure (settings, logging)
+- **Search cannot find a file that exists**: verify the extension is supported, the file is under `TARGET_DIR`, then rerun incremental indexing.
+- **`error: externally-managed-environment` during install**: use the project virtualenv pip instead of the system pip.
+- **launchd startup keeps failing**: rerun `./scripts/install_launchd_wrappers.sh` and verify the generated wrapper paths.
+- **No DashScope key on this machine**: indexing cannot generate vectors, and browser smart search is disabled; the UI falls back to `GET /api/search` only.
+
+## 8. File List
+
+| File or Path | Purpose |
+| --- | --- |
+| `scripts/install.sh` | Interactive installer |
+| `scripts/install_launchd_wrappers.sh` | Generate launchd wrappers and plist files |
+| `scripts/run_app.sh` | App lifecycle management |
+| `docs/PROJECT_MANUAL.en.md` | Technical manual |
+| `docs/NL_SEARCH_AND_WEB_UI.en.md` | NL search behavior notes |
+| `etc/config.example.py` | Config template |
+| `everythingsearch/app.py` | Flask entry and route registration |
+| `everythingsearch/services/` | Service layer |
+| `everythingsearch/request_validation.py` | Request parsing and validation |
+| `everythingsearch/infra/` | Settings, rate limiting, logging-related infrastructure |
+| `scripts/launchd/*.plist` | Reference launchd templates |
+| `~/.local/bin/everythingsearch_start.sh` | Generated app wrapper |
+| `~/.local/bin/everythingsearch_index.sh` | Generated incremental-index wrapper |
 
 Version history: [GitHub Releases](https://github.com/jiggersong/everythingsearch/releases).
 

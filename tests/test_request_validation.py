@@ -15,6 +15,7 @@ from everythingsearch.request_validation import (
     UnsupportedParameterError,
     parse_file_body_request,
     parse_file_query_request,
+    parse_json_object_body,
     parse_search_request,
 )
 
@@ -39,6 +40,7 @@ class TestParseSearchRequest:
             date_from=None,
             date_to=None,
             limit=None,
+            exact_focus=False,
         )
 
     def test_invalid_source_raises(self):
@@ -120,3 +122,23 @@ class TestParseFileBodyRequest:
     def test_valid_body_request(self):
         parsed = parse_file_body_request(_build_request(json_body={"filepath": "/tmp/a.txt"}))
         assert parsed == FileBodyRequest(filepath="/tmp/a.txt")
+
+
+class TestParseJsonObjectBody:
+    """测试顶层 JSON 对象请求体解析。"""
+
+    def test_missing_body_raises(self):
+        with pytest.raises(MissingParameterError):
+            parse_json_object_body(_build_request(json_body=None))
+
+    def test_array_body_raises(self):
+        with pytest.raises(InvalidParameterError):
+            parse_json_object_body(_build_request(json_body=[]))
+
+    def test_string_body_raises(self):
+        with pytest.raises(InvalidParameterError):
+            parse_json_object_body(_build_request(json_body="hello"))
+
+    def test_valid_object_body(self):
+        parsed = parse_json_object_body(_build_request(json_body={"message": "hi"}))
+        assert parsed == {"message": "hi"}

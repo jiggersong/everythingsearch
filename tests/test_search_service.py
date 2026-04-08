@@ -48,6 +48,7 @@ class TestSearchService:
                 date_from=None,
                 date_to=None,
                 limit=None,
+                exact_focus=False,
             )
         )
 
@@ -67,6 +68,7 @@ class TestSearchService:
                     date_from=None,
                     date_to=None,
                     limit=None,
+                    exact_focus=False,
                 )
             )
 
@@ -77,12 +79,21 @@ class TestSearchService:
         captured = {}
         monkeypatch.setattr(config, "ENABLE_MWEB", False)
 
-        def fake_search_core(query, source_filter=None, date_field=None, date_from=None, date_to=None):
+        def fake_search_core(
+            query,
+            source_filter=None,
+            date_field=None,
+            date_from=None,
+            date_to=None,
+            *,
+            exact_focus=False,
+        ):
             captured["query"] = query
             captured["source_filter"] = source_filter
             captured["date_field"] = date_field
             captured["date_from"] = date_from
             captured["date_to"] = date_to
+            captured["exact_focus"] = exact_focus
             return []
 
         monkeypatch.setattr(
@@ -98,6 +109,7 @@ class TestSearchService:
                 date_from=1.0,
                 date_to=2.0,
                 limit=None,
+                exact_focus=False,
             )
         )
 
@@ -108,6 +120,7 @@ class TestSearchService:
             "date_field": "ctime",
             "date_from": 1.0,
             "date_to": 2.0,
+            "exact_focus": False,
         }
 
     def test_search_applies_limit(self, monkeypatch):
@@ -134,6 +147,7 @@ class TestSearchService:
                 date_from=None,
                 date_to=None,
                 limit=2,
+                exact_focus=False,
             )
         )
 
@@ -162,6 +176,7 @@ class TestSearchService:
                 date_from=None,
                 date_to=None,
                 limit=None,
+                exact_focus=False,
             )
         )
 
@@ -193,6 +208,7 @@ class TestSearchService:
                     date_from=None,
                     date_to=None,
                     limit=None,
+                    exact_focus=False,
                 )
             )
 
@@ -219,6 +235,7 @@ class TestSearchService:
                     date_from=None,
                     date_to=None,
                     limit=None,
+                    exact_focus=False,
                 )
             )
 

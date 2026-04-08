@@ -13,7 +13,7 @@ It lets users find local documents, code, and materials quickly using natural la
 - **Hybrid indexing**: Indexes both file content and filenames, so you can find information that lives inside files, not just in names
 - **Position weighting**: Matches in filenames and headings rank higher
 - **Caching model**: The first full index after install can take a while while the disk is scanned; afterward, incremental updates keep the index fast
-- **Privacy**: All data and operations stay on your machine; a cloud API is used only when generating embeddings, so you need not worry about data security for local search and storage
+- **Privacy**: Indexed data is stored locally. DashScope is used for embeddings during indexing, and when browser smart search is enabled it also receives the current query text and compact result summaries for intent parsing / interpretation
 - **Web UI**: Search in the browser the way you use Google to find information on the web—except your files are local, with a simple, friendly flow. Filter by file time for more precise results
 - **MWeb support**: If you are already using MWeb for your notes and as a Markdown editor, flip one switch to take over integration and index your MWeb content in one step
 
@@ -36,9 +36,10 @@ It lets users find local documents, code, and materials quickly using natural la
                         │
 ┌───────────────────────▼──────────────────────────────┐
 │             Core service layer (services/)            │
-│         SearchService · FileService · HealthService   │
-│   (file_access: unified traversal defense & path      │
-│    resolution guard)                                  │
+│ SearchService · FileService · HealthService ·         │
+│ NLSearchService · SearchInterpretService              │
+│ (file_access: unified traversal defense & path        │
+│  resolution guard)                                    │
 └───────────────────────┬──────────────────────────────┘
                         │
 ┌───────────────────────▼──────────────────────────────┐
@@ -89,11 +90,14 @@ EverythingSearch/
 │   ├── services/             # Business service layer (decoupled core logic)
 │   │   ├── file_service.py   # File lifecycle control
 │   │   ├── search_service.py # Search cache, concurrency, scheduling
-│   │   └── health_service.py # Liveness checks and warmup scheduling
+│   │   ├── health_service.py # Liveness checks and warmup scheduling
+│   │   ├── nl_search_service.py
+│   │   └── search_interpret_service.py
 │   ├── request_validation.py # Input validation protocol (unified HTTP 400 contract)
 │   ├── file_access.py        # Strict file access boundary; anti path traversal
 │   ├── infra/                # Infrastructure layer
-│   │   └── settings.py       # Strongly typed config extraction / accessors
+│   │   ├── settings.py       # Strongly typed config extraction / accessors
+│   │   └── rate_limiting.py
 │   ├── search.py             # Core search algorithms
 │   ├── indexer.py            # Full index build
 │   ├── incremental.py        # Incremental indexing
@@ -116,6 +120,8 @@ EverythingSearch/
 ├── docs/
 │   ├── INSTALL.md
 │   ├── PROJECT_MANUAL.md
+│   ├── NL_SEARCH_AND_WEB_UI.md
+│   ├── NL_SEARCH_AND_WEB_UI.en.md
 │   ├── UI_DESIGN_APPLE_GOOGLE.md      # Web UI design notes (Chinese)
 │   └── UI_DESIGN_APPLE_GOOGLE.en.md   # Web UI design notes (English)
 ├── Makefile                  # make shortcuts (`make help` lists targets)
@@ -154,15 +160,25 @@ Local settings are concentrated here. Load order: environment variables > reposi
 | `CHUNK_OVERLAP` | `80` | Chunk overlap (characters) |
 | `MAX_CONTENT_LENGTH` | `20000` | Max characters indexed per file |
 | `SEARCH_TOP_K` | `250` | Vector retrieval candidate chunks (higher = more recall, slower) |
-| `SCORE_THRESHOLD` | `0.45` | Cosine distance threshold (smaller = stricter) |
+| `SCORE_THRESHOLD` | `0.35` | Cosine distance threshold (smaller = stricter; matches `settings.py` default) |
 | `POSITION_WEIGHTS` | `filename:0.6, heading:0.8, content:1.0` | Position weighting factors |
 | `KEYWORD_FREQ_BONUS` | `0.03` | Keyword frequency bonus coefficient |
+| `TRUST_PROXY` | `False` | Trust `X-Forwarded-For` from a reverse proxy (for per-IP rate limiting) |
+| `NL_INTENT_MODEL` | `qwen-turbo` | NL intent model (prefer JSON Mode–capable models) |
+| `SEARCH_INTERPRET_MODEL` | `qwen-turbo` | Model for optional “smart interpretation” of hit lists |
+| `NL_TIMEOUT_SEC` | `10` | Intent call timeout (seconds) |
+| `INTERPRET_TIMEOUT_SEC` | `20` | Interpretation call timeout (seconds) |
+| `NL_MAX_MESSAGE_CHARS` | `1000` | Max characters per intent request |
+| `INTERPRET_MAX_RESULTS` | `10` | Max hits summarized in interpretation |
+| `RATE_LIMIT_NL_PER_MIN` | `10` | Per-IP requests/minute for `POST /api/search/nl` |
+| `RATE_LIMIT_INTERPRET_PER_MIN` | `10` | Per-IP requests/minute for interpretation endpoints |
 
 **API key best practices**
 
 - Prefer `DASHSCOPE_API_KEY` in the environment instead of a real key in `config.py` (especially when copying the project to another machine)
 - The template does not ship a runnable fake default; empty means “not configured,” not an error by itself
-- If the key is missing, indexing and search fail with instructions—this is expected
+- Without a key: **incremental/full indexing cannot embed** (embeddings require DashScope). The **web UI** falls back to `GET /api/search` only (no intent or interpretation). If the vector DB is also unavailable, search may still error until indexing succeeds with a valid key.
+- The legacy `NL_SEARCH_ENABLED` toggle is removed: when a key is configured, the web UI uses the NL pipeline by default (intent + hybrid search + optional interpretation). See `docs/NL_SEARCH_AND_WEB_UI.md`.
 
 ### 4.2 `indexer.py` — Index builder
 
@@ -186,7 +202,7 @@ Local settings are concentrated here. Load order: environment variables > reposi
 
 ### 4.3 `search.py` — Search engine
 
-**In-memory cache**: Caches results keyed by `(query, source_filter, date_field, date_from, date_to)` with TTL and max size from `CACHE_TTL_SECONDS` and `MAX_CACHE_SIZE` in code. After a reindex or when you need immediate consistency, call `POST /api/cache/clear`. Clearing the in-process vector DB cache also clears this cache.
+**In-memory cache**: Caches results keyed by `(query, source_filter, date_field, date_from, date_to, exact_focus)` (`exact_focus` separates keyword-first mode from the default hybrid pipeline). TTL and max size come from `CACHE_TTL_SECONDS` and `MAX_CACHE_SIZE` in code. After a reindex or when you need immediate consistency, call `POST /api/cache/clear`. Clearing the in-process vector DB cache also clears this cache.
 
 **Timeout control**: Search runs under a shared in-process future-based timeout (`SEARCH_TIMEOUT_SECONDS = 30` by default). Timeouts are **not** turned into empty results; they surface as observable errors (`/api/search` returns HTTP 504). Timed-out searches are not cached. `SEARCH_TIMEOUT_SECONDS = 0` disables timeout enforcement but keeps single-flight and busy protection. Note: after a future times out, the worker thread may still run to completion—known trade-off; until it finishes, new requests may get HTTP 503 (“busy”) to avoid unbounded queue growth.
 
@@ -198,6 +214,11 @@ Search pipeline:
 4. **Per-file dedup**: Keep the best chunk per file
 5. **Keyword exact fallback**: ChromaDB `$contains` for documents containing the literal text (multi-term OR)
 6. **Merge and sort**: Combine exact and semantic hits, sort by score
+
+**`exact_focus` path** (when `POST /api/search/nl` resolves `match_mode=exact_focus` and sets `SearchRequest.exact_focus=True`):
+
+1. Run the same keyword `$contains` path as step 5, dedupe per file, sort;
+2. If there are **no hits**, or every row is **filtered out** by `source` / time `where` clauses, **fall back** to the full vector + keyword hybrid pipeline above so users do not get a false empty result.
 
 ### 4.4 `embedding_cache.py` — Embedding cache
 
@@ -239,8 +260,10 @@ python -m everythingsearch.incremental --full   # full rebuild
 
 Routes:
 
-- `GET /` — search page  
-- `GET /api/search?q=...&source=all|file|mweb` — search API (optional `limit=1..200` for agents/scripts)  
+- `GET /` — search page (`smart_search_available` in the template: DashScope key configured → browser uses `POST /api/search/nl`; otherwise `GET /api/search`)  
+- `GET /api/search?q=...&source=all|file|mweb` — direct search (optional `date_field` / `date_from` / `date_to` / `limit=1..200`; **no** LLM intent)  
+- `POST /api/search/nl` — NL search: DashScope intent JSON → `SearchService.search` (optional `exact_focus`); requires API key and reachable model endpoint  
+- `POST /api/search/interpret`, `POST /api/search/interpret/stream` — short “smart interpretation” over the current hit list; requires API key; per-IP rate limits apply  
 - `GET /api/health` — health payload; if `vectordb.status` is not `"ok"`, top-level `ok` is strictly `false` for monitoring consistency  
 - `POST /api/cache/clear` — clear **in-memory** search cache  
 - `GET /api/file/read?filepath=...` — read text from a file **under indexed roots**  
@@ -292,16 +315,18 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jigger.everythingsea
 
 ### External services
 
-- **Alibaba Cloud DashScope API**: text embeddings (`text-embedding-v2`); requires a valid API key  
+- **Alibaba Cloud DashScope API**: requires a valid API key  
+  - **Embeddings**: `text-embedding-v2` by default, used during indexing  
+  - **Generative** (optional): web `POST /api/search/nl` and interpretation endpoints use `NL_INTENT_MODEL` / `SEARCH_INTERPRET_MODEL` (default `qwen-turbo`); those calls need outbound network  
   - Sign up → enable DashScope → create an API key  
-  - Cost is very low (about ¥0.0007 / 1000 tokens)
+  - Cost is very low for embeddings (about ¥0.0007 / 1000 tokens); intent/interpretation billed per model  
 
 ### Local resources
 
 - macOS 10.15+  
 - Python 3.10 or 3.11 (3.11 recommended)  
 - ~500MB disk (venv + databases)  
-- Network only while indexing (embedding API); search is offline
+- Network: required for indexing (embeddings); `GET /api/search` can be offline once vectors exist; NL search and interpretation require network access to DashScope
 
 ---
 

@@ -274,6 +274,7 @@
     flex-direction: column;
     align-items: center;
     justify-content: flex-start;
+    width: 100%;
     padding-top: 56px;
     margin-bottom: 16px;
     min-height: 0;
@@ -337,11 +338,15 @@
     opacity: 0.85;
   }
   .search-input-wrap input {
+    display: none;
+  }
+  .search-input-wrap textarea {
     width: 100%;
-    height: 52px;
+    min-height: 52px;
+    max-height: 180px;
     border: 1px solid var(--border-strong);
     border-radius: 26px;
-    padding: 0 52px 0 52px;
+    padding: 14px 52px 14px 52px;
     font-size: 16px;
     font-weight: 400;
     background: var(--bg-card);
@@ -349,26 +354,57 @@
     outline: none;
     box-shadow: var(--shadow);
     transition: border-color 0.2s var(--ease-standard), box-shadow 0.25s var(--ease-standard), background-color 0.2s var(--ease-standard);
+    resize: none;
+    overflow-y: auto;
+    font-family: inherit;
+    line-height: 1.5;
   }
-  .search-input-wrap input:hover {
+  .search-input-wrap textarea:hover {
     border-color: var(--border);
     box-shadow: var(--shadow-md);
   }
-  .search-input-wrap input:focus {
+  .search-input-wrap textarea:focus {
     border-color: var(--accent);
     box-shadow: 0 0 0 3px var(--accent-container), var(--shadow-md);
   }
   @media (prefers-color-scheme: dark) {
-    .search-input-wrap input:focus {
+    .search-input-wrap textarea:focus {
       border-color: var(--accent);
       box-shadow: 0 0 0 3px rgba(138, 180, 248, 0.25), var(--shadow-md);
     }
   }
-  .search-input-wrap input::placeholder { color: var(--text-secondary); }
-  .search-input-wrap input[readonly] {
-    background: var(--bg);
-    color: var(--text-secondary);
-    cursor: default;
+  .search-input-wrap textarea::placeholder { color: var(--text-secondary); }
+  .search-input-wrap textarea[readonly] {
+    background: var(--bg-card);
+    color: var(--text);
+    cursor: progress;
+  }
+  .search-input-wrap.loading textarea {
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    text-shadow: none;
+    caret-color: transparent;
+  }
+  .search-input-preview {
+    display: none;
+    position: absolute;
+    inset: 0;
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    padding: 14px 52px;
+    color: var(--text);
+    font-size: 16px;
+    font-weight: 400;
+    line-height: 1.5;
+    font-family: inherit;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow: hidden;
+    pointer-events: none;
+  }
+  .search-input-wrap.loading .search-input-preview {
+    display: block;
   }
   .search-input-wrap .shortcut {
     position: absolute;
@@ -386,9 +422,49 @@
     transition: opacity 0.2s var(--ease-standard);
     letter-spacing: 0.02em;
   }
-  .search-input-wrap input:focus ~ .shortcut,
-  .search-input-wrap input:not(:placeholder-shown) ~ .shortcut { opacity: 0; }
+  .search-input-wrap textarea:focus ~ .shortcut,
+  .search-input-wrap textarea:not(:placeholder-shown) ~ .shortcut { opacity: 0; }
   .search-input-wrap.loading .shortcut { opacity: 0; }
+
+  .interpret-module {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--tag-semantic);
+    border-radius: var(--radius);
+    padding: 16px 20px;
+    margin-bottom: 16px;
+    box-shadow: var(--shadow);
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--text);
+  }
+  .interpret-module.error {
+    border-left-color: #e4342b;
+    color: #e4342b;
+  }
+  .interpret-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--tag-semantic);
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .interpret-title svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .badge-guess {
+    font-size: 11px;
+    font-weight: 600;
+    color: #fff;
+    background: #ff9500;
+    border-radius: 4px;
+    padding: 2px 6px;
+    margin-left: 8px;
+  }
 
   .btn-search {
     height: 44px;
@@ -449,13 +525,20 @@
   .search-progress {
     display: none;
     position: absolute;
-    right: 16px;
+    right: -14px;
     top: 50%;
-    transform: translateY(-50%);
+    transform: translate(100%, -50%);
     flex-direction: row;
     align-items: center;
     gap: 8px;
     pointer-events: none;
+    padding: 7px 10px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.94);
+    border: 1px solid var(--border);
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+    backdrop-filter: blur(8px);
+    max-width: 136px;
   }
   .search-progress.active { display: flex; }
   .progress-dots {
@@ -478,6 +561,28 @@
   .progress-text {
     font-size: 12px;
     color: var(--text-secondary);
+    white-space: nowrap;
+  }
+  @media (prefers-color-scheme: dark) {
+    .search-progress {
+      background: rgba(32, 33, 36, 0.92);
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.3);
+    }
+  }
+  @media (max-width: 640px) {
+    .search-input-wrap.loading {
+      margin-bottom: 52px;
+    }
+    .search-progress {
+      right: 0;
+      top: calc(100% + 10px);
+      transform: none;
+      padding: 6px 8px;
+      max-width: 92px;
+    }
+    .progress-text {
+      display: none;
+    }
   }
 
   /* ---- Results toolbar ---- */
@@ -1052,7 +1157,8 @@
         <div class="search-box">
           <div class="search-input-wrap">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input id="searchInput" type="text" placeholder="搜索本地文件..." autofocus>
+            <textarea id="searchInput" rows="1" placeholder="搜索本地文件..." autofocus></textarea>
+            <div class="search-input-preview" id="searchInputPreview"></div>
             <span class="shortcut">⌘ K</span>
             <div class="search-progress" id="searchProgress">
               <div class="progress-dots"><span></span><span></span><span></span></div>
@@ -1062,6 +1168,15 @@
           <button class="btn-search" id="searchBtn" style="display:none">搜索</button>
         </div>
       </div>
+      
+      <div id="interpretModule" class="interpret-module" style="display:none">
+        <div class="interpret-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+          智能解读
+        </div>
+        <div id="interpretContent"></div>
+      </div>
+      
       <div class="results" id="results"></div>
 
       <div id="intro" class="intro">
@@ -1095,6 +1210,7 @@
 <script>
 const ENABLE_MWEB = {{ 'true' if enable_mweb else 'false' }};
 const input          = document.getElementById('searchInput');
+const searchInputPreview = document.getElementById('searchInputPreview');
 const hero           = document.getElementById('hero');
 const searchBtn      = document.getElementById('searchBtn');
 const searchProgress = document.getElementById('searchProgress');
@@ -1107,7 +1223,8 @@ const expandBtn      = document.getElementById('sidebarExpand');
 const historyBadge   = document.getElementById('historyBadge');
 let currentQuery = '';
 let searching = false;
-let abortCtrl = null;
+let activeAbortCtrl = null;
+let activeSearchToken = 0;
 let currentData = null;
 let sortMode = 'relevance';
 let currentPage = 1;
@@ -1117,6 +1234,7 @@ let dateRange = 'all';
 let dateFrom = null;
 let dateTo = null;
 let dateFilterOpen = false;
+const smartSearchAvailable = {{ 'true' if smart_search_available else 'false' }};
 const PAGE_SIZE = 25;
 
 const SIDEBAR_STATE_KEY = 'es_sidebar_collapsed';
@@ -1444,11 +1562,13 @@ function renderView() {
     const mtimeStr = formatMtime(r.mtime);
     const mwebBadge = r.source_type === 'mweb' ? '<span class="badge-mweb" title="MWeb 笔记">MWeb</span>' : '';
     const categoryLine = (r.source_type === 'mweb' && r.categories) ? `<div class="card-category">📂 ${esc(r.categories)}</div>` : '';
+    const guessWantBadge = (smartSearchAvailable && (start + idx) === 0)
+                           ? '<span class="badge-guess">猜你想找</span>' : '';
     html += `
       <div class="card">
         <div class="card-top">
           <div class="file-icon ${iconClass}">${iconLabel}</div>
-          <div class="card-title">${highlight(r.filename, q)}${mwebBadge}</div>
+          <div class="card-title">${highlight(r.filename, q)}${mwebBadge}${guessWantBadge}</div>
           <span class="tag ${tagClass}">${esc(tagText)}</span>
         </div>
         ${categoryLine}
@@ -1500,6 +1620,13 @@ function setSearching(on) {
   searchProgress.classList.toggle('active', on);
   input.closest('.search-input-wrap').classList.toggle('loading', on);
   if (on) {
+    searchInputPreview.textContent = input.value;
+    searchInputPreview.style.height = input.style.height || `${input.scrollHeight}px`;
+  } else {
+    searchInputPreview.textContent = '';
+    searchInputPreview.style.height = '';
+  }
+  if (on) {
     searchBtn.textContent = '停止';
     searchBtn.classList.add('is-stop');
   } else {
@@ -1508,9 +1635,44 @@ function setSearching(on) {
   }
 }
 
+function cancelActiveSearch() {
+  if (activeAbortCtrl) {
+    activeAbortCtrl.abort();
+    activeAbortCtrl = null;
+  }
+}
+
+function createSearchSession() {
+  cancelActiveSearch();
+  activeSearchToken += 1;
+  activeAbortCtrl = new AbortController();
+  return {
+    abortCtrl: activeAbortCtrl,
+    token: activeSearchToken,
+  };
+}
+
+function isActiveSearchSession(token, controller) {
+  return token === activeSearchToken && controller === activeAbortCtrl && !controller.signal.aborted;
+}
+
 function abortSearch() {
-  if (abortCtrl) { abortCtrl.abort(); abortCtrl = null; }
+  cancelActiveSearch();
   setSearching(false);
+}
+
+function matchDateRange(from, to) {
+  if (!from && !to) return 'all';
+  if (!to || to > Math.floor(Date.now() / 1000) - 86400) {
+    const now = Math.floor(Date.now() / 1000);
+    const DAY = 86400;
+    const diff = now - from;
+    if (Math.abs(diff - 7 * DAY) <= DAY * 2) return 'week';
+    if (Math.abs(diff - 30 * DAY) <= DAY * 3) return 'month';
+    if (Math.abs(diff - 90 * DAY) <= DAY * 5) return '3month';
+    if (Math.abs(diff - 365 * DAY) <= DAY * 10) return 'year';
+  }
+  return 'custom';
 }
 
 function triggerSearch() {
@@ -1520,36 +1682,148 @@ function triggerSearch() {
   doSearch(q);
 }
 
+async function startInterpretStream(userText, resultsList, token, controller) {
+  interpretModule.style.display = 'block';
+  interpretContent.innerHTML = '<span style="color:var(--text-secondary);font-size:13px">🤖 正在生成解读...</span>';
+  try {
+    const res = await fetch('/api/search/interpret/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_text: userText, results: resultsList }),
+      signal: controller.signal
+    });
+    
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+    
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let buffer = "";
+    let contentHtml = "";
+    interpretContent.innerHTML = "";
+    
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!isActiveSearchSession(token, controller)) return;
+      buffer += decoder.decode(value, { stream: true });
+      let lines = buffer.split(/\r?\n/);
+      buffer = lines.pop(); // keep remainder
+      
+      let eventType = null;
+      for (const line of lines) {
+        if (line.startsWith('event: ')) {
+          eventType = line.substring(7).trim();
+        } else if (line.startsWith('data: ')) {
+          const dataStr = line.substring(6).trim();
+          if (dataStr) {
+            let dataObj;
+            try {
+              dataObj = JSON.parse(dataStr);
+            } catch(e) {
+              console.warn("SSE 解读数据解析失败:", e, dataStr);
+              continue;
+            }
+            if (eventType === 'error') {
+              throw new Error(dataObj.error);
+            } else if (dataObj.delta) {
+              if (!isActiveSearchSession(token, controller)) return;
+              contentHtml += esc(dataObj.delta);
+              interpretContent.innerHTML = contentHtml.replace(/\n/g, '<br>');
+            }
+          }
+        }
+      }
+    }
+  } catch (e) {
+    if (!isActiveSearchSession(token, controller) && e.name !== 'AbortError') return;
+    if (e.name === 'AbortError') return;
+    interpretModule.classList.add('error');
+    interpretContent.innerHTML = '解读失败: ' + esc(e.message);
+  }
+}
+
 async function doSearch(q) {
-  if (searching) abortSearch();
+  const session = createSearchSession();
+  const abortCtrl = session.abortCtrl;
+  const searchToken = session.token;
   currentQuery = q;
   const introEl = document.getElementById('intro');
-    if (introEl) {
-      introEl.style.opacity = '0';
-      setTimeout(() => { introEl.style.display = 'none'; }, 200);
-    }
+  if (introEl) {
+    introEl.style.opacity = '0';
+    setTimeout(() => { introEl.style.display = 'none'; }, 200);
+  }
   results.innerHTML = '';
+  interpretModule.style.display = 'none';
+  interpretContent.innerHTML = '';
+  interpretModule.classList.remove('error');
   setSearching(true);
-  abortCtrl = new AbortController();
   try {
-    let url = '/api/search?q=' + encodeURIComponent(q) + '&source=' + encodeURIComponent(sourceFilter) + '&date_field=' + encodeURIComponent(dateField);
-    if (dateFrom != null) url += '&date_from=' + dateFrom;
-    if (dateTo != null) url += '&date_to=' + dateTo;
-    const res = await fetch(url, { signal: abortCtrl.signal });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      const errMsg = (data && data.error) ? data.error : ('HTTP ' + res.status + ' ' + res.statusText);
-      throw new Error(errMsg);
+    let data;
+    if (smartSearchAvailable) {
+      const payload = {
+        message: q,
+        sidebar_source: sourceFilter,
+        date_field: dateField,
+        date_from: dateFrom,
+        date_to: dateTo
+      };
+      const res = await fetch('/api/search/nl', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: abortCtrl.signal
+      });
+      data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || ('HTTP ' + res.status + ' ' + res.statusText));
+      }
+      if (data.kind === 'capability_notice') {
+        results.innerHTML = '<div class="no-results" style="text-align:left;">' +
+          '<div style="font-weight:600;margin-bottom:8px;">⚠️ 无法处理该请求</div>' + 
+          '<div style="margin-bottom:12px;">' + esc(data.message) + '</div>' +
+          '<div style="font-size:12px;color:var(--text-secondary)">当前支持：' + esc(data.capabilities.join('、')) + '</div>' +
+          '</div>';
+        return;
+      }
+      
+      // Update UI state to match resolved intents
+      const resolved = data.resolved;
+      if (resolved) {
+        sourceFilter = resolved.source || 'all';
+        dateField = resolved.date_field || 'mtime';
+        dateFrom = resolved.date_from;
+        dateTo = resolved.date_to;
+        dateRange = matchDateRange(dateFrom, dateTo);
+      }
+      
+    } else {
+      let url = '/api/search?q=' + encodeURIComponent(q) + '&source=' + encodeURIComponent(sourceFilter) + '&date_field=' + encodeURIComponent(dateField);
+      if (dateFrom != null) url += '&date_from=' + dateFrom;
+      if (dateTo != null) url += '&date_to=' + dateTo;
+      const res = await fetch(url, { signal: abortCtrl.signal });
+      data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const errMsg = (data && data.error) ? data.error : ('HTTP ' + res.status + ' ' + res.statusText);
+        throw new Error(errMsg);
+      }
     }
+
     renderResults(data);
-    addToHistory(q, data.results.length);
+    addToHistory(q, data.results?.length || 0);
+
+    if (smartSearchAvailable && data.results && data.results.length > 0) {
+      startInterpretStream(q, data.results, searchToken, abortCtrl);
+    }
   } catch (e) {
     if (e.name === 'AbortError') return;
     const msg = (e && e.message) ? e.message : '未知错误';
-    results.innerHTML = '<div class="no-results">搜索出错：' + esc(msg) + '。请检查后端是否运行中。</div>';
+    results.innerHTML = '<div class="no-results">搜索出错：' + esc(msg) + '</div>';
   } finally {
-    abortCtrl = null;
-    setSearching(false);
+    if (searchToken === activeSearchToken) {
+      setSearching(false);
+    }
   }
 }
 
@@ -1587,11 +1861,20 @@ input.addEventListener('keydown', e => {
     input.blur();
     return;
   }
-  if (e.key === 'Enter' && !e.isComposing) {
+  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
     e.preventDefault();
     triggerSearch();
   }
 });
+
+input.addEventListener('input', function() {
+  this.style.height = 'auto';
+  this.style.height = (this.scrollHeight) + 'px';
+  if(!this.value) { this.style.height = '52px'; }
+});
+
+const interpretModule = document.getElementById('interpretModule');
+const interpretContent = document.getElementById('interpretContent');
 
 document.addEventListener('keydown', e => {
   if ((e.metaKey || e.ctrlKey) && e.key === 'k') {

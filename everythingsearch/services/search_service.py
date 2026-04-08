@@ -78,6 +78,7 @@ class SearchService:
                 date_field=req.date_field,
                 date_from=req.date_from,
                 date_to=req.date_to,
+                exact_focus=req.exact_focus,
             )
         except SearchTimeoutError as exc:
             raise SearchExecutionTimeoutError(str(exc)) from exc

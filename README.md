@@ -10,7 +10,7 @@ EverythingSearch is a **local semantic file search engine for macOS**. It offers
 - **Hybrid indexing**: Indexes both file content and filenames, so you can find information that lives inside files, not just in names
 - **Position weighting**: Matches in filenames and headings rank higher
 - **Caching model**: The first full index after install can take a while while the disk is scanned; afterward, incremental updates keep the index fast
-- **Privacy**: All data and operations stay on your machine; a cloud API is used only when generating embeddings, so you need not worry about data security for local search and storage
+- **Privacy**: Indexed content is stored locally. DashScope is used for embeddings during indexing, and when browser smart search is enabled it also receives the current query text and compact result summaries for intent parsing / interpretation
 - **Web UI**: Search in the browser the way you use Google to find information on the web—except your files are local, with a simple, friendly flow. Filter by file time for more precise results
 - **MWeb support**: If you are already using MWeb for your notes and as a Markdown editor, flip one switch to take over integration and index your MWeb content in one step
 
@@ -55,6 +55,7 @@ After installation, complete these three system-level configurations for stable,
 | 1 | [`INSTALL.en.md`](docs/INSTALL.en.md) | Installation and operations guide | First install, new machine migration, environment setup | Prerequisites, API key setup, install flow, launchd wrapper scripts, day-to-day commands |
 | 2 | [`PROJECT_MANUAL.en.md`](docs/PROJECT_MANUAL.en.md) | Technical reference manual | Development, maintenance, customization or extension | Architecture, module boundaries, configuration matrix, indexing/search flow, tuning and deployment |
 | 3 | [`UI_DESIGN_APPLE_GOOGLE.en.md`](docs/UI_DESIGN_APPLE_GOOGLE.en.md) | Web UI design notes | UI upkeep, HIG/Material alignment, accessibility and motion | Design principles and tokens; bilingual pages linked at the top |
+| 4 | [`NL_SEARCH_AND_WEB_UI.en.md`](docs/NL_SEARCH_AND_WEB_UI.en.md) | NL search behavior notes | Smart search rollout, API behavior, frontend fallback rules | Intent route, interpretation route, `exact_focus`, rate limits, no-key fallback |
 
 ## Technical Manual Scope
 

@@ -31,6 +31,8 @@ class SearchRequest:
     date_from: float | None
     date_to: float | None
     limit: int | None
+    #: True 时优先仅使用关键词倒排命中（意图为「精确检索」时由 NL 流程设置）；无命中时底层会回退为混合检索。
+    exact_focus: bool = False
 
 
 @dataclass(frozen=True)
@@ -48,6 +50,16 @@ class FileBodyRequest:
     filepath: str
 
 
+def parse_json_object_body(flask_request) -> dict:
+    """解析并校验顶层 JSON 对象请求体。"""
+    payload = flask_request.get_json(silent=True)
+    if payload is None:
+        raise MissingParameterError("请求体必须是 JSON")
+    if not isinstance(payload, dict):
+        raise InvalidParameterError("请求体必须是 JSON 对象")
+    return payload
+
+
 def parse_search_request(flask_request) -> SearchRequest:
     """解析搜索请求参数。"""
     query = (flask_request.args.get("q", "") or "").strip()
@@ -63,6 +75,7 @@ def parse_search_request(flask_request) -> SearchRequest:
         date_from=date_from,
         date_to=date_to,
         limit=limit,
+        exact_focus=False,
     )
 
 
@@ -77,11 +90,7 @@ def parse_file_query_request(flask_request, *, include_max_bytes: bool) -> FileQ
 
 def parse_file_body_request(flask_request) -> FileBodyRequest:
     """解析文件 body 接口请求参数。"""
-    payload = flask_request.get_json(silent=True)
-    if payload is None:
-        raise MissingParameterError("请求体必须是 JSON")
-    if not isinstance(payload, dict):
-        raise InvalidParameterError("请求体必须是 JSON 对象")
+    payload = parse_json_object_body(flask_request)
     filepath = _parse_required_filepath(payload.get("filepath"))
     return FileBodyRequest(filepath=filepath)
 

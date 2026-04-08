@@ -29,10 +29,12 @@ chroma_db/
 .DS_Store
 .idea/
 .vscode/
-# Cursor：跟踪共享的 project skills，其余本地状态不提交
+# Cursor：跟踪共享的 project skills 与 rules，其余本地状态不提交
 .cursor/*
 !.cursor/skills/
 !.cursor/skills/**
+!.cursor/rules/
+!.cursor/rules/**
 *.swp
 *.swo
 

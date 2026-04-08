@@ -58,6 +58,17 @@ class Settings:
     supported_extensions: frozenset[str]
     position_weights: Mapping[str, float]
     keyword_freq_bonus: float
+    trust_proxy: bool
+
+    # 智能搜索（意图识别与结果解读；需配置 DashScope API Key）
+    nl_intent_model: str
+    search_interpret_model: str
+    nl_timeout_sec: int
+    interpret_timeout_sec: int
+    nl_max_message_chars: int
+    interpret_max_results: int
+    rate_limit_nl_per_min: int
+    rate_limit_interpret_per_min: int
 
 
 def get_settings() -> Settings:
@@ -205,6 +216,60 @@ def _load_settings() -> Settings:
             legacy_config,
             "KEYWORD_FREQ_BONUS",
             default=0.03,
+        ),
+        trust_proxy=_load_bool(
+            "TRUST_PROXY",
+            legacy_config,
+            "TRUST_PROXY",
+            default=False,
+        ),
+        nl_intent_model=_load_str(
+            "NL_INTENT_MODEL",
+            legacy_config,
+            "NL_INTENT_MODEL",
+            default="qwen-turbo",
+        ),
+        search_interpret_model=_load_str(
+            "SEARCH_INTERPRET_MODEL",
+            legacy_config,
+            "SEARCH_INTERPRET_MODEL",
+            default="qwen-turbo",
+        ),
+        nl_timeout_sec=_load_int(
+            "NL_TIMEOUT_SEC",
+            legacy_config,
+            "NL_TIMEOUT_SEC",
+            default=10,
+        ),
+        interpret_timeout_sec=_load_int(
+            "INTERPRET_TIMEOUT_SEC",
+            legacy_config,
+            "INTERPRET_TIMEOUT_SEC",
+            default=20,
+        ),
+        nl_max_message_chars=_load_int(
+            "NL_MAX_MESSAGE_CHARS",
+            legacy_config,
+            "NL_MAX_MESSAGE_CHARS",
+            default=1000,
+        ),
+        interpret_max_results=_load_int(
+            "INTERPRET_MAX_RESULTS",
+            legacy_config,
+            "INTERPRET_MAX_RESULTS",
+            default=10,
+        ),
+        rate_limit_nl_per_min=_load_int(
+            "RATE_LIMIT_NL_PER_MIN",
+            legacy_config,
+            "RATE_LIMIT_NL_PER_MIN",
+            default=10,
+        ),
+        rate_limit_interpret_per_min=_load_int(
+            "RATE_LIMIT_INTERPRET_PER_MIN",
+            legacy_config,
+            "RATE_LIMIT_INTERPRET_PER_MIN",
+            default=10,
         ),
     )
     _validate_settings(settings)

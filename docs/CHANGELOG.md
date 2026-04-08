@@ -6,6 +6,17 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.5.0] - 2026-04-08
+
+**GitHub Release**：[v1.5.0](https://github.com/jiggersong/everythingsearch/releases/tag/v1.5.0)
+
+### Changed
+
+- Web 搜索在已配置 DashScope API Key 时默认走 `POST /api/search/nl`（意图识别 + 检索 + 可选智能解读），移除页面「启用智能语义搜索」开关及配置项 `NL_SEARCH_ENABLED`。
+- 意图 `slots.match_mode` 支持 `exact_focus`：优先关键词倒排路径；无可用结果时回退向量 + 关键词混合检索。搜索内存缓存键纳入 `exact_focus`。
+- 文档：README、`docs/INSTALL*.md`、`docs/PROJECT_MANUAL*.md` 已同步当前的 NL 搜索、网络依赖、launchd 行为与版本说明；新增 `docs/NL_SEARCH_AND_WEB_UI.en.md`。
+- 修复了 Review 暴露的 3 个问题：`猜你想找` 仅标记全局第一条结果；新搜索会取消上一轮智能解读流；新增 POST 接口对顶层非对象 JSON 统一返回 `400` 而非 `500`。
+
 ## [1.4.0] - 2026-04-01
 
 **GitHub Release**：[v1.4.0](https://github.com/jiggersong/everythingsearch/releases/tag/v1.4.0)

@@ -92,6 +92,23 @@ MEDIA_EXTENSIONS = {
 }
 SUPPORTED_EXTENSIONS = TEXT_EXTENSIONS | OFFICE_EXTENSIONS | MEDIA_EXTENSIONS
 
+# ================= 智能对话搜索配置 =================
+# 说明：已配置 MY_API_KEY / DASHSCOPE_API_KEY 时，Web 搜索默认走意图识别 + 混合检索；
+# 未配置 Key 时前端自动使用普通关键词/语义混合接口。
+
+# 信任前置代理网关获取真实 IP (例如 Nginx 的 X-Forwarded-For)
+TRUST_PROXY = False
+
+# 意图识别所用的大模型（推荐用支持 JSON Mode 的模型，如 qwen-turbo）
+NL_INTENT_MODEL = "qwen-turbo"
+
+# 解读长文本返回结构的大模型
+SEARCH_INTERPRET_MODEL = "qwen-turbo"
+
+# 模型超时时间配置（秒）
+NL_TIMEOUT_SEC = 10
+INTERPRET_TIMEOUT_SEC = 20
+
 
 def get_target_dirs():
     """Return list of target directories to index."""

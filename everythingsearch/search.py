@@ -36,10 +36,17 @@ MAX_CACHE_SIZE = 100  # 最大缓存条目数
 _TimeoutResultT = TypeVar("_TimeoutResultT")
 
 
-def _get_cache_key(query: str, source_filter: str | None, date_field: str | None,
-                   date_from: float | None, date_to: float | None) -> str:
+def _get_cache_key(
+    query: str,
+    source_filter: str | None,
+    date_field: str | None,
+    date_from: float | None,
+    date_to: float | None,
+    *,
+    exact_focus: bool = False,
+) -> str:
     """生成缓存键"""
-    key_data = f"{query}:{source_filter}:{date_field}:{date_from}:{date_to}"
+    key_data = f"{query}:{source_filter}:{date_field}:{date_from}:{date_to}:ef={exact_focus}"
     return hashlib.sha256(key_data.encode()).hexdigest()
 
 
@@ -312,18 +319,104 @@ def _build_where_filter(
     return {"$and": clauses}
 
 
+def _ranked_pairs_to_results(ranked: list[tuple[Document, float]], query: str) -> list[dict]:
+    """将 (Document, score) 列表格式化为 API / UI 使用的结果行。"""
+    results: list[dict] = []
+    for doc, score in ranked:
+        source_type = doc.metadata.get("source_type", "file")
+
+        filename = doc.metadata.get("filename") or "未知文件"
+        filepath = doc.metadata.get("source") or ""
+        filetype = doc.metadata.get("type") or ""
+        raw_cat = doc.metadata.get("categories")
+        categories = ", ".join(raw_cat) if isinstance(raw_cat, (list, tuple)) else (raw_cat or "")
+
+        if score <= 0.10:
+            tag = "精确匹配"
+            relevance = "关键词命中"
+        else:
+            tag = "语义匹配"
+            relevance = f"{max(0, (1 - score)) * 100:.0f}%"
+
+        raw = doc.page_content.strip().replace("\n", " ")
+        preview = raw
+        if raw and query.strip():
+            q = query.strip().lower()
+            idx = raw.lower().find(q)
+            if idx == -1:
+                for t in query.split():
+                    t = t.strip()
+                    if not t:
+                        continue
+                    idx = raw.lower().find(t.lower())
+                    if idx != -1:
+                        break
+            if idx != -1:
+                start = max(0, idx - 60)
+                end = min(len(raw), idx + len(q) + 120)
+                preview = ("…" if start > 0 else "") + raw[start:end]
+                if end < len(raw):
+                    preview += "…"
+        if len(preview) > 220:
+            preview = preview[:220] + "…"
+
+        mtime = doc.metadata.get("mtime", 0)
+        if mtime is not None and not isinstance(mtime, (int, float)):
+            mtime = 0
+        ctime = doc.metadata.get("ctime", 0)
+        if ctime is not None and not isinstance(ctime, (int, float)):
+            ctime = 0
+
+        results.append(
+            {
+                "filename": filename,
+                "filepath": filepath,
+                "relevance": relevance,
+                "tag": tag,
+                "preview": preview,
+                "filetype": filetype,
+                "mtime": mtime,
+                "ctime": ctime,
+                "source_type": source_type,
+                "categories": categories,
+            }
+        )
+    return results
+
+
 def _do_search_core(
     query: str,
     source_filter: str | None = None,
     date_field: str | None = None,
     date_from: float | None = None,
     date_to: float | None = None,
+    *,
+    exact_focus: bool = False,
 ) -> list[dict]:
     """
     实际的搜索核心逻辑（内部使用，支持超时控制）
     """
     settings = get_settings()
     where_filter = _build_where_filter(source_filter, date_field, date_from, date_to)
+
+    keyword_only = exact_focus
+    if keyword_only:
+        kw_hits = _keyword_fallback(query, settings, where_filter=where_filter)
+        if not kw_hits:
+            keyword_only = False
+    if keyword_only:
+        ranked_kw = sorted(kw_hits.values(), key=lambda x: x[1])
+        filtered_kw: list[tuple[Document, float]] = []
+        for doc, kw_score in ranked_kw:
+            source_type = doc.metadata.get("source_type", "file")
+            if source_filter and source_filter != "all":
+                if source_type != source_filter:
+                    continue
+            filtered_kw.append((doc, kw_score))
+        if filtered_kw:
+            return _ranked_pairs_to_results(filtered_kw, query)
+        # 有关键词命中但被来源等条件筛空时，回退混合检索以免误返回空结果
+        keyword_only = False
 
     def _do_search():
         vectordb = _get_vectordb()
@@ -351,71 +444,14 @@ def _do_search_core(
             best_by_file[source] = (doc, score)
 
     ranked = sorted(best_by_file.values(), key=lambda x: x[1])
-    results = []
+    filtered: list[tuple[Document, float]] = []
     for doc, score in ranked:
         source_type = doc.metadata.get("source_type", "file")
-
         if source_filter and source_filter != "all":
             if source_type != source_filter:
                 continue
-
-        filename = doc.metadata.get("filename") or "未知文件"
-        filepath = doc.metadata.get("source") or ""
-        filetype = doc.metadata.get("type") or ""
-        raw_cat = doc.metadata.get("categories")
-        categories = ", ".join(raw_cat) if isinstance(raw_cat, (list, tuple)) else (raw_cat or "")
-
-        if score <= 0.10:
-            tag = "精确匹配"
-            relevance = "关键词命中"
-        else:
-            tag = "语义匹配"
-            relevance = f"{max(0, (1 - score)) * 100:.0f}%"
-
-        raw = doc.page_content.strip().replace('\n', ' ')
-        # 尝试截取靠近命中关键词的位置，预览更聚焦
-        preview = raw
-        if raw and query.strip():
-            q = query.strip().lower()
-            idx = raw.lower().find(q)
-            if idx == -1:
-                # 如果整句找不到，就按空格拆分后找第一个 token
-                for t in query.split():
-                    t = t.strip()
-                    if not t:
-                        continue
-                    idx = raw.lower().find(t.lower())
-                    if idx != -1:
-                        break
-            if idx != -1:
-                start = max(0, idx - 60)
-                end = min(len(raw), idx + len(q) + 120)
-                preview = ("…" if start > 0 else "") + raw[start:end]
-                if end < len(raw):
-                    preview += "…"
-        if len(preview) > 220:
-            preview = preview[:220] + "…"
-
-        mtime = doc.metadata.get("mtime", 0)
-        if mtime is not None and not isinstance(mtime, (int, float)):
-            mtime = 0
-        ctime = doc.metadata.get("ctime", 0)
-        if ctime is not None and not isinstance(ctime, (int, float)):
-            ctime = 0
-
-        results.append({
-            "filename": filename,
-            "filepath": filepath,
-            "relevance": relevance,
-            "tag": tag,
-            "preview": preview,
-            "filetype": filetype,
-            "mtime": mtime,
-            "ctime": ctime,
-            "source_type": source_type,
-            "categories": categories,
-        })
-    return results
+        filtered.append((doc, score))
+    return _ranked_pairs_to_results(filtered, query)
 
 
 def search_core(
@@ -424,6 +460,8 @@ def search_core(
     date_field: str | None = None,
     date_from: float | None = None,
     date_to: float | None = None,
+    *,
+    exact_focus: bool = False,
 ) -> list[dict]:
     """
     Core search: returns a list of result dicts, sorted by relevance.
@@ -434,9 +472,12 @@ def search_core(
     source_filter: None/"all" = everything, "file" = files only, "mweb" = MWeb notes only
     date_field: "mtime" or "ctime" (default "mtime")
     date_from / date_to: unix timestamps for time-range filtering (inclusive)
+    exact_focus: 为 True 时仅使用关键词倒排路径（无命中时自动回退为向量+关键词混合）。
     """
     # 1. 检查缓存
-    cache_key = _get_cache_key(query, source_filter, date_field, date_from, date_to)
+    cache_key = _get_cache_key(
+        query, source_filter, date_field, date_from, date_to, exact_focus=exact_focus
+    )
     cached = _get_cached_search(cache_key)
     if cached is not None:
         return cached
@@ -444,7 +485,14 @@ def search_core(
     settings = get_settings()
 
     def _execute_search() -> list[dict]:
-        return _do_search_core(query, source_filter, date_field, date_from, date_to)
+        return _do_search_core(
+            query,
+            source_filter,
+            date_field,
+            date_from,
+            date_to,
+            exact_focus=exact_focus,
+        )
 
     try:
         results = _run_with_timeout(_execute_search, settings.search_timeout_seconds)

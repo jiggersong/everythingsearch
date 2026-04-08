@@ -12,7 +12,7 @@ EverythingSearch 是一个运行在 macOS 上的**本地文件语义搜索引擎
 - **混合索引**：同时索引文件内容和文件名，就算你要找的信息是在文件内容中，也一样可以搜到
 - **位置加权**：关键词出现在文件名、标题中的结果会获得更高的排名
 - **缓存机制**：只有在第一次安装完成后的索引重建需要花费比较长的时间全盘扫描，后续会根据文件变更增量构建索引，快如闪电
-- **隐私保护**：所有数据和操作都在你的电脑本地完成，仅在生成向量时调用云端 API，没有数据安全困扰
+- **隐私保护**：索引数据保存在本机。DashScope 在索引阶段用于生成向量；当浏览器启用默认智能搜索时，还会接收当前查询文本与压缩后的结果摘要，用于意图识别和智能解读
 - **Web界面**：直接在浏览器中搜索，像用 Google 找网络信息一样的找你的文件，简单友好。支持按照文件时间过滤，搜索更精准
 - **MWeb 支持**：如果你正在使用 MWeb 作为笔记文件和 Markdown 编辑器，只需打开一个开关即可一键接管并索引你的 MWeb 内容
 
@@ -33,8 +33,9 @@ EverythingSearch 是一个运行在 macOS 上的**本地文件语义搜索引擎
                         │
 ┌───────────────────────▼──────────────────────────────┐
 │                核心业务编排层 (services/)               │
-│         SearchService · FileService · HealthService  │
-│        (含 file_access 统一文件越权防御及寻址保护)        │
+│ SearchService · FileService · HealthService ·         │
+│ NLSearchService · SearchInterpretService              │
+│ (含 file_access 统一文件越权防御及寻址保护)              │
 └───────────────────────┬──────────────────────────────┘
                         │
 ┌───────────────────────▼──────────────────────────────┐
@@ -86,11 +87,14 @@ EverythingSearch/
 │   ├── services/             # 业务服务层（抽象解耦核心逻辑）
 │   │   ├── file_service.py   # 文件生命周期控制
 │   │   ├── search_service.py # 搜索缓存控制及并发调度
-│   │   └── health_service.py # 数据探活与预热调度
+│   │   ├── health_service.py # 数据探活与预热调度
+│   │   ├── nl_search_service.py
+│   │   └── search_interpret_service.py
 │   ├── request_validation.py # 入参验证协议 (提供统一400失败规范)
 │   ├── file_access.py        # 强一致文件存取控制边界与防路径穿越
 │   ├── infra/                # 基础设施层
 │   │   ├── settings.py       # (含强类型配置提取封装)
+│   │   └── rate_limiting.py
 │   ├── search.py             # 底层搜索核心算法
 │   ├── indexer.py            # 全量索引构建
 │   ├── incremental.py        # 增量索引
@@ -113,6 +117,8 @@ EverythingSearch/
 ├── docs/
 │   ├── INSTALL.md
 │   ├── PROJECT_MANUAL.md
+│   ├── NL_SEARCH_AND_WEB_UI.md
+│   ├── NL_SEARCH_AND_WEB_UI.en.md
 │   ├── UI_DESIGN_APPLE_GOOGLE.md      # Web UI 设计说明（中文）
 │   └── UI_DESIGN_APPLE_GOOGLE.en.md   # Web UI 设计说明（英文）
 ├── Makefile                  # make 快捷命令（make help 列出说明）
@@ -138,30 +144,40 @@ EverythingSearch/
 本地兼容配置主要集中在此文件；运行时加载顺序为：环境变量 > 仓库根目录 `config.py` > 代码内安全默认值。
 
 
-| 配置项                  | 默认值                                           | 说明                                        |
-| -------------------- | --------------------------------------------- | ----------------------------------------- |
-| `MY_API_KEY`         | 空字符串或 `DASHSCOPE_API_KEY` 环境变量                | 阿里通义千问 DashScope API Key 的兼容字段；推荐优先使用环境变量 |
-| `TARGET_DIR`         | `/path/to/documents` 或 `["/path1", "/path2"]` | 要索引的根目录（支持单目录或列表；环境变量 `TARGET_DIR` 优先）    |
-| `ENABLE_MWEB`        | `False/True`                                  | 是否一键无缝开启内置 MWeb 笔记整合；开启后系统即接管内部自动导出       |
-| `MWEB_LIBRARY_PATH`  | 默认系统库路径                                       | 指定 MWeb 主数据库目录（备用选项）                      |
-| `MWEB_DIR`           | `data/mweb_export`                            | 闭环自动管理的 MWeb 笔记存落地区                       |
-| `INDEX_STATE_DB`     | `./index_state.db`                            | 增量索引状态数据库                                 |
-| `SCAN_CACHE_PATH`    | `./scan_cache.db`                             | 扫描解析缓存（未变更文件跳过解析）                         |
-| `EMBEDDING_MODEL`    | `text-embedding-v2`                           | 向量模型名称                                    |
-| `CHUNK_SIZE`         | `500`                                         | 文本切分块大小（字符）                               |
-| `CHUNK_OVERLAP`      | `80`                                          | 切分块重叠长度                                   |
-| `MAX_CONTENT_LENGTH` | `20000`                                       | 单文件最大索引字符数                                |
-| `SEARCH_TOP_K`       | `250`                                         | 向量检索候选 chunk 数量（越大召回越高但越慢）                |
-| `SCORE_THRESHOLD`    | `0.45`                                        | cosine 距离阈值（越小越严格）                        |
-| `POSITION_WEIGHTS`   | `filename:0.6, heading:0.8, content:1.0`      | 位置加权因子                                    |
-| `KEYWORD_FREQ_BONUS` | `0.03`                                        | 关键词频次加分系数                                 |
+| 配置项                            | 默认值                                           | 说明                                        |
+| ------------------------------ | --------------------------------------------- | ----------------------------------------- |
+| `MY_API_KEY`                   | 空字符串或 `DASHSCOPE_API_KEY` 环境变量                | 阿里通义千问 DashScope API Key 的兼容字段；推荐优先使用环境变量 |
+| `TARGET_DIR`                   | `/path/to/documents` 或 `["/path1", "/path2"]` | 要索引的根目录（支持单目录或列表；环境变量 `TARGET_DIR` 优先）    |
+| `ENABLE_MWEB`                  | `False/True`                                  | 是否一键无缝开启内置 MWeb 笔记整合；开启后系统即接管内部自动导出       |
+| `MWEB_LIBRARY_PATH`            | 默认系统库路径                                       | 指定 MWeb 主数据库目录（备用选项）                      |
+| `MWEB_DIR`                     | `data/mweb_export`                            | 闭环自动管理的 MWeb 笔记存落地区                       |
+| `INDEX_STATE_DB`               | `./index_state.db`                            | 增量索引状态数据库                                 |
+| `SCAN_CACHE_PATH`              | `./scan_cache.db`                             | 扫描解析缓存（未变更文件跳过解析）                         |
+| `EMBEDDING_MODEL`              | `text-embedding-v2`                           | 向量模型名称                                    |
+| `CHUNK_SIZE`                   | `500`                                         | 文本切分块大小（字符）                               |
+| `CHUNK_OVERLAP`                | `80`                                          | 切分块重叠长度                                   |
+| `MAX_CONTENT_LENGTH`           | `20000`                                       | 单文件最大索引字符数                                |
+| `SEARCH_TOP_K`                 | `250`                                         | 向量检索候选 chunk 数量（越大召回越高但越慢）                |
+| `SCORE_THRESHOLD`              | `0.35`                                        | cosine 距离阈值（越小越严格；与 `settings.py` 默认一致）   |
+| `POSITION_WEIGHTS`             | `filename:0.6, heading:0.8, content:1.0`      | 位置加权因子                                    |
+| `KEYWORD_FREQ_BONUS`           | `0.03`                                        | 关键词频次加分系数                                 |
+| `TRUST_PROXY`                  | `False`                                       | 是否信任反向代理传入的 `X-Forwarded-For`（限流取真实 IP）   |
+| `NL_INTENT_MODEL`              | `qwen-turbo`                                  | 自然语言意图识别模型（建议选用支持 JSON Mode 的模型）          |
+| `SEARCH_INTERPRET_MODEL`       | `qwen-turbo`                                  | 搜索结果「智能解读」所用模型                            |
+| `NL_TIMEOUT_SEC`               | `10`                                          | 意图识别上游超时（秒）                               |
+| `INTERPRET_TIMEOUT_SEC`        | `20`                                          | 解读上游超时（秒）                                 |
+| `NL_MAX_MESSAGE_CHARS`         | `1000`                                        | 单次意图输入最大字符数                               |
+| `INTERPRET_MAX_RESULTS`        | `10`                                          | 参与解读的摘要条数上限                               |
+| `RATE_LIMIT_NL_PER_MIN`        | `10`                                          | `POST /api/search/nl` 每 IP 每分钟请求上限        |
+| `RATE_LIMIT_INTERPRET_PER_MIN` | `10`                                          | 解读类接口每 IP 每分钟请求上限                         |
 
 
 **关于 API Key 的推荐做法**：
 
 - 推荐使用环境变量 `DASHSCOPE_API_KEY`，避免把真实 Key 写进 `config.py`（尤其是在打包/传给其他电脑时）
 - 配置模板不再提供可运行的伪默认值；留空表示“未配置”，不是异常
-- 若 Key 未配置：索引与搜索会直接报错并提示如何设置（这是预期行为）
+- 若 Key 未配置：**增量/全量索引无法生成向量**（嵌入依赖 DashScope）。**Web 首页搜索**会退化为仅请求 `GET /api/search`，不调用意图识别与智能解读；若此时向量库亦不可用，搜索仍可能报错，需先完成索引并保证 Key 有效。
+- 已移除历史上的 `NL_SEARCH_ENABLED` 开关：只要配置了 Key，Web 侧默认走智能检索流程（意图 + 混合检索 + 可选解读）。详见 `docs/NL_SEARCH_AND_WEB_UI.md`。
 
 ### 4.2 indexer.py — 索引构建
 
@@ -185,7 +201,7 @@ EverythingSearch/
 
 ### 4.3 search.py — 搜索引擎
 
-**内存缓存**：对 `(query, source_filter, date_field, date_from, date_to)` 的搜索结果做短期缓存（默认 TTL 与条数见代码中 `CACHE_TTL_SECONDS`、`MAX_CACHE_SIZE`）。重建索引或需立即一致时，可调用 `POST /api/cache/clear`；清空向量库进程内缓存时也会清空该缓存。
+**内存缓存**：对 `(query, source_filter, date_field, date_from, date_to, exact_focus)` 的搜索结果做短期缓存（`exact_focus` 区分「仅关键词优先」与默认混合管道；默认 TTL 与条数见代码中 `CACHE_TTL_SECONDS`、`MAX_CACHE_SIZE`）。重建索引或需立即一致时，可调用 `POST /api/cache/clear`；清空向量库进程内缓存时也会清空该缓存。
 
 **超时控制**：搜索执行会通过进程内共享的 future 包装器施加超时控制，默认使用 `SEARCH_TIMEOUT_SECONDS = 30`。超时不会再伪装成空结果，而是沿 service / route 层映射为可观测的错误响应（`/api/search` 返回 504）。搜索超时结果不会写入内存缓存。若将 `SEARCH_TIMEOUT_SECONDS = 0`，则表示关闭搜索超时控制，但仍保留单飞执行与繁忙保护。需要注意：future 超时后后台工作线程可能继续运行到自然结束，这是当前实现的已知取舍；在该后台任务结束前，新的搜索请求可能收到 `503` 的“执行繁忙”响应，以避免后台任务无界堆积。
 
@@ -197,6 +213,11 @@ EverythingSearch/
 4. **文件去重**：同一文件只保留最佳 chunk
 5. **关键词精确回退**：用 ChromaDB `$contains` 查找包含原文的文档（支持多词 OR）
 6. **合并排序**：精确匹配 + 语义匹配合并，按分数排序返回
+
+`**exact_focus`（精确优先）路径**（由 `POST /api/search/nl` 在意图为 `match_mode=exact_focus` 时传入 `SearchRequest.exact_focus=True` 触发）：
+
+1. 先仅执行与第 5 步相同的关键词倒排检索并按文件去重、排序；
+2. 若**零命中**，或命中行被 `source` / 时间等 `where` 条件**全部筛掉**，则**自动回退**到上面的完整向量 + 关键词混合管道，避免误返回空结果。
 
 ### 4.4 embedding_cache.py — 向量缓存
 
@@ -236,10 +257,12 @@ python -m everythingsearch.incremental --full   # 完整重建
 
 最新的改动大幅瘦身了 `app.py` 路由绑定层的职责：它剥离了裸业务逻辑代码并委派到 `services/` 子层统一处理；同时借由 `request_validation.py` 将所有异常、不合法 JSON 请求类型过滤出标准的 HTTP `400 Bad Request`，从而防止脏数据向下渗透带来 500 系统级崩溃。底层的 `file_access.py` 补充了一道屏障：无论外部调用如何发起文件读取、下载或者打开操作，均强制鉴权对应路径不能跨越索引边界（禁止路径穿越探测）。
 
-Flask 应用路由保持不变：
+Flask 应用路由（核心）：
 
-- `GET /` — 返回搜索页面
-- `GET /api/search?q=xxx&source=all|file|mweb` — 搜索 API（可选 `limit=1..200` 限制条数，便于 Agent/脚本消费）
+- `GET /` — 返回搜索页面（模板注入 `smart_search_available`：是否已配置 DashScope API Key，用于前端选择 `POST /api/search/nl` 或退化为 `GET /api/search`）
+- `GET /api/search?q=xxx&source=all|file|mweb` — 直接搜索 API（可选 `date_field` / `date_from` / `date_to` / `limit=1..200`；**不经过**大模型意图识别）
+- `POST /api/search/nl` — 自然语言搜索：调用 DashScope 输出结构化意图（含 `slots.q`、可选 `match_mode`、时间来源等）→ 执行 `SearchService.search`（可带 `exact_focus`）；需 API Key 与网络可达模型服务
+- `POST /api/search/interpret`、`POST /api/search/interpret/stream` — 基于当前结果列表生成简短「智能解读」（流式与非流式）；需 API Key，带每 IP 限流
 - `GET /api/health` — 监控状态。其中当 `vectordb.status` 不等于 `"ok"` (如有损或降级)时，顶层 `ok` 标识会严格返回 `false`，保持内外状态的监控健康强一致性。
 - `POST /api/cache/clear` — 清空搜索**内存缓存**
 - `GET /api/file/read?filepath=...` — 读取**已索引根目录内**文件的文本内容
@@ -295,16 +318,18 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jigger.everythingsea
 
 ### 外部服务
 
-- **阿里云 DashScope API**：用于生成文本向量（text-embedding-v2），需要有效的 API Key
+- **阿里云 DashScope API**：需要有效的 API Key
+  - **嵌入**：生成文本向量（默认 `text-embedding-v2`），索引构建阶段调用
+  - **生成式**（可选）：当 Web 使用 `POST /api/search/nl` 或解读接口时，调用配置的 `NL_INTENT_MODEL` / `SEARCH_INTERPRET_MODEL`（默认 `qwen-turbo`），此时**搜索会话需要外网**
   - 获取方式：注册阿里云账号 → 开通 DashScope 服务 → 创建 API Key
-  - 费用：极低（约 ¥0.0007 / 1000 tokens）
+  - 费用：极低（嵌入约 ¥0.0007 / 1000 tokens；意图/解读按所选模型计费）
 
 ### 本地资源
 
 - macOS 10.15+ 系统
 - Python 3.10 或 3.11（推荐 3.11）
 - 磁盘空间：约 500MB（含虚拟环境和数据库）
-- 网络：仅在索引构建时需要（调用 DashScope API），搜索时完全离线
+- 网络：索引构建需要（嵌入 API）；若仅使用 `GET /api/search` 且向量已构建，查询阶段可不访问 DashScope；使用 NL 搜索或解读时需要外网
 
 ---
 
