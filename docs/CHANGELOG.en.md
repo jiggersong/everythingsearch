@@ -2,18 +2,26 @@
 
 [English](CHANGELOG.en.md) | [中文](CHANGELOG.md)
 
-This file records user-visible changes of EverythingSearch and is intended to stay in sync with GitHub Releases tags.
+This file records user-visible changes to EverythingSearch. Maintain it alongside tags on [GitHub Releases](https://github.com/jiggersong/everythingsearch/releases) (release notes may summarize the matching section here).
+
+Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/); versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [1.5.0] - 2026-04-08
 
 **GitHub Release**: [v1.5.0](https://github.com/jiggersong/everythingsearch/releases/tag/v1.5.0)
 
-### Changed
+This release adds **LLM intent understanding** to the search pipeline and optional **intelligent interpretation** of results with retrieval-strategy tuning. When a DashScope API key is configured, the web UI defaults to natural-language search via `POST /api/search/nl`, toward “query in plain language, understand results more easily.”
 
-- Web search defaults to `POST /api/search/nl` when a DashScope API key is configured (intent + search + optional interpretation). Removed the “enable smart semantic search” checkbox and the `NL_SEARCH_ENABLED` setting.
-- Intent JSON supports `slots.match_mode = "exact_focus"` for keyword-first retrieval, falling back to vector + keyword hybrid when no rows survive filtering.
-- Search cache keys include `exact_focus`. Docs across README, `docs/INSTALL*.md`, and `docs/PROJECT_MANUAL*.md` now match the current NL-search, network, launchd, and version behavior; added `docs/NL_SEARCH_AND_WEB_UI.en.md`.
-- Fixed three review findings: `猜你想找` now marks only the global top-ranked result; new searches cancel the previous interpretation stream; new POST routes return `400` for top-level non-object JSON instead of `500`.
+### 🚀 Features
+
+- **Natural-language semantics and analysis**: Intent JSON normalizes the query and drives hybrid search; when the user asks for literal/exact matching, the model may emit `match_mode=exact_focus` for a keyword-first path that falls back to vector + keyword hybrid when nothing survives filtering. Search in-memory cache keys include `exact_focus` so the two modes do not collide. Removed the web “enable smart semantic search” checkbox and the `NL_SEARCH_ENABLED` setting.
+- **UX, documentation, and consistency**: Updated README, `docs/INSTALL*.md`, and `docs/PROJECT_MANUAL*.md` for NL behavior; added `docs/NL_SEARCH_AND_WEB_UI.md` and `docs/NL_SEARCH_AND_WEB_UI.en.md`. Interaction and API edge-case fixes are listed below.
+
+### 🐞 Bug Fixes
+
+- The smart suggestion badge (“猜你想找”) is shown only on the single globally top-ranked result.
+- Starting a new search cancels any in-flight interpretation stream from the previous query so stale output cannot overwrite new results.
+- Affected POST JSON routes return **400 Bad Request** for non-object top-level JSON bodies instead of **500**.
 
 ## [1.4.0] - 2026-04-01
 
