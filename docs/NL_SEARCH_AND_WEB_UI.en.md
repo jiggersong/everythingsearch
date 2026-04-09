@@ -25,34 +25,12 @@ This document summarizes the **current implementation** and stays aligned with t
 
 ## 3. API Summary
 
-- `**POST /api/search/nl`**
+- **`POST /api/search/nl`**
   - Request body: `message`, optional `sidebar_source`, `date_field`, `date_from`, `date_to`, `limit`
   - Success: `kind: search_results`; `results` matches `/api/search`; `resolved` includes normalized `source`, `match_mode`, `exact_focus`, and related fields
-- `**GET /api/search**`
+- **`GET /api/search`**
   - No `exact_focus` query parameter; only the NL route sets `SearchRequest.exact_focus`
-- `**POST /api/search/interpret` / `POST /api/search/interpret/stream**`
+- **`POST /api/search/interpret` / `POST /api/search/interpret/stream`**
   - Consume the current search results and produce a short explanation
   - Require an API key
   - Share per-IP rate limiting
-
-## 4. Related Configuration
-
-`NL_SEARCH_ENABLED` has been removed. NL-related settings now include:
-
-- `NL_INTENT_MODEL`
-- `SEARCH_INTERPRET_MODEL`
-- `NL_TIMEOUT_SEC`
-- `INTERPRET_TIMEOUT_SEC`
-- `NL_MAX_MESSAGE_CHARS`
-- `INTERPRET_MAX_RESULTS`
-- `RATE_LIMIT_NL_PER_MIN`
-- `RATE_LIMIT_INTERPRET_PER_MIN`
-- `TRUST_PROXY`
-
-See `PROJECT_MANUAL.en.md` for the full configuration table.
-
-## 5. Known Trade-offs
-
-- Intent quality still depends on model output quality; invalid `match_mode` values are normalized to `balanced`.
-- `search_interpret_service.py` still keeps a generic fallback catch for unexpected non-DashScope failures; route-level input handling is separate from that internal fallback.
-

@@ -26,15 +26,6 @@
 - `**POST /api/search/nl`**  
   - 请求体：`message`、可选 `sidebar_source`、`date_field`、`date_from`、`date_to`、`limit`。  
   - 成功：`kind: search_results`，`results` 同 `/api/search`，`resolved` 含归一化后的 `source`、`match_mode`、`exact_focus` 等。
-- `**GET /api/search**`  
+- `**GET /api/search**`
   - 无 `exact_focus` 查询参数；仅 NL 路径会设置 `SearchRequest.exact_focus`。
-
-## 4. 配置项（`infra/settings.py` / `config.py` / 环境变量）
-
-已移除 `NL_SEARCH_ENABLED`。与 NL 相关的项包括：`NL_INTENT_MODEL`、`SEARCH_INTERPRET_MODEL`、超时、`NL_MAX_MESSAGE_CHARS`、`INTERPRET_MAX_RESULTS`、两类限流、`TRUST_PROXY`。详见 `PROJECT_MANUAL` 配置表。
-
-## 5. 已知取舍
-
-- 意图依赖模型输出质量；`match_mode` 非法值会归一为 `balanced`（见 `nl_search_service.resolve_intent`）。
-- `search_interpret_service` 中非 DashScope 异常仍可能经宽捕获转为 500（历史实现，本次未改）。
 
