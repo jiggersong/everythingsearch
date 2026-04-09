@@ -66,15 +66,17 @@ It lets users find local documents, code, and materials quickly using natural la
 
 ### Technology Stack
 
-| Component | Choice | Description |
-|-----------|--------|-------------|
-| Language | Python 3.11 | Recommended 3.11 (or 3.10); install dependencies in a virtual environment |
-| Orchestration | LangChain | Document load, chunking, and vectorization pipeline |
-| Embedding model | Aliyun DashScope text-embedding-v2 | Strong Chinese understanding, low cost |
-| Vector database | ChromaDB | Local file-based database; no Docker required |
-| Web framework | Flask + Gunicorn | Dev / production HTTP service |
-| File parsing | pypdf / python-docx / openpyxl / python-pptx | Extract content from PDF, Word, Excel, PPT |
-| Frontend | Single-file HTML + CSS + JS | No Node.js build step |
+
+| Component       | Choice                                       | Description                                                               |
+| --------------- | -------------------------------------------- | ------------------------------------------------------------------------- |
+| Language        | Python 3.11                                  | Recommended 3.11 (or 3.10); install dependencies in a virtual environment |
+| Orchestration   | LangChain                                    | Document load, chunking, and vectorization pipeline                       |
+| Embedding model | Aliyun DashScope text-embedding-v2           | Strong Chinese understanding, low cost                                    |
+| Vector database | ChromaDB                                     | Local file-based database; no Docker required                             |
+| Web framework   | Flask + Gunicorn                             | Dev / production HTTP service                                             |
+| File parsing    | pypdf / python-docx / openpyxl / python-pptx | Extract content from PDF, Word, Excel, PPT                                |
+| Frontend        | Single-file HTML + CSS + JS                  | No Node.js build step                                                     |
+
 
 ---
 
@@ -106,6 +108,9 @@ EverythingSearch/
 │   │   └── index.html
 │   └── static/
 │       └── icon.png
+├── skills/                   # Agent Skill (open source; see §3.1)
+│   └── everythingsearch-local/
+│       └── SKILL.md          # Cursor / Claude Code: local HTTP API usage
 ├── data/                     # Local data and cache (default paths; do not commit)
 │   ├── chroma_db/            # ChromaDB
 │   ├── embedding_cache.db
@@ -138,6 +143,21 @@ EverythingSearch/
 └── everythingsearch_index.sh  # Incremental index launchd wrapper (created at install)
 ```
 
+### 3.1 Agent Skill
+
+For **Cursor, Claude Code, and other tools that support Agent Skills**, this repository ships a versioned Skill file at the repo root:
+
+
+| Item          | Description                                                                                                                                                                                                               |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Path**      | `skills/everythingsearch-local/SKILL.md`                                                                                                                                                                                  |
+| **Contents**  | How to call the local HTTP API for hybrid search, natural-language intent search, intelligent result interpretation, text read / file download, etc.—aligned with `docs/NL_SEARCH_AND_WEB_UI.en.md` and §4.6 routes below |
+| **Base URL**  | Defaults to `http://127.0.0.1:8000`. If the service listens elsewhere, set `EVERYTHINGSEARCH_BASE` in the agent environment (must include the scheme, e.g. `http://127.0.0.1:8000`)                                       |
+| **DashScope** | NL and interpretation routes require a valid API key on the server; without a key, the Skill recommends falling back to `GET /api/search`—see the Skill preamble                                                          |
+
+
+To use this Skill in Cursor, **copy** `skills/everythingsearch-local/` to `.cursor/skills/everythingsearch-local/` in your workspace, or create a **symbolic link** there pointing at the in-repo folder, then reload skills per your tool’s docs.
+
 ---
 
 ## 4. Core Module Details
@@ -146,32 +166,34 @@ EverythingSearch/
 
 Local settings are concentrated here. Load order: environment variables > repository-root `config.py` > safe in-code defaults.
 
-| Key | Default | Description |
-|-----|---------|-------------|
-| `MY_API_KEY` | empty string or `DASHSCOPE_API_KEY` env var | Legacy-compatible Alibaba Tongyi DashScope API key field; prefer environment variables |
-| `TARGET_DIR` | `/path/to/documents` or `["/path1", "/path2"]` | Root directory or list of roots to index; `TARGET_DIR` env var wins |
-| `ENABLE_MWEB` | `False` / `True` | One-switch seamless built-in MWeb note integration; when on, the system takes over automatic export |
-| `MWEB_LIBRARY_PATH` | Default macOS library path | MWeb main database directory (optional override) |
-| `MWEB_DIR` | `data/mweb_export` | Managed export landing zone for MWeb notes |
-| `INDEX_STATE_DB` | `./index_state.db` | Incremental indexing state database |
-| `SCAN_CACHE_PATH` | `./scan_cache.db` | Scan/parse cache (skip unchanged files) |
-| `EMBEDDING_MODEL` | `text-embedding-v2` | Embedding model name |
-| `CHUNK_SIZE` | `500` | Text chunk size (characters) |
-| `CHUNK_OVERLAP` | `80` | Chunk overlap (characters) |
-| `MAX_CONTENT_LENGTH` | `20000` | Max characters indexed per file |
-| `SEARCH_TOP_K` | `250` | Vector retrieval candidate chunks (higher = more recall, slower) |
-| `SCORE_THRESHOLD` | `0.35` | Cosine distance threshold (smaller = stricter; matches `settings.py` default) |
-| `POSITION_WEIGHTS` | `filename:0.6, heading:0.8, content:1.0` | Position weighting factors |
-| `KEYWORD_FREQ_BONUS` | `0.03` | Keyword frequency bonus coefficient |
-| `TRUST_PROXY` | `False` | Trust `X-Forwarded-For` from a reverse proxy (for per-IP rate limiting) |
-| `NL_INTENT_MODEL` | `qwen-turbo` | NL intent model (prefer JSON Mode–capable models) |
-| `SEARCH_INTERPRET_MODEL` | `qwen-turbo` | Model for optional “smart interpretation” of hit lists |
-| `NL_TIMEOUT_SEC` | `10` | Intent call timeout (seconds) |
-| `INTERPRET_TIMEOUT_SEC` | `20` | Interpretation call timeout (seconds) |
-| `NL_MAX_MESSAGE_CHARS` | `1000` | Max characters per intent request |
-| `INTERPRET_MAX_RESULTS` | `10` | Max hits summarized in interpretation |
-| `RATE_LIMIT_NL_PER_MIN` | `10` | Per-IP requests/minute for `POST /api/search/nl` |
-| `RATE_LIMIT_INTERPRET_PER_MIN` | `10` | Per-IP requests/minute for interpretation endpoints |
+
+| Key                            | Default                                        | Description                                                                                         |
+| ------------------------------ | ---------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `MY_API_KEY`                   | empty string or `DASHSCOPE_API_KEY` env var    | Legacy-compatible Alibaba Tongyi DashScope API key field; prefer environment variables              |
+| `TARGET_DIR`                   | `/path/to/documents` or `["/path1", "/path2"]` | Root directory or list of roots to index; `TARGET_DIR` env var wins                                 |
+| `ENABLE_MWEB`                  | `False` / `True`                               | One-switch seamless built-in MWeb note integration; when on, the system takes over automatic export |
+| `MWEB_LIBRARY_PATH`            | Default macOS library path                     | MWeb main database directory (optional override)                                                    |
+| `MWEB_DIR`                     | `data/mweb_export`                             | Managed export landing zone for MWeb notes                                                          |
+| `INDEX_STATE_DB`               | `./index_state.db`                             | Incremental indexing state database                                                                 |
+| `SCAN_CACHE_PATH`              | `./scan_cache.db`                              | Scan/parse cache (skip unchanged files)                                                             |
+| `EMBEDDING_MODEL`              | `text-embedding-v2`                            | Embedding model name                                                                                |
+| `CHUNK_SIZE`                   | `500`                                          | Text chunk size (characters)                                                                        |
+| `CHUNK_OVERLAP`                | `80`                                           | Chunk overlap (characters)                                                                          |
+| `MAX_CONTENT_LENGTH`           | `20000`                                        | Max characters indexed per file                                                                     |
+| `SEARCH_TOP_K`                 | `250`                                          | Vector retrieval candidate chunks (higher = more recall, slower)                                    |
+| `SCORE_THRESHOLD`              | `0.35`                                         | Cosine distance threshold (smaller = stricter; matches `settings.py` default)                       |
+| `POSITION_WEIGHTS`             | `filename:0.6, heading:0.8, content:1.0`       | Position weighting factors                                                                          |
+| `KEYWORD_FREQ_BONUS`           | `0.03`                                         | Keyword frequency bonus coefficient                                                                 |
+| `TRUST_PROXY`                  | `False`                                        | Trust `X-Forwarded-For` from a reverse proxy (for per-IP rate limiting)                             |
+| `NL_INTENT_MODEL`              | `qwen-turbo`                                   | NL intent model (prefer JSON Mode–capable models)                                                   |
+| `SEARCH_INTERPRET_MODEL`       | `qwen-turbo`                                   | Model for optional “smart interpretation” of hit lists                                              |
+| `NL_TIMEOUT_SEC`               | `10`                                           | Intent call timeout (seconds)                                                                       |
+| `INTERPRET_TIMEOUT_SEC`        | `20`                                           | Interpretation call timeout (seconds)                                                               |
+| `NL_MAX_MESSAGE_CHARS`         | `1000`                                         | Max characters per intent request                                                                   |
+| `INTERPRET_MAX_RESULTS`        | `10`                                           | Max hits summarized in interpretation                                                               |
+| `RATE_LIMIT_NL_PER_MIN`        | `10`                                           | Per-IP requests/minute for `POST /api/search/nl`                                                    |
+| `RATE_LIMIT_INTERPRET_PER_MIN` | `10`                                           | Per-IP requests/minute for interpretation endpoints                                                 |
+
 
 **API key best practices**
 
@@ -196,8 +218,8 @@ Local settings are concentrated here. Load order: environment variables > reposi
 
 **Three chunk types per file**:
 
-1. `chunk_type: "filename"` — filename + path summary  
-2. `chunk_type: "heading"` — extracted headings  
+1. `chunk_type: "filename"` — filename + path summary
+2. `chunk_type: "heading"` — extracted headings
 3. `chunk_type: "content"` — body chunks (~500 characters each)
 
 ### 4.3 `search.py` — Search engine
@@ -215,7 +237,7 @@ Search pipeline:
 5. **Keyword exact fallback**: ChromaDB `$contains` for documents containing the literal text (multi-term OR)
 6. **Merge and sort**: Combine exact and semantic hits, sort by score
 
-**`exact_focus` path** (when `POST /api/search/nl` resolves `match_mode=exact_focus` and sets `SearchRequest.exact_focus=True`):
+`**exact_focus` path** (when `POST /api/search/nl` resolves `match_mode=exact_focus` and sets `SearchRequest.exact_focus=True`):
 
 1. Run the same keyword `$contains` path as step 5, dedupe per file, sort;
 2. If there are **no hits**, or every row is **filtered out** by `source` / time `where` clauses, **fall back** to the full vector + keyword hybrid pipeline above so users do not get a false empty result.
@@ -237,7 +259,7 @@ SQLite table `file_index` tracks `(filepath, mtime, source_type)`:
 - **New file**: embed and write to ChromaDB  
 - **Modified** (mtime changed): delete old chunks, reindex  
 - **Deleted** (missing on disk): remove from ChromaDB and state table  
-- **Unchanged**: skip  
+- **Unchanged**: skip
 
 **MWeb toggle**:
 
@@ -258,6 +280,8 @@ python -m everythingsearch.incremental --full   # full rebuild
 
 `app.py` is slim: routes delegate to `services/`, and `request_validation.py` maps bad JSON and invalid parameters to HTTP `400 Bad Request` instead of letting junk hit core code and produce 500s. `file_access.py` enforces that reads, downloads, and open/reveal paths stay inside indexed roots (no traversal).
 
+**Agent integration**: For Cursor and similar tools, HTTP examples, `EVERYTHINGSEARCH_BASE`, and no-key fallback notes live in §3.1 — `skills/everythingsearch-local/SKILL.md`.
+
 Routes:
 
 - `GET /` — search page (`smart_search_available` in the template: DashScope key configured → browser uses `POST /api/search/nl`; otherwise `GET /api/search`)  
@@ -269,7 +293,7 @@ Routes:
 - `GET /api/file/read?filepath=...` — read text from a file **under indexed roots**  
 - `GET /api/file/download?filepath=...` — download a file **under indexed roots**  
 - `POST /api/reveal` — show file in Finder  
-- `POST /api/open` — open file with default app  
+- `POST /api/open` — open file with default app
 
 > For security, these are **not** exposed: `/api/config`, `/api/stats`, `/api/reload`.  
 > After rebuilding the index, restart the search service: `./scripts/run_app.sh restart`
@@ -287,12 +311,12 @@ Routes:
 **Search service** (`com.jigger.everythingsearch.app.plist`):
 
 - `RunAtLoad` + `KeepAlive`: start at login, restart on crash  
-- `~/.local/bin/everythingsearch_start.sh` starts gunicorn on port 8000  
+- `~/.local/bin/everythingsearch_start.sh` starts gunicorn on port 8000
 
 **Scheduled indexing** (`com.jigger.everythingsearch.plist`):
 
 - Runs incremental indexing every **30 minutes**; runs after wake if a run was missed  
-- `~/.local/bin/everythingsearch_index.sh` runs `python -m everythingsearch.incremental`  
+- `~/.local/bin/everythingsearch_index.sh` runs `python -m everythingsearch.incremental`
 
 **Management** (prefer `launchctl bootstrap` / `bootout` over legacy `load` / `unload`):
 
@@ -319,7 +343,7 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jigger.everythingsea
   - **Embeddings**: `text-embedding-v2` by default, used during indexing  
   - **Generative** (optional): web `POST /api/search/nl` and interpretation endpoints use `NL_INTENT_MODEL` / `SEARCH_INTERPRET_MODEL` (default `qwen-turbo`); those calls need outbound network  
   - Sign up → enable DashScope → create an API key  
-  - Cost is very low for embeddings (about ¥0.0007 / 1000 tokens); intent/interpretation billed per model  
+  - Cost is very low for embeddings (about ¥0.0007 / 1000 tokens); intent/interpretation billed per model
 
 ### Local resources
 
@@ -400,9 +424,9 @@ Configure login auto-start, scheduled incremental indexing, and stop repeated �
 
 Uses launchd `RunAtLoad + KeepAlive`. `install.sh` typically:
 
-1. Writes `~/.local/bin/everythingsearch_start.sh`  
-2. Copies `com.jigger.everythingsearch.app.plist` to `~/Library/LaunchAgents/`  
-3. Registers with `launchctl bootstrap`  
+1. Writes `~/.local/bin/everythingsearch_start.sh`
+2. Copies `com.jigger.everythingsearch.app.plist` to `~/Library/LaunchAgents/`
+3. Registers with `launchctl bootstrap`
 
 After registration, the service starts at login and restarts if it crashes.
 
@@ -460,10 +484,10 @@ readlink -f ./venv/bin/python
 
 In **System Settings → Privacy & Security → Full Disk Access**:
 
-1. Click **+**  
-2. `Cmd+Shift+G`, paste the path above, **Open**  
-3. Add `/bin/bash` as well (launchd invokes bash → wrapper)  
-4. Enable both toggles  
+1. Click **+**
+2. `Cmd+Shift+G`, paste the path above, **Open**
+3. Add `/bin/bash` as well (launchd invokes bash → wrapper)
+4. Enable both toggles
 
 After that, scheduled indexing runs quietly.
 
@@ -478,7 +502,7 @@ After that, scheduled indexing runs quietly.
 Edit `SCORE_THRESHOLD` in `config.py`:
 
 - Lower (e.g. `0.35`) → stricter, higher-precision set  
-- Higher (e.g. `0.60`) → more results, more noise  
+- Higher (e.g. `0.60`) → more results, more noise
 
 ### More roots
 
@@ -490,7 +514,7 @@ Set `EMBEDDING_MODEL` to a DashScope-supported name, then full rebuild; cache ke
 
 ### Cron / plist schedule
 
-1. Edit `Hour` / `Minute` in `com.jigger.everythingsearch.plist`  
+1. Edit `Hour` / `Minute` in `com.jigger.everythingsearch.plist`
 2. Reload:
 
 ```bash
@@ -513,7 +537,7 @@ For a brand-new Mac.
 
 - macOS 10.15+  
 - Homebrew (if missing: `/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"`)  
-- DashScope API key  
+- DashScope API key
 
 ### Steps
 

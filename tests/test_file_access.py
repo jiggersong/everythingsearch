@@ -31,8 +31,8 @@ def indexed_workspace(tmp_path, monkeypatch):
     outside.mkdir()
 
     monkeypatch.setattr(config, "TARGET_DIR", [str(root), str(nested_root)])
-    monkeypatch.setattr(config, "ENABLE_MWEB", False)
-    monkeypatch.setattr(config, "MWEB_DIR", "")
+    monkeypatch.setattr(config, "ENABLE_MWEB", False, raising=False)
+    monkeypatch.setattr(config, "MWEB_DIR", "", raising=False)
     reset_settings_cache()
 
     try:

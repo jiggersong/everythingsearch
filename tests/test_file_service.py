@@ -25,8 +25,8 @@ def file_service_workspace(tmp_path, monkeypatch):
     indexed_root.mkdir()
 
     monkeypatch.setattr(config, "TARGET_DIR", [str(indexed_root)])
-    monkeypatch.setattr(config, "ENABLE_MWEB", False)
-    monkeypatch.setattr(config, "MWEB_DIR", "")
+    monkeypatch.setattr(config, "ENABLE_MWEB", False, raising=False)
+    monkeypatch.setattr(config, "MWEB_DIR", "", raising=False)
     monkeypatch.setattr(config, "API_MAX_READ_BYTES", 16, raising=False)
     reset_settings_cache()
 

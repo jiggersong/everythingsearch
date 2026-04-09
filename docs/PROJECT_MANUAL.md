@@ -103,6 +103,9 @@ EverythingSearch/
 │   │   └── index.html
 │   └── static/
 │       └── icon.png
+├── skills/                   # Agent Skill（开源；见 §3.1）
+│   └── everythingsearch-local/
+│       └── SKILL.md          # Cursor / Claude Code 等：本机 HTTP API 用法
 ├── data/                     # 本地数据与缓存（默认路径，勿提交）
 │   ├── chroma_db/            # ChromaDB
 │   ├── embedding_cache.db
@@ -134,6 +137,21 @@ EverythingSearch/
 ├── everythingsearch_start.sh  # 搜索服务 launchd wrapper（安装时生成）
 └── everythingsearch_index.sh  # 增量索引 launchd wrapper（安装时生成）
 ```
+
+### 3.1 Agent Skill
+
+面向 **Cursor、Claude Code 等支持 Agent Skills 的工具**，本仓库在根目录提供可版本化的 Skill 文件：
+
+
+| 项目            | 说明                                                                                                                      |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| **路径**        | `skills/everythingsearch-local/SKILL.md`                                                                                |
+| **内容**        | 如何通过本机 HTTP API 完成混合搜索、自然语言意图搜索、结果智能解读、读文本/下载文件等；与 `docs/NL_SEARCH_AND_WEB_UI.md` 及下文 §4.6 路由一致                         |
+| **基址**        | 默认 `http://127.0.0.1:8000`；若服务监听其他地址或端口，可在运行 Agent 的环境中设置 `EVERYTHINGSEARCH_BASE`（须含 scheme，例如 `http://127.0.0.1:8000`） |
+| **DashScope** | NL 与解读接口需服务端配置有效 API Key；无 Key 时 Skill 中建议退化为 `GET /api/search`，见 Skill 正文「前置条件」                                        |
+
+
+若你使用 Cursor 并希望加载本 Skill，请将 `skills/everythingsearch-local/` **复制**到当前工作区的 `.cursor/skills/everythingsearch-local/`，或在后者位置创建指向仓库内目录的**符号链接**，再按各工具文档刷新 Skills。
 
 ---
 
@@ -256,6 +274,8 @@ python -m everythingsearch.incremental --full   # 完整重建
 ### 4.6 `everythingsearch.app` 与服务编排层
 
 最新的改动大幅瘦身了 `app.py` 路由绑定层的职责：它剥离了裸业务逻辑代码并委派到 `services/` 子层统一处理；同时借由 `request_validation.py` 将所有异常、不合法 JSON 请求类型过滤出标准的 HTTP `400 Bad Request`，从而防止脏数据向下渗透带来 500 系统级崩溃。底层的 `file_access.py` 补充了一道屏障：无论外部调用如何发起文件读取、下载或者打开操作，均强制鉴权对应路径不能跨越索引边界（禁止路径穿越探测）。
+
+**对外集成（Agent）**：面向 Cursor 等工具的 HTTP 调用示例、`EVERYTHINGSEARCH_BASE` 与无 Key 时的回退说明，见 §3.1 中的 `skills/everythingsearch-local/SKILL.md`。
 
 Flask 应用路由（核心）：
 

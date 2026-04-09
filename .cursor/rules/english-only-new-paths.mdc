@@ -1,6 +1,0 @@
----
-description: New dirs/files use English path names only (no CJK in paths)
-alwaysApply: true
----
-
-When **creating** new directories or files in this repo, use **English-only** path segments and basenames (e.g. `letters`, `digits`, `-`, `_`). Do **not** use Chinese or other non-ASCII characters in **paths or filenames**. Renaming or editing **existing** paths is out of scope unless the user asks. File **contents** (docs, copy, comments) may still use Chinese.

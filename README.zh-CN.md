@@ -40,34 +40,45 @@ make app-stop      # 停止常驻服务
 
 安装完成后，建议完成以下三项系统级配置，便于服务在后台稳定、免打扰运行：
 
-| 功能 | 说明 |
-| --- | --- |
-| **开机自动启动** | 搜索服务（Web UI）在登录后由 launchd 自动拉起，无需手动启动。 |
-| **定时更新索引** | 默认每 30 分钟执行增量索引，保持索引与磁盘接近同步。 |
+
+| 功能         | 说明                                                  |
+| ---------- | --------------------------------------------------- |
+| **开机自动启动** | 搜索服务（Web UI）在登录后由 launchd 自动拉起，无需手动启动。              |
+| **定时更新索引** | 默认每 30 分钟执行增量索引，保持索引与磁盘接近同步。                        |
 | **完全磁盘访问** | 为 Python 授予受保护目录（如部分 MWeb 数据路径）的访问权限，避免每次运行都弹出授权提示。 |
+
 
 > 详细步骤见 [PROJECT_MANUAL.md](docs/PROJECT_MANUAL.md) 第 6.5 节「系统权限与自动化设置」。
 
 ## 文档矩阵
 
-| 序号 | 文档 | 角色 | 适用场景 | 可获得信息 |
-| --- | --- | --- | --- | --- |
-| 1 | [INSTALL.md](docs/INSTALL.md) | 安装与运维指南 | 首次安装、换新机、环境初始化 | 前置条件、API Key、安装流程、launchd 包装脚本、日常命令 |
-| 2 | [PROJECT_MANUAL.md](docs/PROJECT_MANUAL.md) | 技术参考手册 | 开发、维护、二次改造 | 架构、模块边界、配置矩阵、索引/搜索流程、调优与部署 |
-| 3 | [UI_DESIGN_APPLE_GOOGLE.md](docs/UI_DESIGN_APPLE_GOOGLE.md) | Web UI 设计说明 | 界面维护、HIG/Material 对齐、无障碍与动效 | 设计原则与设计令牌；中英文页顶互链 |
-| 4 | [NL_SEARCH_AND_WEB_UI.md](docs/NL_SEARCH_AND_WEB_UI.md) | NL 搜索行为说明 | 智能搜索联调、默认回退、接口核对 | 意图接口、解读接口、`exact_focus`、限流、无 Key 时的行为 |
+
+| 序号  | 文档                                                                               | 角色              | 适用场景                                  | 可获得信息                                                   |
+| --- | -------------------------------------------------------------------------------- | --------------- | ------------------------------------- | ------------------------------------------------------- |
+| 1   | [INSTALL.md](docs/INSTALL.md)                                                    | 安装与运维指南         | 首次安装、换新机、环境初始化                        | 前置条件、API Key、安装流程、launchd 包装脚本、日常命令                     |
+| 2   | [PROJECT_MANUAL.md](docs/PROJECT_MANUAL.md)                                      | 技术参考手册          | 开发、维护、二次改造                            | 架构、模块边界、配置矩阵、索引/搜索流程、调优与部署                              |
+| 3   | [UI_DESIGN_APPLE_GOOGLE.md](docs/UI_DESIGN_APPLE_GOOGLE.md)                      | Web UI 设计说明     | 界面维护、HIG/Material 对齐、无障碍与动效           | 设计原则与设计令牌；中英文页顶互链                                       |
+| 4   | [NL_SEARCH_AND_WEB_UI.md](docs/NL_SEARCH_AND_WEB_UI.md)                          | NL 搜索行为说明       | 智能搜索联调、默认回退、接口核对                      | 意图接口、解读接口、`exact_focus`、限流、无 Key 时的行为                   |
+| 5   | [skills/everythingsearch-local/SKILL.md](skills/everythingsearch-local/SKILL.md) | Agent Skill（开源） | Cursor / Claude Code 等与本机 HTTP API 集成 | 各搜索与解读接口的调用示例、`EVERYTHINGSEARCH_BASE`、安全与回退；与手册 §3.1 配套 |
+
+
+## Agent Skill（开源）
+
+仓库根目录 `[skills/everythingsearch-local/SKILL.md](skills/everythingsearch-local/SKILL.md)` 描述如何让 **Cursor、Claude Code 等支持 Agent Skills 的工具** 调用本服务的 HTTP API（混合搜索、自然语言检索、智能解读、读文件等）。在 Cursor 中使用时，可将该目录复制或软链到工作区的 `.cursor/skills/everythingsearch-local/`。详细说明见 [PROJECT_MANUAL.md](docs/PROJECT_MANUAL.md) §3.1。
 
 ## 技术参考手册范围
 
 [PROJECT_MANUAL.md](docs/PROJECT_MANUAL.md) 是项目的核心技术参考手册，主要覆盖：
 
-| 范围 | 要点 |
-| --- | --- |
-| 基础 | 项目目标、核心能力、总体架构 |
-| 系统设计 | 架构图、技术栈、仓库目录 |
-| 模块 | `app`、`search`、`indexer`、`incremental`、`embedding_cache` 等职责 |
-| 运行 | 配置矩阵、索引/搜索生命周期、HTTP API 能力 |
-| 运维 | launchd 模型、常用命令、调优、从零部署检查项 |
+
+| 范围   | 要点                                                           |
+| ---- | ------------------------------------------------------------ |
+| 基础   | 项目目标、核心能力、总体架构                                               |
+| 系统设计 | 架构图、技术栈、仓库目录                                                 |
+| 模块   | `app`、`search`、`indexer`、`incremental`、`embedding_cache` 等职责 |
+| 运行   | 配置矩阵、索引/搜索生命周期、HTTP API 能力、Agent Skill（§3.1）                 |
+| 运维   | launchd 模型、常用命令、调优、从零部署检查项                                   |
+
 
 可通过本页顶部链接切换至英文文档。
 
