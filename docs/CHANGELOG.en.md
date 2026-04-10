@@ -2,10 +2,6 @@
 
 [English](CHANGELOG.en.md) | [中文](CHANGELOG.md)
 
-This file records user-visible changes to EverythingSearch. Maintain it alongside tags on [GitHub Releases](https://github.com/jiggersong/everythingsearch/releases) (release notes may summarize the matching section here).
-
-Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/); versioning follows [Semantic Versioning](https://semver.org/).
-
 ## [1.5.0] - 2026-04-08
 
 **GitHub Release**: [v1.5.0](https://github.com/jiggersong/everythingsearch/releases/tag/v1.5.0)
@@ -52,8 +48,8 @@ This version introduces the most significant architectural restructuring and gee
 
 ### Changed
 
-- **Makefile**: added a **`make help`** target that prints every shortcut target with a one-line description.
-- **Docs**: added **`docs/UI_DESIGN_APPLE_GOOGLE.en.md`** (English) with the same structure as the Chinese page and cross-links at the top; aligned the Chinese design token table with implemented CSS variables. Extended the `README` / `README.zh-CN` documentation matrix with a Web UI design row; updated `INSTALL` / `INSTALL.en` and `PROJECT_MANUAL` / `PROJECT_MANUAL.en` to document **`make help`** and to list the root **`Makefile`** plus the bilingual UI design files in the repository tree.
+- **Makefile**: added a `**make help`** target that prints every shortcut target with a one-line description.
+- **Docs**: added `**docs/UI_DESIGN_APPLE_GOOGLE.en.md`** (English) with the same structure as the Chinese page and cross-links at the top; aligned the Chinese design token table with implemented CSS variables. Extended the `README` / `README.zh-CN` documentation matrix with a Web UI design row; updated `INSTALL` / `INSTALL.en` and `PROJECT_MANUAL` / `PROJECT_MANUAL.en` to document `**make help**` and to list the root `**Makefile**` plus the bilingual UI design files in the repository tree.
 
 ## [1.3.2] - 2026-03-31
 
@@ -62,7 +58,7 @@ This version introduces the most significant architectural restructuring and gee
 ### Changed
 
 - **Web UI**: refreshed search page styling and interactions in `everythingsearch/templates/index.html`, guided by common **Apple HIG** and **Google Material Design 3** patterns—system font stack, capsule search field with focus ring, sidebar/history hierarchy, result cards and filter chips, pagination and button hit targets, light/dark tokens and elevation; added `prefers-reduced-motion` and `focus-visible` support. **No change** to search behavior or APIs.
-- **Docs**: added **`docs/UI_DESIGN_APPLE_GOOGLE.md`** (Chinese) describing the UI approach and acceptance notes.
+- **Docs**: added `**docs/UI_DESIGN_APPLE_GOOGLE.md`** (Chinese) describing the UI approach and acceptance notes.
 
 ## [1.3.1] - 2026-03-27
 
@@ -70,7 +66,7 @@ This version introduces the most significant architectural restructuring and gee
 
 ### Fixed
 
-- **Dependency (ChromaDB)**: bumped `chromadb` from **1.5.2** to **1.5.5**. On **Python 3.14** with **Pydantic 2.12+** (where `BaseSettings` moved to `pydantic-settings`), older Chroma incorrectly fell back to **`pydantic.v1`**, which raised **`pydantic.v1.errors.ConfigError: unable to infer type for attribute "chroma_server_nofile"`** during import and broke **`everythingsearch/incremental.py`** (and anything that imports `chromadb`). Chroma **1.5.5** uses **`pydantic_settings.BaseSettings`** with Pydantic v2 validators, restoring imports and indexing.
+- **Dependency (ChromaDB)**: bumped `chromadb` from **1.5.2** to **1.5.5**. On **Python 3.14** with **Pydantic 2.12+** (where `BaseSettings` moved to `pydantic-settings`), older Chroma incorrectly fell back to `**pydantic.v1`**, which raised `**pydantic.v1.errors.ConfigError: unable to infer type for attribute "chroma_server_nofile"**` during import and broke `**everythingsearch/incremental.py**` (and anything that imports `chromadb`). Chroma **1.5.5** uses `**pydantic_settings.BaseSettings`** with Pydantic v2 validators, restoring imports and indexing.
 
 ## [1.3.0] - 2026-03-26
 
@@ -114,7 +110,7 @@ This version introduces the most significant architectural restructuring and gee
 [GitHub Release](https://github.com/jiggersong/everythingsearch/releases/tag/v1.2.0)
 
 - Repository layout reorganization.
-- Module entrypoint normalization (`python -m everythingsearch.*`).
+- Module entrypoint normalization (`python -m everythingsearch.`*).
 
 ## [1.1.0] - 2025-03-23
 

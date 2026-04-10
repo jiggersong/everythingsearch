@@ -2,10 +2,6 @@
 
 [English](CHANGELOG.en.md) | [中文](CHANGELOG.md)
 
-本文件记录 EverythingSearch 面向使用者的可见变更。建议与 [GitHub Releases](https://github.com/jiggersong/everythingsearch/releases) 中的 Tag 一并维护（Release 说明可摘要自本文件对应版本）。
-
-格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
-
 ## [1.5.0] - 2026-04-08
 
 **GitHub Release**：[v1.5.0](https://github.com/jiggersong/everythingsearch/releases/tag/v1.5.0)
@@ -114,7 +110,7 @@
 
 ### 变更（仓库布局与运行入口）
 
-- **目录结构**：文档迁至 `docs/`；安装与运维脚本迁至 `scripts/`（含 `install.sh`、`run_app.sh`、`run_tests.sh`、`launchd/` 示例）；Python 代码收拢为 `**everythingsearch/`** 包；配置模板在 `**etc/config.example.py`**（复制为仓库根目录 `config.py`）；默认数据与缓存路径在 `**data/**`（Chroma、Embedding 缓存、索引状态、扫描缓存等）；日志仍在 `logs/`。
+- **目录结构**：文档迁至 `docs/`；安装与运维脚本迁至 `scripts/`（含 `install.sh`、`run_app.sh`、`run_tests.sh`、`launchd/` 示例）；Python 代码收拢为 `**everythingsearch/`** 包；配置模板在 `**etc/config.example.py`**（复制为仓库根目录 `config.py`）；默认数据与缓存路径在 `**data/`**（Chroma、Embedding 缓存、索引状态、扫描缓存等）；日志仍在 `logs/`。
 - **启动方式**：Web 与 CLI 使用 `python -m everythingsearch.app`、`python -m everythingsearch.incremental`；生产环境 gunicorn 使用 `**everythingsearch.app:app`**。
 - **launchd**：新增 `**scripts/install_launchd_wrappers.sh`**，用于在本机生成/更新 `~/.local/bin` 下 wrapper 与 `~/Library/LaunchAgents` plist，避免旧版 `app:app` 模块路径失效。
 - **前端**：搜索页 favicon / Logo 使用 `url_for('static', …)`，避免硬编码静态路径。
