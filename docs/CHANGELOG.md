@@ -2,6 +2,17 @@
 
 [English](CHANGELOG.en.md) | [中文](CHANGELOG.md)
 
+## [1.5.1] - 2026-04-13
+
+**GitHub Release**：[v1.5.1](https://github.com/jiggersong/everythingsearch/releases/tag/v1.5.1)
+
+本版本在界面中显式增加了自然语言“AI 模式”与普通“精确模式”的切换控制，以优化纯文本检索场景下的响应速度。
+
+### 🚀 特性更新 (Features)
+
+- **显式搜索模式切换**：搜索框内新增独立的「AI 模式」按钮。默认输入回车进行检索时，系统采用速度更快的常规关键字精确搜索；点击「AI 模式」按钮则触发原有的自然语言大模型意图理解与混合检索。
+- **本地化快速结果解读**：在默认的关键字精确搜索模式下，不再请求云端大模型生成结果解读，而是通过前端直接渲染“为您找到 X 条相关结果”的提示，进一步缩短常规搜索的响应延时。
+
 ## [1.5.0] - 2026-04-08
 
 **GitHub Release**：[v1.5.0](https://github.com/jiggersong/everythingsearch/releases/tag/v1.5.0)

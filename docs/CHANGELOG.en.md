@@ -2,6 +2,17 @@
 
 [English](CHANGELOG.en.md) | [中文](CHANGELOG.md)
 
+## [1.5.1] - 2026-04-13
+
+**GitHub Release**: [v1.5.1](https://github.com/jiggersong/everythingsearch/releases/tag/v1.5.1)
+
+This release introduces explicit controls to switch between natural language "AI Mode" and standard "Exact Mode" in the UI, optimizing response times for pure keyword search scenarios.
+
+### 🚀 Features
+
+- **Explicit Search Mode Toggle**: Added a dedicated "AI Mode" button inside the search box. By default, hitting Enter triggers a much faster standard keyword exact search. Clicking the "AI Mode" button triggers the existing LLM intent understanding and hybrid retrieval.
+- **Fast Local Result Interpretation**: Under the default exact search mode, the system no longer requests cloud LLMs to generate result interpretations. Instead, the frontend instantly renders a simple summary indicating how many results were found, further reducing latency for regular searches.
+
 ## [1.5.0] - 2026-04-08
 
 **GitHub Release**: [v1.5.0](https://github.com/jiggersong/everythingsearch/releases/tag/v1.5.0)

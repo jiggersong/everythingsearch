@@ -353,11 +353,14 @@
     color: var(--text);
     outline: none;
     box-shadow: var(--shadow);
-    transition: border-color 0.2s var(--ease-standard), box-shadow 0.25s var(--ease-standard), background-color 0.2s var(--ease-standard);
+    transition: border-color 0.2s var(--ease-standard), box-shadow 0.25s var(--ease-standard), background-color 0.2s var(--ease-standard), padding-right 0.2s var(--ease-standard);
     resize: none;
     overflow-y: auto;
     font-family: inherit;
     line-height: 1.5;
+  }
+  .search-input-wrap.has-ai-btn textarea {
+    padding-right: 112px;
   }
   .search-input-wrap textarea:hover {
     border-color: var(--border);
@@ -422,9 +425,55 @@
     transition: opacity 0.2s var(--ease-standard);
     letter-spacing: 0.02em;
   }
+  .search-input-wrap.has-ai-btn .shortcut {
+    right: 112px;
+  }
   .search-input-wrap textarea:focus ~ .shortcut,
   .search-input-wrap textarea:not(:placeholder-shown) ~ .shortcut { opacity: 0; }
   .search-input-wrap.loading .shortcut { opacity: 0; }
+
+  .ai-search-btn {
+    position: absolute;
+    right: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--accent);
+    background: var(--accent-light);
+    border: 1px solid transparent;
+    border-radius: var(--radius-pill);
+    padding: 6px 12px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: background-color 0.2s var(--ease-standard), border-color 0.2s var(--ease-standard), box-shadow 0.2s var(--ease-standard);
+    opacity: 0;
+    pointer-events: none;
+  }
+  .search-input-wrap.has-ai-btn .ai-search-btn {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .search-input-wrap textarea:focus ~ .ai-search-btn,
+  .search-input-wrap textarea:not(:placeholder-shown) ~ .ai-search-btn {
+    border-color: var(--accent);
+  }
+  .ai-search-btn:hover {
+    background: var(--accent-container);
+    box-shadow: 0 1px 2px rgba(0, 113, 227, 0.15);
+  }
+  @media (prefers-color-scheme: dark) {
+    .ai-search-btn {
+      background: var(--accent-light);
+      color: var(--accent);
+    }
+    .ai-search-btn:hover {
+      background: var(--accent-container);
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+    }
+  }
 
   .interpret-module {
     background: var(--bg-card);
@@ -1159,6 +1208,9 @@
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             <textarea id="searchInput" rows="1" placeholder="搜索本地文件..." autofocus></textarea>
             <div class="search-input-preview" id="searchInputPreview"></div>
+            <button class="ai-search-btn" id="aiSearchBtn" title="使用自然语言搜索" style="display:none">
+              AI 模式
+            </button>
             <span class="shortcut">⌘ K</span>
             <div class="search-progress" id="searchProgress">
               <div class="progress-dots"><span></span><span></span><span></span></div>
@@ -1213,6 +1265,7 @@ const input          = document.getElementById('searchInput');
 const searchInputPreview = document.getElementById('searchInputPreview');
 const hero           = document.getElementById('hero');
 const searchBtn      = document.getElementById('searchBtn');
+const aiSearchBtn    = document.getElementById('aiSearchBtn');
 const searchProgress = document.getElementById('searchProgress');
 const results        = document.getElementById('results');
 const historyList    = document.getElementById('historyList');
@@ -1234,8 +1287,14 @@ let dateRange = 'all';
 let dateFrom = null;
 let dateTo = null;
 let dateFilterOpen = false;
+let searchMode = 'exact'; // 'exact' | 'ai'
 const smartSearchAvailable = {{ 'true' if smart_search_available else 'false' }};
 const PAGE_SIZE = 25;
+
+if (smartSearchAvailable) {
+  aiSearchBtn.style.display = 'inline-flex';
+  input.closest('.search-input-wrap').classList.add('has-ai-btn');
+}
 
 const SIDEBAR_STATE_KEY = 'es_sidebar_collapsed';
 
@@ -1679,6 +1738,16 @@ function triggerSearch() {
   if (searching) { abortSearch(); return; }
   const q = input.value.trim();
   if (!q) return;
+  searchMode = 'exact';
+  doSearch(q);
+}
+
+function triggerAiSearch(e) {
+  e.preventDefault();
+  if (searching) { abortSearch(); return; }
+  const q = input.value.trim();
+  if (!q) return;
+  searchMode = 'ai';
   doSearch(q);
 }
 
@@ -1761,7 +1830,7 @@ async function doSearch(q) {
   setSearching(true);
   try {
     let data;
-    if (smartSearchAvailable) {
+    if (searchMode === 'ai' && smartSearchAvailable) {
       const payload = {
         message: q,
         sidebar_source: sourceFilter,
@@ -1799,7 +1868,7 @@ async function doSearch(q) {
       }
       
     } else {
-      let url = '/api/search?q=' + encodeURIComponent(q) + '&source=' + encodeURIComponent(sourceFilter) + '&date_field=' + encodeURIComponent(dateField);
+      let url = '/api/search?q=' + encodeURIComponent(q) + '&source=' + encodeURIComponent(sourceFilter) + '&date_field=' + encodeURIComponent(dateField) + '&exact_focus=true';
       if (dateFrom != null) url += '&date_from=' + dateFrom;
       if (dateTo != null) url += '&date_to=' + dateTo;
       const res = await fetch(url, { signal: abortCtrl.signal });
@@ -1813,8 +1882,14 @@ async function doSearch(q) {
     renderResults(data);
     addToHistory(q, data.results?.length || 0);
 
-    if (smartSearchAvailable && data.results && data.results.length > 0) {
-      startInterpretStream(q, data.results, searchToken, abortCtrl);
+    if (data.results && data.results.length > 0) {
+      if (searchMode === 'ai' && smartSearchAvailable) {
+        startInterpretStream(q, data.results, searchToken, abortCtrl);
+      } else {
+        // Fast local interpretation for exact keyword search
+        interpretModule.style.display = 'block';
+        interpretContent.innerHTML = '当前为关键字精确搜索，为您找到 ' + data.results.length + ' 条相关结果。若需根据语意进行模糊匹配，请尝试使用“AI 模式”搜索。';
+      }
     }
   } catch (e) {
     if (e.name === 'AbortError') return;
@@ -1854,6 +1929,9 @@ async function reveal(fp) {
 }
 
 searchBtn.addEventListener('click', triggerSearch);
+if (aiSearchBtn) {
+  aiSearchBtn.addEventListener('click', triggerAiSearch);
+}
 
 /* 仅回车或搜索按钮触发搜索，输入过程不做任何监控或动作 */
 input.addEventListener('keydown', e => {
