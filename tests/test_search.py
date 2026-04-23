@@ -4,6 +4,7 @@ import time
 import sys
 import os
 import threading
+from pathlib import Path
 from types import SimpleNamespace
 
 # 确保导入路径正确
@@ -11,6 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from everythingsearch.search import (
     _get_cache_key,
+    _get_index_cache_token,
     _get_cached_search,
     _set_cached_search,
     clear_search_cache,
@@ -48,6 +50,28 @@ class TestCacheKey:
         # 确保能正常生成，不抛出异常
         assert len(key1) == 64  # SHA256 长度
         assert len(key2) == 64
+
+    def test_cache_key_changes_when_index_token_changes(self, monkeypatch, tmp_path):
+        """索引重建后缓存键应随索引版本变化，避免命中旧结果。"""
+        import everythingsearch.search as search_mod
+
+        db_path = tmp_path / "chroma.sqlite3"
+        db_path.write_text("v1", encoding="utf-8")
+        settings = SimpleNamespace(persist_directory=str(tmp_path))
+        monkeypatch.setattr(search_mod, "get_settings", lambda: settings)
+
+        key1 = _get_cache_key("test query", "file", "mtime", None, None)
+
+        db_path.write_text("v2-updated", encoding="utf-8")
+        key2 = _get_cache_key("test query", "file", "mtime", None, None)
+
+        assert key1 != key2
+
+    def test_index_cache_token_returns_missing_when_db_not_found(self, tmp_path):
+        """索引文件不存在时，应返回稳定缺省标记。"""
+        settings = SimpleNamespace(persist_directory=str(Path(tmp_path) / "missing-dir"))
+
+        assert _get_index_cache_token(settings) == "missing"
 
 
 class TestSearchCache:

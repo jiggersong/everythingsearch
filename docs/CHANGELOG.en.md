@@ -2,6 +2,17 @@
 
 [English](CHANGELOG.en.md) | [中文](CHANGELOG.md)
 
+## [1.5.2] - 2026-04-23
+
+**GitHub Release**: [v1.5.2](https://github.com/jiggersong/everythingsearch/releases/tag/v1.5.2)
+
+This release fixes a class of issues where a file had already been indexed locally, but the search page still failed to find it. The focus is on better post-index consistency and more reliable exact-search behavior.
+
+### 🐞 Bug Fixes
+
+- **Fresh results after indexing**: Fixed a problem where cached search results were not invalidated automatically after the index changed. Now, whether you run `make index` manually or let scheduled incremental indexing run in the background, searches for the same keyword will automatically use the latest index instead of continuing to return stale empty or outdated results.
+- **Exact mode now matches the UI behavior**: Fixed an issue where the Web UI requested exact search in the default mode, but the backend did not consistently honor that mode. Regular keyword searches started directly from the search box now more reliably prioritize literal matches in filenames, paths, and text content.
+
 ## [1.5.1] - 2026-04-13
 
 **GitHub Release**: [v1.5.1](https://github.com/jiggersong/everythingsearch/releases/tag/v1.5.1)

@@ -1,6 +1,7 @@
 import argparse
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeoutError
+from pathlib import Path
 import logging
 import threading
 import time
@@ -46,8 +47,26 @@ def _get_cache_key(
     exact_focus: bool = False,
 ) -> str:
     """生成缓存键"""
-    key_data = f"{query}:{source_filter}:{date_field}:{date_from}:{date_to}:ef={exact_focus}"
+    index_token = _get_index_cache_token()
+    key_data = (
+        f"{query}:{source_filter}:{date_field}:{date_from}:{date_to}:"
+        f"ef={exact_focus}:idx={index_token}"
+    )
     return hashlib.sha256(key_data.encode()).hexdigest()
+
+
+def _get_index_cache_token(settings: Settings | None = None) -> str:
+    """返回当前索引版本标记，用于在外部重建索引后自动失效搜索缓存。"""
+    effective_settings = settings or get_settings()
+    persist_directory = getattr(effective_settings, "persist_directory", None)
+    if not persist_directory:
+        return "unknown"
+    db_path = Path(persist_directory) / "chroma.sqlite3"
+    try:
+        stat = db_path.stat()
+    except OSError:
+        return "missing"
+    return f"{stat.st_mtime_ns}:{stat.st_size}"
 
 
 def _get_cached_search(cache_key: str) -> list[dict] | None:

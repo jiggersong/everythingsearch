@@ -67,6 +67,14 @@ class TestParseSearchRequest:
         parsed = parse_search_request(_build_request(args={"limit": "0"}))
         assert parsed.limit == 1
 
+    def test_exact_focus_true_is_parsed(self):
+        parsed = parse_search_request(_build_request(args={"exact_focus": "true"}))
+        assert parsed.exact_focus is True
+
+    def test_exact_focus_invalid_raises(self):
+        with pytest.raises(InvalidParameterError):
+            parse_search_request(_build_request(args={"exact_focus": "maybe"}))
+
 
 class TestParseFileQueryRequest:
     """测试文件查询参数解析。"""

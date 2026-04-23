@@ -68,6 +68,7 @@ def parse_search_request(flask_request) -> SearchRequest:
     date_from = _parse_optional_float(flask_request.args.get("date_from"), "date_from")
     date_to = _parse_optional_float(flask_request.args.get("date_to"), "date_to")
     limit = _parse_optional_limit(flask_request.args.get("limit"))
+    exact_focus = _parse_optional_bool(flask_request.args.get("exact_focus"), "exact_focus")
     return SearchRequest(
         query=query,
         source=source,
@@ -75,7 +76,7 @@ def parse_search_request(flask_request) -> SearchRequest:
         date_from=date_from,
         date_to=date_to,
         limit=limit,
-        exact_focus=False,
+        exact_focus=exact_focus,
     )
 
 
@@ -152,6 +153,19 @@ def _parse_optional_positive_int(raw_value: object, field_name: str) -> int | No
     if parsed < 1:
         raise InvalidParameterError(f"{field_name} 必须大于 0")
     return parsed
+
+
+def _parse_optional_bool(raw_value: object, field_name: str) -> bool:
+    if raw_value is None:
+        return False
+    value = str(raw_value).strip().lower()
+    if not value:
+        return False
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off"}:
+        return False
+    raise InvalidParameterError(f"{field_name} 必须是布尔值")
 
 
 def _parse_required_filepath(raw_value: object) -> str:

@@ -2,6 +2,17 @@
 
 [English](CHANGELOG.en.md) | [中文](CHANGELOG.md)
 
+## [1.5.2] - 2026-04-23
+
+**GitHub Release**：[v1.5.2](https://github.com/jiggersong/everythingsearch/releases/tag/v1.5.2)
+
+本版本修复了“文件已经完成索引，但搜索页仍然搜不到”的一类常见问题，重点改善索引更新后的结果一致性与精确搜索体验。
+
+### 🐞 修复 (Bug Fixes)
+
+- **索引更新后结果立即生效**：修复搜索结果缓存未随索引更新自动失效的问题。现在无论是手动执行 `make index`，还是由定时任务自动执行增量索引，只要索引数据发生变化，后续同一关键词搜索都会自动使用最新索引结果，不再继续返回旧的空结果或旧结果。
+- **精确模式行为与界面一致**：修复 Web 搜索页默认“精确模式”下，前端已请求精确搜索但后端未正确按该模式处理的问题。现在通过搜索框直接发起的普通关键词搜索，会更稳定地优先命中文件名、路径和文本中的字面关键词。
+
 ## [1.5.1] - 2026-04-13
 
 **GitHub Release**：[v1.5.1](https://github.com/jiggersong/everythingsearch/releases/tag/v1.5.1)
