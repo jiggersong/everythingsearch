@@ -2,6 +2,16 @@
 
 [English](CHANGELOG.en.md) | [中文](CHANGELOG.md)
 
+## [2.1.0] - 2026-04-25
+
+I've been playing around with LLM agents like OpenClaw lately, and I realized that letting them directly search my local files would be incredibly powerful! So in this release, I added a command-line interface to the main program, turning it into a robust local file search plugin for agents.
+
+### 🚀 New Features
+
+- **A Super Brain for Agents (CLI)**: You can now use the `python -m everythingsearch search "query" --json` command to get clean, machine-readable JSON search results straight to the terminal.
+- **Out-of-the-box OpenClaw Integration Guide**: To make it easy for beginners, I wrote a tutorial on exactly how to configure the "System Prompt" for OpenClaw. Just copy and paste, and your agent instantly gains "local eyes"!
+- **Backward-compatible Command Dispatching**: Refactored the command entry point in `__main__.py`. It has zero impact on your existing `make app` commands or background services, so you can upgrade safely.
+
 ## [2.0.0] - 2026-04-25
 
 This is the biggest evolution since EverythingSearch was born. During my own heavy daily use, I found that relying purely on vector search wasn't precise enough when looking for specific filenames, and the old UI wasn't quite smooth enough. So, I decided to completely rewrite the underlying search architecture and the frontend UI. For those who want to fork and hack on it, the codebase structure is much more comfortable to work with now.

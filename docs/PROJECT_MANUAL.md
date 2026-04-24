@@ -83,6 +83,8 @@ EverythingSearch/
 ├── etc/
 │   └── config.example.py     # 配置模板
 ├── everythingsearch/         # Python 应用包
+│   ├── __main__.py           # CLI 命令分发与应用入口
+│   ├── cli.py                # 纯净输出终端命令行接口 (Agent 外脑支持)
 │   ├── app.py                # Flask Web 路由入口及总线组装
 │   ├── services/             # 业务服务层（抽象解耦核心逻辑）
 │   │   ├── file_service.py   # 文件生命周期控制
@@ -164,6 +166,18 @@ EverythingSearch/
 
 
 若你使用 Cursor 并希望加载本 Skill，请将 `skills/everythingsearch-local/` **复制**到当前工作区的 `.cursor/skills/everythingsearch-local/`，或在后者位置创建指向仓库内目录的**符号链接**，再按各工具文档刷新 Skills。
+
+### 3.2 CLI 终端接口
+
+为了支持缺乏独立 HTTP 请求能力的 LLM Agent (如 OpenClaw 等本机智能体环境)，项目提供了一个支持输出纯净 JSON 格式的命令行工具：
+
+```bash
+python -m everythingsearch search "<查询词>" --json
+```
+
+- 该接口与 Web 前端的自然语言搜索共享同一套意图识别与混合检索管道。
+- 内部强制抑制了第三方库的冗余终端输出 (如 jieba 词典加载)，以确保 Agent 能够成功解析 `stdout` 中的 JSON 内容。
+- 完整的接入指南与系统提示词示例，请查阅 `docs/OPENCLAW_INTEGRATION.md`。
 
 ---
 

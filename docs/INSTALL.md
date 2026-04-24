@@ -197,6 +197,7 @@ macOS TCC 注意事项：
 make help
 make index
 make index-full
+make search q="你要搜索的词"
 make app
 make app-status
 make app-restart

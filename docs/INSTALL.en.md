@@ -197,6 +197,7 @@ macOS TCC note:
 make help
 make index
 make index-full
+make search q="your search query"
 make app
 make app-status
 make app-restart

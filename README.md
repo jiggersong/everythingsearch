@@ -13,6 +13,7 @@ EverythingSearch is a **local semantic file search engine for macOS**, comparabl
 - **One heavier build, then mostly incremental**: The first full index scans the disk and can take time; later runs update only what changed, keeping day-to-day waits and disk churn manageable.
 - **Your data stays primarily local**: Indexes and vectors live on your Mac by default. Text is sent to your configured model service only when building embeddings or when you use smart search / interpretation features; behavior without an API key is described in [NL_SEARCH_AND_WEB_UI.en.md](docs/NL_SEARCH_AND_WEB_UI.en.md).
 - **MWeb in one toggle**: If you keep notes in MWeb, flip one setting to fold that library into the same index.
+- **Supercharge your Agent (CLI Support)**: I frequently tinker with LLM agents like OpenClaw, so I wrote a clean, JSON-outputting CLI interface for this search engine. Just paste a simple prompt, and your agent instantly gains "local eyes" to find files on your machine!
 
 ---
 
@@ -34,6 +35,9 @@ make app           # run app in the foreground
 make app-status    # status of launchd-managed app
 make app-restart   # restart launchd-managed app
 make app-stop      # stop launchd-managed app
+
+# New CLI search feature
+python -m everythingsearch search "your query here" --json
 ```
 
 ## System Permissions & Automation
@@ -60,7 +64,8 @@ After installation, complete these three system-level steps so the service can r
 | 3   | `[UI_DESIGN_APPLE_GOOGLE.en.md](docs/UI_DESIGN_APPLE_GOOGLE.en.md)`                | Web UI design notes               | UI upkeep, HIG/Material alignment, accessibility and motion | Design principles and tokens; bilingual pages linked at the top                                                               |
 | 4   | `[NL_SEARCH_AND_WEB_UI.en.md](docs/NL_SEARCH_AND_WEB_UI.en.md)`                    | NL search behavior notes          | Smart search integration, default fallback, API checks      | Intent route, interpretation route, `exact_focus`, rate limits, behavior without a key                                        |
 | 5   | `[SEARCH_ACCURACY_TECHNICAL_DESIGN.en.md](docs/SEARCH_ACCURACY_TECHNICAL_DESIGN.en.md)` | Accuracy technical design          | Reviewing the next search architecture rebuild              | FTS5, vector recall, RRF, remote rerank, file aggregation, benchmark plan, and implementation order                          |
-| 6   | `[skills/everythingsearch-local/SKILL.md](skills/everythingsearch-local/SKILL.md)` | Agent Skill (open source)         | Cursor / Claude Code integration with the local HTTP API    | Example calls for search and interpretation routes, `EVERYTHINGSEARCH_BASE`, safety and fallbacks; pairs with the manual §3.1 |
+| 6   | `[OPENCLAW_INTEGRATION.md](docs/OPENCLAW_INTEGRATION.md)`                          | Agent integration guide           | Giving OpenClaw local search powers                         | Foolproof system prompt configuration, test commands, easy for beginners                                                      |
+| 7   | `[skills/everythingsearch-local/SKILL.md](skills/everythingsearch-local/SKILL.md)` | Agent Skill (open source)         | Cursor / Claude Code integration with the local HTTP API    | Example calls for search and interpretation routes, `EVERYTHINGSEARCH_BASE`, safety and fallbacks; pairs with the manual §3.1 |
 
 
 ## Agent Skill (open source)

@@ -88,6 +88,8 @@ EverythingSearch/
 ├── etc/
 │   └── config.example.py     # Config template
 ├── everythingsearch/         # Python application package
+│   ├── __main__.py           # CLI command dispatcher and app entry point
+│   ├── cli.py                # Pure JSON terminal CLI (Agent brain support)
 │   ├── app.py                # Flask entry and app assembly
 │   ├── services/             # Business service layer (decoupled core logic)
 │   │   ├── file_service.py   # File lifecycle control
@@ -169,6 +171,18 @@ For **Cursor, Claude Code, and other tools that support Agent Skills**, this rep
 
 
 To use this Skill in Cursor, **copy** `skills/everythingsearch-local/` to `.cursor/skills/everythingsearch-local/` in your workspace, or create a **symbolic link** there pointing at the in-repo folder, then reload skills per your tool’s docs.
+
+### 3.2 CLI Terminal Interface
+
+To support LLM Agents that lack independent HTTP request capabilities (such as local agent environments like OpenClaw), the project provides a command-line tool that outputs pure JSON:
+
+```bash
+python -m everythingsearch search "<query>" --json
+```
+
+- This interface shares the exact same intent recognition and hybrid retrieval pipeline as the Web frontend's natural language search.
+- It internally suppresses redundant terminal outputs from third-party libraries (like `jieba` dictionary loading) to ensure the Agent can successfully parse the JSON content from `stdout`.
+- For complete integration guides and system prompt examples, please see `docs/OPENCLAW_INTEGRATION.md`.
 
 ---
 
