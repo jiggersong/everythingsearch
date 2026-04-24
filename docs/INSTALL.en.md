@@ -149,8 +149,10 @@ The full configuration matrix lives in [PROJECT_MANUAL.en.md](PROJECT_MANUAL.en.
 | `ENABLE_MWEB` | `False` | Enable MWeb export and indexing |
 | `MWEB_LIBRARY_PATH` | macOS default path | Override only if MWeb is installed in a non-standard location |
 | `MWEB_DIR` | `data/mweb_export` | Local export landing zone for MWeb notes |
-| `SEARCH_TOP_K` | `250` | Candidate chunk count |
-| `SCORE_THRESHOLD` | `0.35` | Lower is stricter |
+| `SPARSE_TOP_K` | `120` | Candidate chunk count for SQLite FTS5 sparse retrieval |
+| `DENSE_TOP_K` | `120` | Candidate chunk count for vector database dense retrieval |
+| `FUSION_TOP_K` | `200` | Candidate chunk count after RRF fusion sorting |
+| `RERANK_MODEL` | `gte-rerank` | Precise ranking model (depends on DashScope, e.g., `qwen3-rerank`, `gte-rerank`) |
 | `CHUNK_SIZE` | `500` | Chunk size for indexing |
 | `MAX_CONTENT_LENGTH` | `20000` | Max indexed characters per file |
 | `NL_INTENT_MODEL` | `qwen-turbo` | Intent model for `POST /api/search/nl` |

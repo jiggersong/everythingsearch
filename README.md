@@ -6,13 +6,13 @@ EverythingSearch is a **local semantic file search engine for macOS**, comparabl
 
 ## Core Capabilities
 
-- **File search**: Natural language or keyword queries over indexed files, with sub-second responses—addressing the common gap where macOS built-in search often falls short.
-- **Hybrid indexing**: Indexes both file content and filenames, so matches can come from inside documents, not only from names.
-- **Position weighting**: Hits in filenames and headings rank higher.
-- **Caching model**: The first full index scans the disk and may take a while; afterward, incremental updates keep day-to-day indexing fast and lightweight.
-- **Privacy and data flow**: Indexes and vector data stay on your machine by default. Indexing sends text chunks to DashScope (or your configured embedding endpoint) to compute embeddings. When an API key is configured and you use the web NL search flow, the current query and compact result summaries may be sent for intent parsing and optional interpretation. Without a key, the browser does not call the NL pipeline—see `[NL_SEARCH_AND_WEB_UI.en.md](docs/NL_SEARCH_AND_WEB_UI.en.md)`.
-- **Web UI**: Search in the browser with a flow similar to a web search engine, except your files stay local; filter by file time for tighter results.
-- **MWeb support**: If you use MWeb for notes and Markdown, enable one setting to integrate and index MWeb content.
+- **Ask the way you remember**: Use a full sentence in natural language or just a few keywords; get fast answers over indexed files and fewer “macOS Search missed it” moments.
+- **Filenames and body text together**: Matches aren’t limited to filenames—headings and document text count too; results that already show your clues in the name or title tend to rank higher so you scroll less.
+- **Narrow the hunt**: Filter by folder and by modified or created time, or switch to a filename-focused mode when that’s all you recall.
+- **Comfortable in the browser**: Search and skim results in a local web UI with a clear layout and a roomy results pane; turn on optional AI-assisted interpretation when you have a working model endpoint configured.
+- **One heavier build, then mostly incremental**: The first full index scans the disk and can take time; later runs update only what changed, keeping day-to-day waits and disk churn manageable.
+- **Your data stays primarily local**: Indexes and vectors live on your Mac by default. Text is sent to your configured model service only when building embeddings or when you use smart search / interpretation features; behavior without an API key is described in [NL_SEARCH_AND_WEB_UI.en.md](docs/NL_SEARCH_AND_WEB_UI.en.md).
+- **MWeb in one toggle**: If you keep notes in MWeb, flip one setting to fold that library into the same index.
 
 ---
 
@@ -59,7 +59,8 @@ After installation, complete these three system-level steps so the service can r
 | 2   | `[PROJECT_MANUAL.en.md](docs/PROJECT_MANUAL.en.md)`                                | Technical reference manual        | Development, maintenance, customization                     | Architecture, module boundaries, config matrix, indexing/search flow, tuning and deployment                                   |
 | 3   | `[UI_DESIGN_APPLE_GOOGLE.en.md](docs/UI_DESIGN_APPLE_GOOGLE.en.md)`                | Web UI design notes               | UI upkeep, HIG/Material alignment, accessibility and motion | Design principles and tokens; bilingual pages linked at the top                                                               |
 | 4   | `[NL_SEARCH_AND_WEB_UI.en.md](docs/NL_SEARCH_AND_WEB_UI.en.md)`                    | NL search behavior notes          | Smart search integration, default fallback, API checks      | Intent route, interpretation route, `exact_focus`, rate limits, behavior without a key                                        |
-| 5   | `[skills/everythingsearch-local/SKILL.md](skills/everythingsearch-local/SKILL.md)` | Agent Skill (open source)         | Cursor / Claude Code integration with the local HTTP API    | Example calls for search and interpretation routes, `EVERYTHINGSEARCH_BASE`, safety and fallbacks; pairs with the manual §3.1 |
+| 5   | `[SEARCH_ACCURACY_TECHNICAL_DESIGN.en.md](docs/SEARCH_ACCURACY_TECHNICAL_DESIGN.en.md)` | Accuracy technical design          | Reviewing the next search architecture rebuild              | FTS5, vector recall, RRF, remote rerank, file aggregation, benchmark plan, and implementation order                          |
+| 6   | `[skills/everythingsearch-local/SKILL.md](skills/everythingsearch-local/SKILL.md)` | Agent Skill (open source)         | Cursor / Claude Code integration with the local HTTP API    | Example calls for search and interpretation routes, `EVERYTHINGSEARCH_BASE`, safety and fallbacks; pairs with the manual §3.1 |
 
 
 ## Agent Skill (open source)
@@ -75,8 +76,9 @@ After installation, complete these three system-level steps so the service can r
 | ---------------- | ------------------------------------------------------------------------------------- |
 | Foundations      | Project goals, core capabilities, overall architecture                                |
 | System design    | Architecture diagram, stack, repository layout                                        |
-| Module internals | Responsibilities of `app`, `search`, `indexer`, `incremental`, `embedding_cache`      |
+| Module internals | Responsibilities of `app`, `retrieval.pipeline`, `indexer`, `incremental`, `embedding_cache`      |
 | Runtime behavior | Configuration matrix, indexing/search lifecycle, HTTP API surface, Agent Skill (§3.1) |
+| Evolution        | Publishable entry point for the accuracy-first search redesign                        |
 | Operations       | launchd service model, common commands, tuning, fresh-deployment checklist            |
 
 

@@ -149,8 +149,10 @@ sudo nano /etc/hosts
 | `ENABLE_MWEB` | `False` | 是否启用 MWeb 导出与索引 |
 | `MWEB_LIBRARY_PATH` | macOS 默认路径 | 仅在 MWeb 安装位置非标准时覆盖 |
 | `MWEB_DIR` | `data/mweb_export` | MWeb 导出落地区 |
-| `SEARCH_TOP_K` | `250` | 检索候选 chunk 数量 |
-| `SCORE_THRESHOLD` | `0.35` | 越小越严格 |
+| `SPARSE_TOP_K` | `120` | SQLite FTS5 稀疏检索候选数量 |
+| `DENSE_TOP_K` | `120` | 向量库稠密检索候选数量 |
+| `FUSION_TOP_K` | `200` | RRF 融合排序后的候选数量 |
+| `RERANK_MODEL` | `gte-rerank` | 精排模型（依赖 DashScope，如 `qwen3-rerank`、`gte-rerank`） |
 | `CHUNK_SIZE` | `500` | 索引切分块大小 |
 | `MAX_CONTENT_LENGTH` | `20000` | 单文件最大索引字符数 |
 | `NL_INTENT_MODEL` | `qwen-turbo` | `POST /api/search/nl` 使用的意图模型 |

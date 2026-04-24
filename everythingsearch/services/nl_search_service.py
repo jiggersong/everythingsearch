@@ -107,11 +107,13 @@ class NLSearchIntentParams(BaseModel):
     q: str
     source: Optional[str] = None
     date_field: Optional[Literal["mtime", "ctime"]] = None
-    date_from: Optional[int] = None
-    date_to: Optional[int] = None
+    date_from: Optional[str] = None
+    date_to: Optional[str] = None
     limit: Optional[int] = None
     #: balanced=向量+关键词混合（默认）；exact_focus=用户明确要求字面/精确命中时，仅走关键词倒排（无命中时底层回退混合检索）
     match_mode: Optional[Literal["balanced", "exact_focus"]] = None
+    path_filter: Optional[str] = None
+    filename_only: Optional[bool] = None
 
 class NLSearchIntent(BaseModel):
     intent: Literal["search", "out_of_scope"]
@@ -142,7 +144,10 @@ class NLSearchService:
 
 【slots.q 的含义 — 极其重要】
 - q 是交给倒排/向量检索引擎使用的「核心检索词」，应尽可能**短、可直接命中**，通常是：人名、文件名关键词、主题词、项目名、错误码片段等的组合（2～30 字为宜）。
-- **禁止**把用户的礼貌用语、任务描述整句复制进 q。必须先在心里去掉套话，只保留真正要搜的内容。
+- **如果用户要求在某个特定目录、文件夹、路径下搜索，绝对不能将路径名包含在 q 中！** 请将其提取到 `path_filter` 字段。例如：“目录名中有薪酬的目录中找文件内容有刘益鑫的文件” -> q="刘益鑫", path_filter="薪酬", match_mode="exact_focus"。
+- **如果用户明确只在文件名中搜索（例如：“找文件名中有预算的”、“叫预算的文件”），请将 `filename_only` 设为 true。此时 q 为文件名中的关键字（如“预算”）。**
+- 当用户寻找特定名词（如人名、系统代号等）或要求 filename_only 时，务必将 match_mode 设为 "exact_focus" 以确保精确命中。
+- 绝不要在 q 中包含“帮我找”、“搜索”、“的资料”等动词或助词。必须先在心里去掉套话，只保留真正要搜的内容。
 - 常见需剥离的中文套话（仅用于理解 q 的写法，不要输出解释文字）：帮我/请/麻烦/能否、搜索一下/搜一下/查找/找一下、关于、的(信息|资料|文件)、有没有、看一下 等。
 - 常见需剥离的英文套话：please / help me / can you / search for / look for / find 等。
 
@@ -173,10 +178,12 @@ class NLSearchService:
     "q": "核心检索词，非空字符串",
     "source": "数据源，可选值：all、file{mweb_desc}。用户未提及则省略或 null",
     "date_field": "mtime 或 ctime，未提及则 null",
-    "date_from": "Unix秒，未提及则 null",
-    "date_to": "Unix秒，未提及则 null",
+    "date_from": "YYYY-MM-DD 格式的绝对日期（如 '2025-01-01'），未提及则 null",
+    "date_to": "YYYY-MM-DD 格式的绝对日期（如 '2025-12-31'），未提及则 null",
     "limit": "整数或 null，最大 200",
-    "match_mode": "\"balanced\" | \"exact_focus\" | null，规则见上文"
+    "match_mode": "\"balanced\" | \"exact_focus\" | null，规则见上文",
+    "path_filter": "用户要求搜索的特定目录名/路径关键字，未提及则 null",
+    "filename_only": "布尔值。如果明确要求仅在文件名中搜索，设为 true，否则 null"
   }},
   "assistant_message": "仅 out_of_scope 时填写，与用户语言一致",
   "capabilities": "仅 out_of_scope 时可选"
@@ -257,15 +264,32 @@ class NLSearchService:
         )
         exact_focus = match_mode == "exact_focus"
 
+        import datetime
+        def _parse_date(date_str: str | None, is_end_of_day: bool = False) -> int | None:
+            if not date_str:
+                return None
+            try:
+                dt = datetime.datetime.strptime(date_str, "%Y-%m-%d")
+                if is_end_of_day:
+                    dt = dt.replace(hour=23, minute=59, second=59)
+                return int(dt.timestamp())
+            except Exception:
+                return None
+
+        date_from_ts = _parse_date(intent_obj.slots.date_from) if intent_obj.slots.date_from else None
+        date_to_ts = _parse_date(intent_obj.slots.date_to, is_end_of_day=True) if intent_obj.slots.date_to else None
+
         resolved = {
             "q": refined_q,
             "source": intent_obj.slots.source if intent_obj.slots.source is not None else ui_state.get("sidebar_source", "all"),
             "date_field": intent_obj.slots.date_field if intent_obj.slots.date_field is not None else ui_state.get("date_field", "mtime"),
-            "date_from": intent_obj.slots.date_from if intent_obj.slots.date_from is not None else ui_state.get("date_from"),
-            "date_to": intent_obj.slots.date_to if intent_obj.slots.date_to is not None else ui_state.get("date_to"),
+            "date_from": date_from_ts if date_from_ts is not None else ui_state.get("date_from"),
+            "date_to": date_to_ts if date_to_ts is not None else ui_state.get("date_to"),
             "limit": intent_obj.slots.limit if intent_obj.slots.limit is not None else ui_state.get("limit", settings.search_top_k),
             "match_mode": match_mode,
             "exact_focus": exact_focus,
+            "path_filter": getattr(intent_obj.slots, "path_filter", None),
+            "filename_only": getattr(intent_obj.slots, "filename_only", False) or False,
         }
         
         return {

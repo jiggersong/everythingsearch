@@ -8,13 +8,13 @@ EverythingSearch 是一个运行在 macOS 上的**本地文件语义搜索引擎
 
 ### 核心能力
 
-- **文件搜索**：根据模糊的关键词快速检索全部文件，达到秒级返回，直接解决 Mac 搜索基本无用的困扰
-- **混合索引**：同时索引文件内容和文件名，就算你要找的信息是在文件内容中，也一样可以搜到
-- **位置加权**：关键词出现在文件名、标题中的结果会获得更高的排名
-- **缓存机制**：只有在第一次安装完成后的索引重建需要花费比较长的时间全盘扫描，后续会根据文件变更增量构建索引，快如闪电
-- **隐私保护**：索引数据保存在本机。DashScope 在索引阶段用于生成向量；当浏览器启用默认智能搜索时，还会接收当前查询文本与压缩后的结果摘要，用于意图识别和智能解读
-- **Web界面**：直接在浏览器中搜索，像用 Google 找网络信息一样的找你的文件，简单友好。支持按照文件时间过滤，搜索更精准
-- **MWeb 支持**：如果你正在使用 MWeb 作为笔记文件和 Markdown 编辑器，只需打开一个开关即可一键接管并索引你的 MWeb 内容
+- **多路召回与混合检索 (Hybrid Retrieval)**：集成 SQLite FTS5 稀疏检索与 ChromaDB 稠密向量检索，利用 RRF（倒数排名融合）算法对文件名、标题、正文切块的召回结果进行无监督融合。
+- **意图识别与 Query 规划 (Query Planning)**：支持自然语言大模型意图识别，动态解析时间范围、路径过滤与精确匹配等约束条件，生成结构化查询计划。
+- **两阶段重排架构 (Two-stage Reranking)**：利用远端 Rerank 模型对初步融合结果进行深度语义重排，并结合基于文件粒度的聚合算分（File Aggregator）大幅提升排序准确率。
+- **增量构建与多级缓存 (Incremental & Caching)**：提供基于修改时间的增量文件扫描，配合 Embedding 的 SQLite 持久化缓存以及查询级内存缓存，极大降低 API 调用开销并提升响应速度。
+- **多源数据整合 (Data Ingestion)**：内建文档解析管道，支持跨进程异步提取 PDF/Word/Excel 等办公格式文本，提供无缝同步 MWeb 等 Markdown 笔记库的自动化支持。
+- **本地优先设计 (Privacy & Local First)**：索引文件与分块向量等核心数据存留在本地，模型 API 仅负责执行基础 Embedding 和（可选的）前端请求的生成式解读。
+- **标准化 API 面向 Agent 集成 (Agent-Friendly)**：系统功能高度服务化解耦，对外暴露稳定的 RESTful 接口（配有严密的文件越权防护），天然支持各类大模型 Agent 环境快速接入使用。
 
 ---
 
@@ -77,7 +77,7 @@ EverythingSearch 是一个运行在 macOS 上的**本地文件语义搜索引擎
 
 ## 3. 文件结构
 
-```
+```text
 EverythingSearch/
 ├── config.py                 # 本地配置（从 etc/config.example.py 复制，勿提交密钥）
 ├── etc/
@@ -90,48 +90,60 @@ EverythingSearch/
 │   │   ├── health_service.py # 数据探活与预热调度
 │   │   ├── nl_search_service.py
 │   │   └── search_interpret_service.py
+│   ├── retrieval/            # ★ 核心多路检索与重排管道
+│   │   ├── pipeline.py       # 搜索主链路编排
+│   │   ├── query_planner.py  # 查询意图及参数规划
+│   │   ├── sparse_retriever.py # FTS5 稀疏检索
+│   │   ├── dense_retriever.py  # 向量稠密检索
+│   │   ├── fusion.py         # RRF 融合算法
+│   │   ├── reranking.py      # DashScope Rerank 接入
+│   │   └── aggregation.py    # 文件级算分聚合
+│   ├── indexing/             # 索引构建底层组件
+│   │   ├── sparse_index_writer.py
+│   │   ├── dense_index_writer.py
+│   │   └── pipeline_indexer.py
+│   ├── evaluation/           # 检索 benchmark、评测数据加载与指标计算
+│   │   ├── benchmark_runner.py
+│   │   ├── dataset.py
+│   │   ├── metrics.py
+│   │   └── datasets/
+│   ├── infra/                # 基础设施层（含强类型配置 settings.py）
 │   ├── request_validation.py # 入参验证协议 (提供统一400失败规范)
 │   ├── file_access.py        # 强一致文件存取控制边界与防路径穿越
-│   ├── infra/                # 基础设施层
-│   │   ├── settings.py       # (含强类型配置提取封装)
-│   │   └── rate_limiting.py
-│   ├── search.py             # 底层搜索核心算法
-│   ├── indexer.py            # 全量索引构建
-│   ├── incremental.py        # 增量索引
+│   ├── indexer.py            # 全量索引构建入口
+│   ├── incremental.py        # 增量索引入口
 │   ├── embedding_cache.py    # Embedding 缓存层
-│   ├── templates/
+│   ├── logging_config.py     # 标准化日志配置
+│   ├── templates/            # Web UI 模板
 │   │   └── index.html
-│   └── static/
+│   └── static/               # 前端静态资源
+│       ├── css/
+│       ├── js/
 │       └── icon.png
-├── skills/                   # Agent Skill（开源；见 §3.1）
-│   └── everythingsearch-local/
-│       └── SKILL.md          # Cursor / Claude Code 等：本机 HTTP API 用法
+├── skills/                   # Agent Skill（支持 Cursor/Claude 等接入本地 API）
 ├── data/                     # 本地数据与缓存（默认路径，勿提交）
-│   ├── chroma_db/            # ChromaDB
+│   ├── chroma_db/            # ChromaDB 向量库
+│   ├── sparse_index.db       # FTS5 稀疏索引数据库
 │   ├── embedding_cache.db
 │   ├── scan_cache.db
 │   └── index_state.db
 ├── logs/                     # 运行与定时任务日志
-├── scripts/
+├── scripts/                  # 运维与辅助脚本
 │   ├── install.sh
-│   ├── run_app.sh            # 搜索服务管理（start/stop/restart/dev）
-│   ├── run_tests.sh
-│   └── launchd/              # launchd plist 参考副本
-├── docs/
-│   ├── INSTALL.md
-│   ├── PROJECT_MANUAL.md
-│   ├── NL_SEARCH_AND_WEB_UI.md
-│   ├── NL_SEARCH_AND_WEB_UI.en.md
-│   ├── UI_DESIGN_APPLE_GOOGLE.md      # Web UI 设计说明（中文）
-│   └── UI_DESIGN_APPLE_GOOGLE.en.md   # Web UI 设计说明（英文）
-├── Makefile                  # make 快捷命令（make help 列出说明）
-├── requirements.txt
-├── requirements/
-│   ├── base.txt
-│   └── dev.txt
-├── pytest.ini
-├── tests/
-└── venv/
+│   ├── run_app.sh
+│   ├── audit_dependencies.py # 依赖审计
+│   └── mweb_export.py        # MWeb 自动导出脚手架
+├── docs/                     # 项目文档集
+│   ├── CHANGELOG.md          # 更新日志
+│   ├── INSTALL.md            # 部署安装指南
+│   ├── PROJECT_MANUAL.md     # 技术架构文档（本文件）
+│   ├── NL_SEARCH_AND_WEB_UI.md # 智能检索机制说明
+│   ├── SEARCH_ACCURACY_TECHNICAL_DESIGN.md # 检索准确率设计方案
+│   └── UI_DESIGN_APPLE_GOOGLE.md # UI 设计哲学
+├── Makefile                  # make 快捷命令
+├── requirements/             # 环境依赖清单
+├── pytest.ini                # 单测配置
+└── tests/                    # 单元测试与评测用例集
 
 ~/.local/bin/
 ├── everythingsearch_start.sh  # 搜索服务 launchd wrapper（安装时生成）
@@ -217,25 +229,32 @@ EverythingSearch/
 2. `chunk_type: "heading"` — 提取的标题集合
 3. `chunk_type: "content"` — 正文分块（每块 ~500 字符）
 
-### 4.3 search.py — 搜索引擎
+### 4.3 `retrieval.pipeline` — 多路召回与重排引擎
 
-**内存缓存**：对 `(query, source_filter, date_field, date_from, date_to, exact_focus)` 的搜索结果做短期缓存（`exact_focus` 区分「仅关键词优先」与默认混合管道；默认 TTL 与条数见代码中 `CACHE_TTL_SECONDS`、`MAX_CACHE_SIZE`）。重建索引或需立即一致时，可调用 `POST /api/cache/clear`；清空向量库进程内缓存时也会清空该缓存。
+搜索引擎的主链路采用多阶段检索架构：
 
-**超时控制**：搜索执行会通过进程内共享的 future 包装器施加超时控制，默认使用 `SEARCH_TIMEOUT_SECONDS = 30`。超时不会再伪装成空结果，而是沿 service / route 层映射为可观测的错误响应（`/api/search` 返回 504）。搜索超时结果不会写入内存缓存。若将 `SEARCH_TIMEOUT_SECONDS = 0`，则表示关闭搜索超时控制，但仍保留单飞执行与繁忙保护。需要注意：future 超时后后台工作线程可能继续运行到自然结束，这是当前实现的已知取舍；在该后台任务结束前，新的搜索请求可能收到 `503` 的“执行繁忙”响应，以避免后台任务无界堆积。
+```text
+SearchRequest
+  -> QueryPlanner
+  -> SparseRetriever (SQLite FTS5)
+  -> DenseRetriever (Embedding / Chroma 适配层)
+  -> CandidateFusion (RRF)
+  -> Reranker (DashScope qwen3-rerank Provider)
+  -> FileAggregator
+  -> ResultPresenter
+```
 
-搜索管道流程：
+**超时与繁忙保护**：
+检索执行在业务层通过并发数控制与超时包装器（`SEARCH_TIMEOUT_SECONDS`，默认 30s）进行保护，超时或繁忙会向上抛出并转化为 504/503 响应。
 
-1. **向量搜索**：在同一 collection 内进行相似度检索；可通过 `source=all|file|mweb` 过滤来源（若 `ENABLE_MWEB=False` 则仅返回文件来源）
-2. **位置加权**：按 `chunk_type` 乘以权重因子，文件名匹配获 40% 提权
-3. **关键词频次加权**：查询词出现多次的 chunk 额外加分
-4. **文件去重**：同一文件只保留最佳 chunk
-5. **关键词精确回退**：用 ChromaDB `$contains` 查找包含原文的文档（支持多词 OR）
-6. **合并排序**：精确匹配 + 语义匹配合并，按分数排序返回
+**核心环节拆解**：
 
-`**exact_focus`（精确优先）路径**（由 `POST /api/search/nl` 在意图为 `match_mode=exact_focus` 时传入 `SearchRequest.exact_focus=True` 触发）：
-
-1. 先仅执行与第 5 步相同的关键词倒排检索并按文件去重、排序；
-2. 若**零命中**，或命中行被 `source` / 时间等 `where` 条件**全部筛掉**，则**自动回退**到上面的完整向量 + 关键词混合管道，避免误返回空结果。
+1. **Query Planner**：根据前端请求（包含可选的 `path_filter`, `date_field` 等）生成结构化的 `QueryPlan`。如果请求指定了 `exact_focus`，将直接退化为专注关键词的混合模式。
+2. **Sparse Retriever (稀疏检索)**：利用新建的 `data/sparse_index.db` (SQLite FTS5) 进行快速的倒排索引查询，字段权重分配由 `SPARSE_FILENAME_WEIGHT`、`SPARSE_PATH_WEIGHT` 等配置项决定。
+3. **Dense Retriever (稠密检索)**：利用现有的 ChromaDB 与 Embedding 层计算语义相似度，提取候选块。
+4. **Candidate Fusion (RRF)**：通过 Reciprocal Rank Fusion 对稀疏和稠密的返回结果进行无监督融合。
+5. **Reranker (二阶段精排)**：若配置了 `RERANK_MODEL`（如 DashScope 的 qwen3-rerank），将 RRF 产生的 Top N 候选发送给重排模型做深度语义打分。当重排模型超时或降级时，默认回退使用 RRF 分数。
+6. **File Aggregator**：替代以往「单文件取最高分 chunk」的粗暴做法，基于所有候选 chunk 按文件粒度重新累加打分，提供更准确的排序。
 
 ### 4.4 embedding_cache.py — 向量缓存
 
@@ -273,7 +292,7 @@ python -m everythingsearch.incremental --full   # 完整重建
 
 ### 4.6 `everythingsearch.app` 与服务编排层
 
-最新的改动大幅瘦身了 `app.py` 路由绑定层的职责：它剥离了裸业务逻辑代码并委派到 `services/` 子层统一处理；同时借由 `request_validation.py` 将所有异常、不合法 JSON 请求类型过滤出标准的 HTTP `400 Bad Request`，从而防止脏数据向下渗透带来 500 系统级崩溃。底层的 `file_access.py` 补充了一道屏障：无论外部调用如何发起文件读取、下载或者打开操作，均强制鉴权对应路径不能跨越索引边界（禁止路径穿越探测）。
+`app.py` 专注于路由绑定层的职责：它将核心业务逻辑委派到 `services/` 子层统一处理；同时借由 `request_validation.py` 将所有异常、不合法 JSON 请求类型过滤出标准的 HTTP `400 Bad Request`，从而防止脏数据向下渗透带来 500 系统级崩溃。底层的 `file_access.py` 补充了一道屏障：无论外部调用如何发起文件读取、下载或者打开操作，均强制鉴权对应路径不能跨越索引边界（禁止路径穿越探测）。
 
 **对外集成（Agent）**：面向 Cursor 等工具的 HTTP 调用示例、`EVERYTHINGSEARCH_BASE` 与无 Key 时的回退说明，见 §3.1 中的 `skills/everythingsearch-local/SKILL.md`。
 

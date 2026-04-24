@@ -12,8 +12,6 @@ from everythingsearch.infra.settings import reset_settings_cache
 from everythingsearch.services.file_service import BinaryPreviewNotAllowedError
 from everythingsearch.services.health_service import HealthSnapshot, VectorDbHealth
 from everythingsearch.services.search_service import (
-    SearchCacheStats,
-    SearchCacheClearResult,
     SearchExecutionBusyServiceError,
     SearchExecutionResult,
     SearchExecutionTimeoutError,
@@ -68,7 +66,6 @@ class TestHealthAPI:
         assert 'version' in data
         assert 'uptime' in data
         assert 'vectordb' in data
-        assert 'cache' in data
     
     def test_health_check_structure(self, client):
         """测试健康检查数据结构"""
@@ -78,10 +75,6 @@ class TestHealthAPI:
         # 检查 vectordb 结构
         assert 'status' in data['vectordb']
         assert 'document_count' in data['vectordb']
-        
-        # 检查 cache 结构
-        assert 'cached_queries' in data['cache']
-        assert 'max_cache_size' in data['cache']
 
     def test_health_check_uses_health_service(self, client, monkeypatch):
         """健康检查应通过 health_service 提供快照。"""
@@ -96,7 +89,6 @@ class TestHealthAPI:
                 uptime="0h 0m 1s",
                 uptime_seconds=1,
                 vectordb=VectorDbHealth(status="ok", document_count=2),
-                cache=SearchCacheStats(cached_queries=3, max_cache_size=100),
                 timestamp="2026-04-01T00:00:00",
             )
 
@@ -119,7 +111,6 @@ class TestHealthAPI:
             uptime="0h 1m 2s",
             uptime_seconds=62,
             vectordb=VectorDbHealth(status="not_initialized", document_count=0),
-            cache=SearchCacheStats(cached_queries=1, max_cache_size=100),
             timestamp="2026-04-01T00:00:00",
         )
 
@@ -140,10 +131,6 @@ class TestHealthAPI:
             "vectordb": {
                 "status": "not_initialized",
                 "document_count": 0,
-            },
-            "cache": {
-                "cached_queries": 1,
-                "max_cache_size": 100,
             },
             "timestamp": "2026-04-01T00:00:00",
         }
@@ -575,27 +562,6 @@ class TestFileAPI:
         )
 
         assert rv.status_code == 404
-
-
-class TestCacheAPI:
-    """测试缓存管理 API"""
-    
-    def test_clear_cache_endpoint(self, client, monkeypatch):
-        """测试清空缓存接口"""
-        called = {"value": False}
-
-        def fake_clear_cache():
-            called["value"] = True
-            return SearchCacheClearResult()
-
-        monkeypatch.setattr("everythingsearch.app.search_service.clear_cache", fake_clear_cache)
-
-        rv = client.post('/api/cache/clear')
-        assert rv.status_code == 200
-        data = rv.get_json()
-        assert data['ok'] is True
-        assert 'message' in data
-        assert called["value"] is True
 
 
 class TestIndexPage:

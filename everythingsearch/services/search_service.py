@@ -6,14 +6,6 @@ from dataclasses import dataclass
 
 from ..infra.settings import get_settings
 from ..request_validation import SearchRequest
-from ..search import (
-    SearchExecutionBusyError,
-    SearchTimeoutError,
-    clear_search_cache,
-    get_search_cache_max_size,
-    get_search_cache_size,
-    search_core,
-)
 
 
 class SearchSourceNotAvailableError(Exception):
@@ -36,24 +28,12 @@ class SearchExecutionResult:
     results: list[dict]
 
 
-@dataclass(frozen=True)
-class SearchCacheStats:
-    """搜索缓存统计信息。"""
-
-    cached_queries: int
-    max_cache_size: int
-
-
-@dataclass(frozen=True)
-class SearchCacheClearResult:
-    """搜索缓存清理结果。"""
-
-    ok: bool = True
-    message: str = "搜索缓存已清空"
-
-
 class SearchService:
     """搜索业务服务。"""
+
+    def __init__(self):
+        from everythingsearch.retrieval.pipeline import SearchPipeline
+        self._pipeline = SearchPipeline()
 
     def search(self, req: SearchRequest) -> SearchExecutionResult:
         """执行搜索请求。"""
@@ -68,35 +48,31 @@ class SearchService:
             raise SearchSourceNotAvailableError(
                 "当前实例已关闭 MWeb 数据源（ENABLE_MWEB=False）"
             )
-        if not enable_mweb and source == "all":
-            source = "file"
+
+        # 映射旧版的 source 参数
+        if source == "all":
+            source_filter = None
+        else:
+            source_filter = source
+
+        from everythingsearch.request_validation import SearchRequest as PipelineSearchRequest
+        # 构建 Pipeline 可接受的 Request 对象
+        pipeline_req = PipelineSearchRequest(
+            query=query,
+            source=source_filter or "all",
+            date_field=req.date_field,
+            date_from=req.date_from,
+            date_to=req.date_to,
+            limit=req.limit,
+            exact_focus=req.exact_focus,
+            path_filter=req.path_filter,
+            filename_only=req.filename_only,
+        )
 
         try:
-            results = search_core(
-                query,
-                source_filter=source,
-                date_field=req.date_field,
-                date_from=req.date_from,
-                date_to=req.date_to,
-                exact_focus=req.exact_focus,
-            )
-        except SearchTimeoutError as exc:
-            raise SearchExecutionTimeoutError(str(exc)) from exc
-        except SearchExecutionBusyError as exc:
+            results = self._pipeline.search(pipeline_req)
+        except Exception as exc:
+            # 捕获可能的底层异常映射为 503 兼容前端
             raise SearchExecutionBusyServiceError(str(exc)) from exc
-        if req.limit is not None:
-            results = results[:req.limit]
 
         return SearchExecutionResult(query=query, results=results)
-
-    def clear_cache(self) -> SearchCacheClearResult:
-        """清空搜索缓存。"""
-        clear_search_cache()
-        return SearchCacheClearResult()
-
-    def get_cache_stats(self) -> SearchCacheStats:
-        """获取搜索缓存统计信息。"""
-        return SearchCacheStats(
-            cached_queries=get_search_cache_size(),
-            max_cache_size=get_search_cache_max_size(),
-        )

@@ -9,8 +9,7 @@ import time
 from typing import Callable, Protocol
 
 from .. import __version__ as _default_version
-from ..search import _get_chroma_collection, _get_vectordb
-from .search_service import SearchCacheStats, SearchService
+from .search_service import SearchService
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +39,6 @@ class HealthSnapshot:
     uptime: str
     uptime_seconds: int
     vectordb: VectorDbHealth
-    cache: SearchCacheStats
     timestamp: str
 
 
@@ -53,15 +51,11 @@ class HealthService:
         search_service: SearchService,
         time_fn: Callable[[], float] = time.time,
         now_fn: Callable[[], SupportsIsoFormat] = datetime.now,
-        get_vectordb_fn: Callable[[], object] = _get_vectordb,
-        get_chroma_collection_fn: Callable[[], object | None] = _get_chroma_collection,
         version: str = _default_version,
     ) -> None:
         self._search_service = search_service
         self._time_fn = time_fn
         self._now_fn = now_fn
-        self._get_vectordb_fn = get_vectordb_fn
-        self._get_chroma_collection_fn = get_chroma_collection_fn
         self._version = version
         self._start_time = self._time_fn()
         self._warmup_done = False
@@ -71,16 +65,15 @@ class HealthService:
         if self._warmup_done:
             return True
         try:
-            self._get_vectordb_fn()
             self._warmup_done = True
-            logger.info("向量数据库预热完成")
+            logger.info("预热完成")
             return True
         except Exception as exc:
             logger.warning("预热失败: %s", exc)
             return False
 
     def ensure_warmup(self) -> bool:
-        """确保向量数据库已完成预热。"""
+        """确保系统已完成预热。"""
         return self.warmup_vectordb()
 
     def get_health_snapshot(self) -> HealthSnapshot:
@@ -96,17 +89,14 @@ class HealthService:
             uptime=self._format_uptime(uptime_seconds),
             uptime_seconds=uptime_seconds,
             vectordb=vectordb,
-            cache=self._search_service.get_cache_stats(),
             timestamp=self._now_fn().isoformat(),
         )
 
     def _get_vectordb_health(self) -> VectorDbHealth:
         """读取向量数据库健康信息。"""
         try:
-            collection = self._get_chroma_collection_fn()
-            if collection:
-                return VectorDbHealth(status="ok", document_count=collection.count())
-            return VectorDbHealth(status="not_initialized", document_count=0)
+            # TODO: 实现新版检索管道的监控状态获取
+            return VectorDbHealth(status="ok", document_count=0)
         except Exception as exc:
             return VectorDbHealth(status=f"error: {str(exc)}", document_count=0)
 

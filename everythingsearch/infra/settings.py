@@ -60,6 +60,24 @@ class Settings:
     keyword_freq_bonus: float
     trust_proxy: bool
 
+    # 稀疏检索 (FTS5)
+    sparse_index_path: str
+    sparse_top_k: int
+    sparse_filename_weight: float
+    sparse_path_weight: float
+    sparse_heading_weight: float
+    sparse_content_weight: float
+
+    # 稠密检索与融合 (Dense & Fusion)
+    dense_top_k: int
+    embedding_text_type_enabled: bool
+    fusion_top_k: int
+    rrf_k: int
+
+    # 重排 (Rerank)
+    rerank_model: str
+    rerank_top_n: int
+
     # 智能搜索（意图识别与结果解读；需配置 DashScope API Key）
     nl_intent_model: str
     search_interpret_model: str
@@ -223,6 +241,23 @@ def _load_settings() -> Settings:
             "TRUST_PROXY",
             default=False,
         ),
+        sparse_index_path=_load_required_path(
+            "SPARSE_INDEX_PATH",
+            legacy_config,
+            "SPARSE_INDEX_PATH",
+            default=str(get_project_root() / "data" / "sparse_index.db"),
+        ),
+        sparse_top_k=_load_int("SPARSE_TOP_K", legacy_config, "SPARSE_TOP_K", default=120),
+        sparse_filename_weight=_load_float("SPARSE_FILENAME_WEIGHT", legacy_config, "SPARSE_FILENAME_WEIGHT", default=8.0),
+        sparse_path_weight=_load_float("SPARSE_PATH_WEIGHT", legacy_config, "SPARSE_PATH_WEIGHT", default=3.0),
+        sparse_heading_weight=_load_float("SPARSE_HEADING_WEIGHT", legacy_config, "SPARSE_HEADING_WEIGHT", default=4.0),
+        sparse_content_weight=_load_float("SPARSE_CONTENT_WEIGHT", legacy_config, "SPARSE_CONTENT_WEIGHT", default=1.0),
+        dense_top_k=_load_int("DENSE_TOP_K", legacy_config, "DENSE_TOP_K", default=120),
+        embedding_text_type_enabled=_load_bool("EMBEDDING_TEXT_TYPE_ENABLED", legacy_config, "EMBEDDING_TEXT_TYPE_ENABLED", default=False),
+        fusion_top_k=_load_int("FUSION_TOP_K", legacy_config, "FUSION_TOP_K", default=200),
+        rrf_k=_load_int("RRF_K", legacy_config, "RRF_K", default=60),
+        rerank_model=_load_str("RERANK_MODEL", legacy_config, "RERANK_MODEL", default="gte-rerank"),
+        rerank_top_n=_load_int("RERANK_TOP_N", legacy_config, "RERANK_TOP_N", default=50),
         nl_intent_model=_load_str(
             "NL_INTENT_MODEL",
             legacy_config,

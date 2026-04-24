@@ -84,13 +84,6 @@ def api_health():
     return jsonify(asdict(snapshot))
 
 
-@app.route("/api/cache/clear", methods=["POST"])
-def api_clear_cache():
-    """清空搜索缓存（索引更新后调用）"""
-    result = search_service.clear_cache()
-    return jsonify({"ok": result.ok, "message": result.message})
-
-
 @app.route("/api/search")
 def api_search():
     try:
@@ -197,6 +190,8 @@ def api_search_nl():
             date_to=resolved.get("date_to"),
             limit=limit,
             exact_focus=exact_focus,
+            path_filter=resolved.get("path_filter"),
+            filename_only=bool(resolved.get("filename_only")),
         )
         
         search_res = search_service.search(search_req)

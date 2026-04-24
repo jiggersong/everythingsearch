@@ -1,174 +1,126 @@
-# Changelog
+# 更新日志 (Changelog)
 
 [English](CHANGELOG.en.md) | [中文](CHANGELOG.md)
 
+## [2.0.0] - 2026-04-25
+
+这是 EverythingSearch 诞生以来最大的一次进化。自己在日常高频使用中发现，早期单纯依赖向量的搜索在找“特定文件名”时不够精准，且旧版界面操作起来还不够顺手。因此，我下决心对底层的搜索架构和前端界面进行了一次彻底的重写。对于想拿去二次开发的兄弟们，这次的代码结构会舒服很多。
+
+### 🚀 体验升级
+
+- **全新对话式交互界面**：我把 Web 界面重做成了类似 DeepSeek 的对话交互风格。现在的搜索框支持多行输入了，底部还加上了快捷工具栏。你可以非常直观地开关“AI 模式”，搜索反馈和阅读体验都变得更加现代和沉浸。
+- **脱胎换骨的搜索准确率**：之前偶尔会遇到搜索结果排不对的问题。这次我引入了“多路召回 + RRF 融合 + 大模型重排 (Rerank)”的成熟架构。配合新增的 SQLite FTS5 稀疏索引，现在不管是精准搜索文件名，还是模糊搜索文档正文，命中率和排序效果都得到了质的飞跃。
+
+### 🛠 架构与技术演进
+
+- **检索内核彻底重构**：删掉了以前那个臃肿单体文件，将核心检索拆解为了标准的检索管道 (`retrieval.pipeline`)。里面包含了查询规划、多路检索、分数融合、文件级聚合以及接入 Rerank 模型的完整链路，可玩性和扩展性极强。
+- **代码整洁与债务清理**：清理了早期留下的临时测试脚本和冗余日志。进一步剥离了 `app.py` 的路由职责和请求拦截边界，修复了重构过程中的依赖断层，现在整个工程结构非常清晰，非常适合大家 fork 过去魔改。
+
 ## [1.5.2] - 2026-04-23
 
-**GitHub Release**：[v1.5.2](https://github.com/jiggersong/everythingsearch/releases/tag/v1.5.2)
+这个版本主要解决了我自己在使用中遇到的一个小痛点：“明明文件已经建好索引了，但页面上怎么还是搜不到？”
 
-本版本修复了“文件已经完成索引，但搜索页仍然搜不到”的一类常见问题，重点改善索引更新后的结果一致性与精确搜索体验。
+### 🐞 问题修复
 
-### 🐞 修复 (Bug Fixes)
-
-- **索引更新后结果立即生效**：修复搜索结果缓存未随索引更新自动失效的问题。现在无论是手动执行 `make index`，还是由定时任务自动执行增量索引，只要索引数据发生变化，后续同一关键词搜索都会自动使用最新索引结果，不再继续返回旧的空结果或旧结果。
-- **精确模式行为与界面一致**：修复 Web 搜索页默认“精确模式”下，前端已请求精确搜索但后端未正确按该模式处理的问题。现在通过搜索框直接发起的普通关键词搜索，会更稳定地优先命中文件名、路径和文本中的字面关键词。
+- **缓存能够正确失效了**：之前搜索结果的缓存没有跟着索引更新一起刷新。现在只要索引数据一有变化（不管是手动执行 `make index` 还是后台定时任务），搜索缓存就会立刻失效，保证你马上就能搜出最新的文件。
+- **精确模式更听话了**：修复了在 Web 页面的“精确模式”下，后端没有正确接收和处理该模式的 Bug。现在直接敲回车发起的普通搜索，会老老实实地优先去找文件名和路径里的字面匹配词了。
 
 ## [1.5.1] - 2026-04-13
 
-**GitHub Release**：[v1.5.1](https://github.com/jiggersong/everythingsearch/releases/tag/v1.5.1)
+为了让单纯找文件的速度更快，我对界面的功能入口做了点拆分。
 
-本版本在界面中显式增加了自然语言“AI 模式”与普通“精确模式”的切换控制，以优化纯文本检索场景下的响应速度。
+### 🚀 新功能
 
-### 🚀 特性更新 (Features)
-
-- **显式搜索模式切换**：搜索框内新增独立的「AI 模式」按钮。默认输入回车进行检索时，系统采用速度更快的常规关键字精确搜索；点击「AI 模式」按钮则触发原有的自然语言大模型意图理解与混合检索。
-- **本地化快速结果解读**：在默认的关键字精确搜索模式下，不再请求云端大模型生成结果解读，而是通过前端直接渲染“为您找到 X 条相关结果”的提示，进一步缩短常规搜索的响应延时。
+- **搜索模式终于分开了**：我在搜索框里加了一个独立的「AI 模式」开关。默认敲回车就是极速的关键字精确搜索；当你真遇到了只记得大概意思的模糊场景，再点「AI 模式」让大模型来帮你找。
+- **本地化快速统计提示**：在普通关键字搜索时，不再傻等云端大模型去生成什么“智能解读”了，而是直接由前端快速提示“为您找到 X 条相关结果”，普通搜索的响应速度立马提上来了。
 
 ## [1.5.0] - 2026-04-08
 
-**GitHub Release**：[v1.5.0](https://github.com/jiggersong/everythingsearch/releases/tag/v1.5.0)
+这个版本我把大模型的“意图理解”正式引入了搜索主链路。只要配置了 DashScope 的 Key，系统就会自动去猜你想搜什么，越来越有“智能助理”的感觉了。
 
-本版本在检索链路中引入大模型**意图理解**，并在结果侧支持可选的**智能解读**与检索策略优化。已配置 DashScope API Key 时，Web 端默认走自然语言搜索（`POST /api/search/nl`），更贴近「用自然语言表达即可搜、结果更容易读懂」的目标。
+### 🚀 新功能
 
-### 🚀 特性更新 (Features)
+- **自然语言搜文件**：现在你可以直接对它说大白话。系统会把你的大白话转成结构化的查询条件。如果模型发现你其实是在找特定的文件，它还会自动触发 `exact_focus` 走精确查找的捷径。同时我也优化了缓存键值，把不同模式的缓存隔离开了。
 
-- **自然语言语义与智能分析**：由意图 JSON 归一化查询并驱动混合检索；当用户明确要求字面/精确匹配时，模型可输出 `match_mode=exact_focus`，后端先走关键词优先路径，无命中时再回退向量 + 关键词混合。搜索内存缓存键包含 `exact_focus`，避免两种模式互相污染。已移除网页「启用智能语义搜索」勾选与 `NL_SEARCH_ENABLED` 配置项。
-- **体验、文档与一致性**：同步更新 README、`docs/INSTALL*.md`、`docs/PROJECT_MANUAL*.md` 中与 NL 相关的描述；新增 `docs/NL_SEARCH_AND_WEB_UI.md` 与 `docs/NL_SEARCH_AND_WEB_UI.en.md`。交互与接口边界修复见下节。
+### 🐞 问题修复
 
-### 🐞 修复 (Bug Fixes)
-
-- 「猜你想找」徽章仅标注全局排序第一的结果。
-- 发起新搜索时取消上一轮未完成的解读流，避免旧流覆盖新结果。
-- 相关 POST JSON 接口在顶层非对象 JSON 时返回 **400 Bad Request**，不再误报 **500**。
+- 修了“猜你想找”徽章乱标的问题，现在只会在排第一的最相关结果上显示。
+- 修了连续搜索时，上一轮的“智能解读”结果串门跑到新搜索里的问题。
+- 给后端的接口加了容错，收到奇奇怪怪的 JSON 数据时会温和地返回 400，不会直接把服务搞崩 (500) 了。
 
 ## [1.4.0] - 2026-04-01
 
-**GitHub Release**：[v1.4.0](https://github.com/jiggersong/everythingsearch/releases/tag/v1.4.0)
+这是一次底层基建的大修。我把代码好好梳理了一遍，顺便把我一直在用的 MWeb 笔记也给原生接进来了。
 
-这一版本带来了项目有史以来最大的一次基础架构重整与极客体验升级。我们解耦了底层的代码结构，将 MWeb 同步能力实现了 “零配置” 内置集成，并大幅加强了系统的异常拦截韧性。
+### 🚀 新功能
 
-### 🚀 特性更新 (Features)
+- **MWeb 零配置接入**：终于不用再折腾那些繁琐的导出脚本了。现在只要在配置里把 `ENABLE_MWEB=True` 打开，程序就会自动接管 MWeb 库的扫描和索引，做到真正的一键开箱即用。
+- **配置与基建标准化**：引入了强类型的 `settings.py`，把以前散落在各处的环境变量和配置全收拢到了一起，带上了容错处理。
+- **核心模块解耦**：把以前全挤在路由文件里的逻辑全抽成了单独的服务 (`services/`)。现在文件管理、搜索并发、健康检查各司其职，看着清爽多了。
 
-- **“零配置”的 MWeb 本地内置支持**：我们移除了对外部脚本的强依赖和繁琐的手工导出路径配置。现在，只需在配置中打开 `ENABLE_MWEB=True` 这个开关，程序会自动接管内置库的扫描转化并默认隔离归档，真正实现了一键配置开箱即用。
-- **配置与基建标准化**：系统引入 `infra/settings.py` 承载具有强类型校验和容错退化处理的配置注射网关，所有松散的环境配置得到了统一收敛。
-- **内核拆分解耦**：彻底告别冗长的单文件路由。文件管理、搜索并发缓存以及健康探针等功能被系统地抽离为了抽象服务层 (`services/`)，项目骨架更清晰，测试维护更稳定。
-- **全新 CLI/Make 集成**：支持单独一键操作触发内置的笔记本强制重读缓存导出工作流 (`make mweb-export`)。
+### 🛡 安全与稳定性
 
-### 🛡 安全与稳定性加固 (Security & Reliability)
-
-- **高强度请求边界阻断墙**：正式上线基于严谨字段规约的入参断言模块 (`request_validation.py`)。过去由于非法搜索或畸形 JSON 请求引发的服务端 **500 崩溃被彻底取缔**，现已统一规范拦截并返回清晰温和的 `HTTP 400 Bad Request` 指引。
-- **绝对防御路径穿越（Path Traversal）**：在文件核心访问入口 (`file_access.py`) 设立隔离结界——任何试图利用 API 拉取、窥视甚至读取非系统索引名录之外越权资源的企图，均将在最底层被立刻熔断拒绝，确保宿主机环境的私密与稳定。
-
-### 🐞 修复 (Bug Fixes)
-
-- 修复了 `/api/health` 探针中无法正确暴露向量数据库 (VectorDB) 降级/超时状态语义的顽疾，现在探测状态更真实准确了。
-- 修复了在无明确索引触发源配置时错误清理留存记录的不稳定问题；优化了对依赖升级与审查的管理机制。
+- **严密的请求校验**：上线了 `request_validation.py`，再也不用担心非法的搜索请求把后台搞崩溃了。
+- **防止路径穿越**：在底层 `file_access.py` 加了死规定，任何企图读取索引目录之外文件的行为都会被无情拦截，保证本地主机的安全。
 
 ## [1.3.3] - 2026-03-31
 
-**GitHub Release**：[v1.3.3](https://github.com/jiggersong/everythingsearch/releases/tag/v1.3.3)
+### 🛠 改进
 
-### 变更
-
-- **Makefile**：新增 `**make help`** 目标，列出全部快捷命令及一行说明。
-- **文档**：新增 `**docs/UI_DESIGN_APPLE_GOOGLE.en.md`**（英文），与 `**docs/UI_DESIGN_APPLE_GOOGLE.md`** 顶部互链、章节与表格结构一致；修正中文版设计令牌表与实现一致的描边变量说明。`README` / `README.zh-CN` 文档矩阵增加 Web UI 设计说明一行；`INSTALL` / `INSTALL.en`、`PROJECT_MANUAL` / `PROJECT_MANUAL.en` 补充 `**make help**`，并在仓库文件树中列出根目录 `**Makefile**` 与双语 UI 设计文件。
+- **Makefile 补充**：加了个 `make help` 目标，方便大家忘了命令的时候随时查。
+- **文档整理**：增加了英文版的 UI 设计文档说明，把各种配套文档和表格里的变量说明都统一对齐了。
 
 ## [1.3.2] - 2026-03-31
 
-**GitHub Release**：[v1.3.2](https://github.com/jiggersong/everythingsearch/releases/tag/v1.3.2)
+### 🚀 界面体验
 
-### 变更
-
-- **Web 界面**：搜索页（`everythingsearch/templates/index.html`）视觉与交互优化，整体对齐 **Apple Human Interface Guidelines** 与 **Google Material Design 3** 的常见做法：系统字体栈与排版、胶囊搜索框与聚焦环、侧栏与历史项层次、结果卡片与筛选 Chip（pill）、分页与按钮触控尺寸、深浅色令牌与阴影；支持 `prefers-reduced-motion` 与 `focus-visible`，**不改变**既有搜索与 API 行为。
-- **文档**：新增 `**docs/UI_DESIGN_APPLE_GOOGLE.md`**（中文），记录 Web UI 方案与验收要点。
+- **换了套新皮**：对搜索页的视觉和交互做了一次翻新。参考了 Apple 和 Google 的设计规范，优化了字体排版、胶囊搜索框、聚焦反馈、筛选卡片和按钮大小。支持了系统的减弱动态效果设置。整体看起来清爽、现代了不少，而且没有破坏原有的 API 行为。
 
 ## [1.3.1] - 2026-03-27
 
-**GitHub Release**：[v1.3.1](https://github.com/jiggersong/everythingsearch/releases/tag/v1.3.1)
+### 🐞 问题修复
 
-### 修复
-
-- **依赖（ChromaDB）**：将 `chromadb` 自 `1.5.2` 升级至 `**1.5.5`**。在 Python 3.14 与 Pydantic 2.12+（`BaseSettings` 已迁至 `pydantic-settings`）组合下，旧版 Chroma 会错误回退到 `**pydantic.v1`**，导入时在 `Settings` 上对 `chroma_server_nofile` 等字段触发 `**pydantic.v1.errors.ConfigError: unable to infer type for attribute "chroma_server_nofile"**`，导致 `**everythingsearch/incremental.py**` 及任何会 `import chromadb` 的入口无法启动。`1.5.5` 改为使用 `**pydantic_settings.BaseSettings**` 与 Pydantic v2 校验器，恢复正常导入与索引流程。
+- **修了个 ChromaDB 升级引发的血案**：把 `chromadb` 升级到了 1.5.5。之前在新的 Python 3.14 和 Pydantic 2 下，旧版 Chroma 会报一堆类型推断错误导致增量索引跑不起来。现在换成 Pydantic v2 校验器，一切恢复正常。
 
 ## [1.3.0] - 2026-03-26
 
-**GitHub Release**：[v1.3.0](https://github.com/jiggersong/everythingsearch/releases/tag/v1.3.0)
+### 🛠 改进
 
-### 变更
-
-- **文档国际化统一升级**：`README`、`INSTALL`、`PROJECT_MANUAL`、`CHANGELOG` 全部补齐中英文版本，并在文档顶部提供中英文切换链接。
-- **技术手册英文版对齐**：`docs/PROJECT_MANUAL.en.md` 按中文版结构重写，对齐章节编号、架构图、技术栈/配置表格、模块细节、运维与部署内容。
-- **README 文档门户优化**：文档导读改为更规范的表格化门户（文档矩阵 + 技术手册范围），并合并重复信息。
-- **入口精简**：移除冗余的 `README.en.md`，统一以 `README.md` 作为英文默认入口，`README.zh-CN.md` 作为中文入口。
+- **中英文文档全家桶**：把所有的核心文档（包括 README、安装指南、技术手册、更新日志）都补齐了中英文双语版，顶层加上了切换链接。对于习惯看英文文档的伙计们会更友好。
+- **入口梳理**：统一用 `README.md` 做英文入口，`README.zh-CN.md` 做中文入口，干掉了冗余文件。
 
 ## [1.2.3] - 2026-03-26
 
-**GitHub Release**：[v1.2.3](https://github.com/jiggersong/everythingsearch/releases/tag/v1.2.3)
+### 🛠 改进
 
-### 变更（合并 1.2.2 + 1.2.3）
-
-- **增量索引启动兼容性**：修复 `everythingsearch/incremental.py` 在脚本方式启动（`python everythingsearch/incremental.py`）时可能触发的相对导入错误，统一使用绝对导入，避免 `ImportError: attempted relative import with no known parent package`。
-- **新增快捷命令**：新增仓库根目录 `Makefile`，提供 `make index`、`make index-full`、`make app`、`make app-status`、`make app-restart`、`make app-stop`，简化日常索引与服务管理。
-- **英文文档（默认）+ 中文可选**：新增 `README.zh-CN.md`、`docs/INSTALL.en.md`、`docs/PROJECT_MANUAL.en.md`、`docs/CHANGELOG.en.md`；`README.md` 作为英文默认入口，顶部提供中英文切换。
+- **修了脚本启动报错**：把增量索引脚本里的相对导入全改成了绝对导入，解决了直接跑脚本时偶尔碰到的 `ImportError`。
+- **加了 Makefile 快捷方式**：在根目录加了 Makefile，以后启动服务、看状态、跑索引直接 `make app`、`make index` 就行，不用每次敲那么长一串脚本路径了。
 
 ## [1.2.1] - 2026-03-23
 
-**GitHub Release**：[v1.2.1](https://github.com/jiggersong/everythingsearch/releases/tag/v1.2.1)
+### 🛠 改进
 
-### 变更
-
-- **日志按天滚动**：新增仓库根目录 `**gunicorn.conf.py`**，Gunicorn 使用 `TimedRotatingFileHandler`（每日午夜切分）写入 `logs/app.log`、`logs/app_err.log`，归档文件带日期后缀（如 `app.log.2026-03-23`），默认保留 90 个备份；常驻启动改为 `-c gunicorn.conf.py`，不再使用 `--access-logfile` / `--error-logfile`。
-- **Launchd / Shell**：`everythingsearch_start.sh` 将 wrapper 输出写入按日文件 `**logs/launchd_app_YYYY-MM-DD.log`**；`everythingsearch_index.sh` 将增量索引输出写入 `**logs/incremental_YYYY-MM-DD.log`**；示例与安装脚本生成的 plist 去掉固定 `/tmp/*.log` 的 `StandardOutPath`/`StandardErrorPath`，避免单文件无限增长。
-- **开发模式**：`python -m everythingsearch.app` 通过 `**everythingsearch/logging_config.py`** 为应用与 Werkzeug 增加按天滚动的 `logs/app_dev.log`、`logs/werkzeug_dev.log`。
-- **文档**：`docs/PROJECT_MANUAL.md`、`docs/INSTALL.md`、`scripts/run_app.sh` 等与上述路径及用法对齐。
-
-### 说明
-
-- 已安装过 LaunchAgent 的环境请重新执行 `**scripts/install_launchd_wrappers.sh`**（或重装时重新生成 wrapper），以更新 `~/.local/bin/` 下脚本。
+- **日志终于能按天滚动了**：原来那个一直变大的单文件日志太不优雅了。现在配置了 Gunicorn 的轮转策略，应用日志和错误日志都会按天切分（保留 90 天）。 Launchd 守护进程的输出也改成了按天写入。
+- 开发模式下也同样加上了按天滚动的日志支持。
+- **注意事项**：升级上来的朋友记得重新执行一下 `scripts/install_launchd_wrappers.sh` 更新后台常驻服务。
 
 ## [1.2.0] - 2026-03-23
 
-**GitHub Release**：[v1.2.0](https://github.com/jiggersong/everythingsearch/releases/tag/v1.2.0)
+### 🛠 架构调整
 
-### 变更（仓库布局与运行入口）
-
-- **目录结构**：文档迁至 `docs/`；安装与运维脚本迁至 `scripts/`（含 `install.sh`、`run_app.sh`、`run_tests.sh`、`launchd/` 示例）；Python 代码收拢为 `**everythingsearch/`** 包；配置模板在 `**etc/config.example.py`**（复制为仓库根目录 `config.py`）；默认数据与缓存路径在 `**data/`**（Chroma、Embedding 缓存、索引状态、扫描缓存等）；日志仍在 `logs/`。
-- **启动方式**：Web 与 CLI 使用 `python -m everythingsearch.app`、`python -m everythingsearch.incremental`；生产环境 gunicorn 使用 `**everythingsearch.app:app`**。
-- **launchd**：新增 `**scripts/install_launchd_wrappers.sh`**，用于在本机生成/更新 `~/.local/bin` 下 wrapper 与 `~/Library/LaunchAgents` plist，避免旧版 `app:app` 模块路径失效。
-- **前端**：搜索页 favicon / Logo 使用 `url_for('static', …)`，避免硬编码静态路径。
-
-### 变更（行为）
-
-- **Embedding**：`CachedEmbeddings` 必须显式传入 `**cache_path`**（使用 `config.EMBEDDING_CACHE_PATH`），不再默认在项目根创建 `./embedding_cache.db`。
-
-### 说明
-
-- 从 v1.1.x 升级后请按 `README.md` / `docs/INSTALL.md` 核对路径，并视需要执行 `scripts/install_launchd_wrappers.sh` 或重新运行安装脚本以更新常驻服务。
+- **给代码搬了个家**：给项目重新分了区。文档丢进了 `docs/`，脚本丢进了 `scripts/`，业务代码全塞进了 `everythingsearch/`，缓存和数据统一收到了 `data/`。结构顺眼多了。
+- **规范了启动入口**：把各种启动命令都统一成了 `python -m everythingsearch.app` 这种标准的模块启动方式。
+- 修改了前台的图标引用方式，不再写死静态路径。
 
 ## [1.1.0] - 2025-03-23
 
-**GitHub Release**：[v1.1.0](https://github.com/jiggersong/everythingsearch/releases/tag/v1.1.0)
+### 🚀 新功能
 
-### 新增
+- **健康状态探针**：加了个 `GET /api/health` 接口，方便随时看向量库跑得怎么样、有多少文档、内存缓存占了多少（注意千万别暴露给外网）。
+- **手动清缓存接口**：加了 `POST /api/cache/clear`，索引刚跑完又不想重启服务的时候，点一下就能立刻清掉查询缓存。
+- **给搜索加了超时保护**：利用系统的闹钟机制给单次搜索加了个约 30 秒的超时限制，防止某些死锁或者慢查询把进程卡死。
+- **重构了 Embedding 缓存**：换上了 SQLite WAL 模式和连接池，大幅度提升了查询和写入的性能。
 
-- **HTTP**：`GET /api/health` — 返回运行时间、向量库状态与文档数、搜索内存缓存条目数等（仅适合本机或受信网络）。
-- **HTTP**：`POST /api/cache/clear` — 清空搜索内存缓存（全量/增量索引重建后若不想等服务重启或等待 TTL，可主动调用）。
-- **测试**：`tests/` 与 `pytest.ini`，覆盖搜索缓存键、Embedding 缓存与连接池、Flask API、索引辅助函数等。
+## [1.0.0] - 以前
 
-### 变更
-
-- **搜索**（`search.py`）：对相同查询条件做短期内存缓存（默认 TTL 20 分钟、最多 100 条）；在 **Unix/macOS** 上为单次搜索设置约 30 秒 `SIGALRM` 超时（无 `SIGALRM` 的环境则不做闹钟超时）；向量库缓存清理时同步清空搜索缓存。
-- **Embedding 缓存**（`embedding_cache.py`）：SQLite **WAL**、固定大小连接池、旧版仅两列表结构自动 `ALTER` 增加 `created_at`；统计计数使用 `PrivateAttr` 锁，避免 Pydantic 初始化问题。
-- **索引**（`indexer.py`）：全量重建时按文档平均长度选择向量化 **batch**（约 25 / 40 / 55）。
-- **应用**（`everythingsearch.app`）：启动或首个请求前尝试预热向量库连接。
-
-### 说明
-
-- 搜索超时基于进程级闹钟，**不宜**依赖其在多线程高并发下对「每一请求」独立计时；生产若使用多线程 Worker，请知悉该限制。
-- `/api/health` 会暴露运行状态与大致数据规模，**请勿将未鉴权服务暴露到公网**。
-
-## [1.0.0] - 此前
-
-初始公开版本能力以 README 与 PROJECT_MANUAL 描述为准（语义搜索、增量索引、Web UI、本地 ChromaDB 等）。
-
-后续版本可同样打 Tag、发 Release，并在本节为对应版本增加 Release 链接。
+初始发布的版本，实现了基于 ChromaDB 的本地文件语义搜索、增量索引和极简的 Web 界面，也是这个项目梦开始的地方。

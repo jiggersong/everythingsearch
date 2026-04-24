@@ -33,6 +33,10 @@ class SearchRequest:
     limit: int | None
     #: True 时优先仅使用关键词倒排命中（意图为「精确检索」时由 NL 流程设置）；无命中时底层会回退为混合检索。
     exact_focus: bool = False
+    #: 路径/目录名包含的关键字过滤。
+    path_filter: str | None = None
+    #: 是否仅在文件名中搜索
+    filename_only: bool = False
 
 
 @dataclass(frozen=True)
@@ -69,6 +73,10 @@ def parse_search_request(flask_request) -> SearchRequest:
     date_to = _parse_optional_float(flask_request.args.get("date_to"), "date_to")
     limit = _parse_optional_limit(flask_request.args.get("limit"))
     exact_focus = _parse_optional_bool(flask_request.args.get("exact_focus"), "exact_focus")
+    path_filter = flask_request.args.get("path_filter")
+    if path_filter:
+        path_filter = path_filter.strip() or None
+    filename_only = _parse_optional_bool(flask_request.args.get("filename_only"), "filename_only")
     return SearchRequest(
         query=query,
         source=source,
@@ -77,6 +85,8 @@ def parse_search_request(flask_request) -> SearchRequest:
         date_to=date_to,
         limit=limit,
         exact_focus=exact_focus,
+        path_filter=path_filter,
+        filename_only=filename_only,
     )
 
 

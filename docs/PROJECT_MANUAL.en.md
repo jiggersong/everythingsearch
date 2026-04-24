@@ -9,13 +9,13 @@ It lets users find local documents, code, and materials quickly using natural la
 
 ### Core Capabilities
 
-- **File search**: Fuzzy keyword search across all files with sub-second results—addressing the common pain that macOS built-in search is often ineffective
-- **Hybrid indexing**: Indexes both file content and filenames, so you can find information that lives inside files, not just in names
-- **Position weighting**: Matches in filenames and headings rank higher
-- **Caching model**: The first full index after install can take a while while the disk is scanned; afterward, incremental updates keep the index fast
-- **Privacy**: Indexed data is stored locally. DashScope is used for embeddings during indexing, and when browser smart search is enabled it also receives the current query text and compact result summaries for intent parsing / interpretation
-- **Web UI**: Search in the browser the way you use Google to find information on the web—except your files are local, with a simple, friendly flow. Filter by file time for more precise results
-- **MWeb support**: If you are already using MWeb for your notes and as a Markdown editor, flip one switch to take over integration and index your MWeb content in one step
+- **Hybrid Retrieval Pipeline**: Integrates SQLite FTS5 for sparse retrieval and ChromaDB for dense vector retrieval, using Reciprocal Rank Fusion (RRF) to merge candidate chunks across filenames, headings, and document content without supervision.
+- **Intent Recognition & Query Planning**: Employs an LLM to parse natural language search intents dynamically, generating structured query plans with path filters, date ranges, and exact-match fallback constraints.
+- **Two-stage Reranking Architecture**: Leverages a remote Rerank model for deep semantic scoring of initial RRF candidates, coupled with a file-level score aggregator to drastically improve Top-K accuracy.
+- **Incremental Indexing & Multi-level Caching**: Provides mtime-based incremental file scanning paired with an SQLite persistent cache for embeddings and an in-memory cache for queries, heavily reducing API overhead and latency.
+- **Multi-source Data Ingestion**: Features an internal parsing pipeline with asynchronous, cross-process extraction for complex office formats (PDF, Word, Excel, PPT) and seamless auto-synchronization for MWeb Markdown libraries.
+- **Privacy & Local-First Design**: Keeps the index and dense vectors entirely local. The model API is only invoked for basic text embeddings and (optionally) for frontend-triggered generative intent or summaries.
+- **Agent-Friendly Standardized APIs**: Exposes a highly decoupled, service-oriented RESTful API (complete with strict path-traversal defenses), natively accommodating integration with LLM agents (like Claude or Cursor).
 
 ---
 
@@ -95,48 +95,60 @@ EverythingSearch/
 │   │   ├── health_service.py # Liveness checks and warmup scheduling
 │   │   ├── nl_search_service.py
 │   │   └── search_interpret_service.py
+│   ├── retrieval/            # ★ Core Multi-way Retrieval and Reranking Pipeline
+│   │   ├── pipeline.py       # Main search workflow orchestration
+│   │   ├── query_planner.py  # Intent parsing and parameter planning
+│   │   ├── sparse_retriever.py # FTS5 sparse retrieval
+│   │   ├── dense_retriever.py  # Vector dense retrieval
+│   │   ├── fusion.py         # Reciprocal Rank Fusion (RRF)
+│   │   ├── reranking.py      # DashScope Rerank integration
+│   │   └── aggregation.py    # File-level score aggregation
+│   ├── indexing/             # Low-level indexing components
+│   │   ├── sparse_index_writer.py
+│   │   ├── dense_index_writer.py
+│   │   └── pipeline_indexer.py
+│   ├── evaluation/           # Search benchmark, dataset loading, and metrics
+│   │   ├── benchmark_runner.py
+│   │   ├── dataset.py
+│   │   ├── metrics.py
+│   │   └── datasets/
+│   ├── infra/                # Infrastructure layer (incl. strongly typed settings.py)
 │   ├── request_validation.py # Input validation protocol (unified HTTP 400 contract)
 │   ├── file_access.py        # Strict file access boundary; anti path traversal
-│   ├── infra/                # Infrastructure layer
-│   │   ├── settings.py       # Strongly typed config extraction / accessors
-│   │   └── rate_limiting.py
-│   ├── search.py             # Core search algorithms
-│   ├── indexer.py            # Full index build
-│   ├── incremental.py        # Incremental indexing
+│   ├── indexer.py            # Full index build entrypoint
+│   ├── incremental.py        # Incremental indexing entrypoint
 │   ├── embedding_cache.py    # Embedding cache layer
-│   ├── templates/
+│   ├── logging_config.py     # Standardized logging configuration
+│   ├── templates/            # Web UI templates
 │   │   └── index.html
-│   └── static/
+│   └── static/               # Frontend static assets
+│       ├── css/
+│       ├── js/
 │       └── icon.png
-├── skills/                   # Agent Skill (open source; see §3.1)
-│   └── everythingsearch-local/
-│       └── SKILL.md          # Cursor / Claude Code: local HTTP API usage
+├── skills/                   # Agent Skill (supports Cursor/Claude for local API integration)
 ├── data/                     # Local data and cache (default paths; do not commit)
-│   ├── chroma_db/            # ChromaDB
+│   ├── chroma_db/            # ChromaDB vector store
+│   ├── sparse_index.db       # FTS5 sparse index database
 │   ├── embedding_cache.db
 │   ├── scan_cache.db
 │   └── index_state.db
 ├── logs/                     # Runtime and scheduled job logs
-├── scripts/
+├── scripts/                  # Operations and helper scripts
 │   ├── install.sh
-│   ├── run_app.sh            # Search service control (start/stop/restart/dev)
-│   ├── run_tests.sh
-│   └── launchd/              # Reference launchd plist copies
-├── docs/
-│   ├── INSTALL.md
-│   ├── PROJECT_MANUAL.md
-│   ├── NL_SEARCH_AND_WEB_UI.md
-│   ├── NL_SEARCH_AND_WEB_UI.en.md
-│   ├── UI_DESIGN_APPLE_GOOGLE.md      # Web UI design notes (Chinese)
-│   └── UI_DESIGN_APPLE_GOOGLE.en.md   # Web UI design notes (English)
-├── Makefile                  # make shortcuts (`make help` lists targets)
-├── requirements.txt
-├── requirements/
-│   ├── base.txt
-│   └── dev.txt
-├── pytest.ini
-├── tests/
-└── venv/
+│   ├── run_app.sh
+│   ├── audit_dependencies.py # Dependency audit utility
+│   └── mweb_export.py        # MWeb automatic export wrapper
+├── docs/                     # Project documentation
+│   ├── CHANGELOG.md          # Changelog
+│   ├── INSTALL.md            # Deployment & Installation Guide
+│   ├── PROJECT_MANUAL.md     # Technical Architecture Document (this file)
+│   ├── NL_SEARCH_AND_WEB_UI.md # Smart Retrieval Mechanisms Explained
+│   ├── SEARCH_ACCURACY_TECHNICAL_DESIGN.md # Accuracy-first search redesign docs
+│   └── UI_DESIGN_APPLE_GOOGLE.md # UI design philosophy
+├── Makefile                  # make shortcuts
+├── requirements/             # Dependency lists
+├── pytest.ini                # Unit test config
+└── tests/                    # Unit tests and evaluation cases
 
 ~/.local/bin/
 ├── everythingsearch_start.sh  # App launchd wrapper (created at install)
@@ -222,25 +234,32 @@ Local settings are concentrated here. Load order: environment variables > reposi
 2. `chunk_type: "heading"` — extracted headings
 3. `chunk_type: "content"` — body chunks (~500 characters each)
 
-### 4.3 `search.py` — Search engine
+### 4.3 `retrieval.pipeline` — Multi-way Retrieval and Reranking Engine
 
-**In-memory cache**: Caches results keyed by `(query, source_filter, date_field, date_from, date_to, exact_focus)` (`exact_focus` separates keyword-first mode from the default hybrid pipeline). TTL and max size come from `CACHE_TTL_SECONDS` and `MAX_CACHE_SIZE` in code. After a reindex or when you need immediate consistency, call `POST /api/cache/clear`. Clearing the in-process vector DB cache also clears this cache.
+The core search engine follows a multi-stage retrieval architecture:
 
-**Timeout control**: Search runs under a shared in-process future-based timeout (`SEARCH_TIMEOUT_SECONDS = 30` by default). Timeouts are **not** turned into empty results; they surface as observable errors (`/api/search` returns HTTP 504). Timed-out searches are not cached. `SEARCH_TIMEOUT_SECONDS = 0` disables timeout enforcement but keeps single-flight and busy protection. Note: after a future times out, the worker thread may still run to completion—known trade-off; until it finishes, new requests may get HTTP 503 (“busy”) to avoid unbounded queue growth.
+```text
+SearchRequest
+  -> QueryPlanner
+  -> SparseRetriever (SQLite FTS5)
+  -> DenseRetriever (Embedding / Chroma adapter)
+  -> CandidateFusion (RRF)
+  -> Reranker (DashScope qwen3-rerank provider)
+  -> FileAggregator
+  -> ResultPresenter
+```
 
-Search pipeline:
+**Timeout and Busy Protection**:
+Search execution is protected at the business layer via concurrency control and a timeout wrapper (`SEARCH_TIMEOUT_SECONDS`, default 30s). Timeouts or busy states bubble up and are converted to 504/503 HTTP responses.
 
-1. **Vector search**: Similarity search in one collection; `source=all|file|mweb` (if `ENABLE_MWEB=False`, only file-sourced results are returned)
-2. **Position weighting**: Multiply scores by `chunk_type` weights; filename matches get ~40% boost
-3. **Keyword frequency bonus**: Extra score when query terms repeat in a chunk
-4. **Per-file dedup**: Keep the best chunk per file
-5. **Keyword exact fallback**: ChromaDB `$contains` for documents containing the literal text (multi-term OR)
-6. **Merge and sort**: Combine exact and semantic hits, sort by score
+**Core Pipeline Stages**:
 
-`**exact_focus` path** (when `POST /api/search/nl` resolves `match_mode=exact_focus` and sets `SearchRequest.exact_focus=True`):
-
-1. Run the same keyword `$contains` path as step 5, dedupe per file, sort;
-2. If there are **no hits**, or every row is **filtered out** by `source` / time `where` clauses, **fall back** to the full vector + keyword hybrid pipeline above so users do not get a false empty result.
+1. **Query Planner**: Generates a structured `QueryPlan` from the frontend request (including optional `path_filter`, `date_field`, etc.). If `exact_focus` is specified, it gracefully degrades to a keyword-focused hybrid mode.
+2. **Sparse Retriever**: Performs rapid inverted index queries using the newly added `data/sparse_index.db` (SQLite FTS5). Field weighting is governed by configuration keys like `SPARSE_FILENAME_WEIGHT` and `SPARSE_PATH_WEIGHT`.
+3. **Dense Retriever**: Computes semantic similarity to extract candidate chunks using the existing ChromaDB and Embedding layer.
+4. **Candidate Fusion (RRF)**: Applies Reciprocal Rank Fusion to combine sparse and dense results without supervision.
+5. **Reranker (Second-stage Ranking)**: If `RERANK_MODEL` (e.g., DashScope's qwen3-rerank) is configured, the Top N candidates from RRF are sent to the reranking model for deep semantic scoring. Defaults to RRF scores if the reranker times out or degrades.
+6. **File Aggregator**: Replaces the previous "highest-scoring chunk per file" approach with a file-level score aggregation across all candidate chunks, yielding a much more accurate final ranking.
 
 ### 4.4 `embedding_cache.py` — Embedding cache
 
@@ -278,7 +297,7 @@ python -m everythingsearch.incremental --full   # full rebuild
 
 ### 4.6 `everythingsearch.app` and service layer
 
-`app.py` is slim: routes delegate to `services/`, and `request_validation.py` maps bad JSON and invalid parameters to HTTP `400 Bad Request` instead of letting junk hit core code and produce 500s. `file_access.py` enforces that reads, downloads, and open/reveal paths stay inside indexed roots (no traversal).
+`app.py` focuses exclusively on routing and HTTP interface definitions, delegating all core business logic to the `services/` layer. Coupled with `request_validation.py`, it intercepts invalid JSON and malformed parameters, returning standardized `400 Bad Request` responses to prevent dirty data from causing system-level 500 crashes. Additionally, `file_access.py` provides a strict isolation boundary, enforcing that all read, download, or open operations are securely contained within indexed directories to prevent path traversal vulnerabilities.
 
 **Agent integration**: For Cursor and similar tools, HTTP examples, `EVERYTHINGSEARCH_BASE`, and no-key fallback notes live in §3.1 — `skills/everythingsearch-local/SKILL.md`.
 
