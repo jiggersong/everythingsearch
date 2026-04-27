@@ -25,6 +25,18 @@ from everythingsearch.indexer import (
 )
 from langchain_core.documents import Document
 
+@pytest.fixture
+def sample_text_file(tmp_path):
+    f = tmp_path / "test.txt"
+    f.write_text("hello world")
+    return str(f)
+
+@pytest.fixture
+def sample_md_file(tmp_path):
+    f = tmp_path / "test.md"
+    f.write_text("# Title\ncontent")
+    return str(f)
+
 
 class TestNormalizePath:
     """测试路径规范化"""

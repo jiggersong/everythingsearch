@@ -9,6 +9,7 @@ import jieba
 
 from everythingsearch.request_validation import SearchRequest
 from everythingsearch.retrieval.models import QueryPlan
+from everythingsearch.infra.settings import get_settings
 
 
 class QueryPlanner(Protocol):
@@ -22,6 +23,7 @@ class DefaultQueryPlanner:
     """默认的查询规划器实现。"""
 
     def plan(self, request: SearchRequest) -> QueryPlan:
+        settings = get_settings()
         raw_query = request.query.strip()
         
         # 判断查询类型（启发式规则，第一版先简单实现）
@@ -38,20 +40,24 @@ class DefaultQueryPlanner:
         # 暂时直接透传 dense_query，后续可以进行扩写或清洗
         dense_query = raw_query
 
-        # 设置召回数（设计文档 §7.2 默认规则）
+        # BUG-006 & BUG-010: 使用 Settings 中的基础配置，根据 query_type 使用倍率调整
+        base_sparse = settings.sparse_top_k
+        base_dense = settings.dense_top_k
+        base_fusion = settings.fusion_top_k
+        base_rerank = settings.rerank_top_n
+
         if query_type == "exact":
-            sparse_top_k, dense_top_k, fusion_top_k, rerank_top_k = 150, 30, 80, 40
+            sparse_top_k, dense_top_k, fusion_top_k, rerank_top_k = int(base_sparse * 1.5), int(base_dense * 0.3), base_fusion, base_rerank
         elif query_type == "semantic":
-            sparse_top_k, dense_top_k, fusion_top_k, rerank_top_k = 80, 150, 100, 50
+            sparse_top_k, dense_top_k, fusion_top_k, rerank_top_k = int(base_sparse * 0.7), int(base_dense * 1.5), base_fusion, base_rerank
         elif query_type == "filename":
-            sparse_top_k, dense_top_k, fusion_top_k, rerank_top_k = 200, 20, 80, 40
+            sparse_top_k, dense_top_k, fusion_top_k, rerank_top_k = int(base_sparse * 2.0), int(base_dense * 0.2), base_fusion, base_rerank
         elif query_type == "code":
-            sparse_top_k, dense_top_k, fusion_top_k, rerank_top_k = 180, 80, 100, 50
+            sparse_top_k, dense_top_k, fusion_top_k, rerank_top_k = int(base_sparse * 1.5), int(base_dense * 0.8), base_fusion, base_rerank
         else:
-            sparse_top_k, dense_top_k, fusion_top_k, rerank_top_k = 120, 120, 100, 50
+            sparse_top_k, dense_top_k, fusion_top_k, rerank_top_k = base_sparse, base_dense, base_fusion, base_rerank
 
         # 如果原 SearchRequest 有明确的 limit 限制，保证 top_k 足量
-        # 第一阶段先用 limit，后续将把 topK 逻辑分层。
         if request.limit:
             rerank_top_k = max(rerank_top_k, request.limit)
             fusion_top_k = max(fusion_top_k, rerank_top_k * 2)
@@ -105,12 +111,18 @@ class DefaultQueryPlanner:
             return ""
         
         safe_tokens = []
+        # BUG-008: 包含特殊字符的加引号，纯字母数字汉字的加星号前缀匹配
+        special_chars_pattern = re.compile(r'[^a-zA-Z0-9\u4e00-\u9fa5]')
         for t in tokens:
             t = t.strip()
             if not t:
                 continue
-            # 使用双引号包裹每个 token，防止特殊字符（如 ., #, - 等）触发 FTS5 语法错误
-            safe_tokens.append(f'"{t}"')
+            if special_chars_pattern.search(t):
+                # 包含特殊字符，使用引号精确匹配
+                safe_tokens.append(f'"{t}"')
+            else:
+                # 纯字母数字中文字符，允许前缀匹配
+                safe_tokens.append(f'{t}*')
             
         joined_query = " ".join(safe_tokens)
         if filename_only:

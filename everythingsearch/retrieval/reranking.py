@@ -32,8 +32,20 @@ class DashScopeReranker:
         if not candidates:
             return []
 
+        # BUG-012: 充分去重，避免 sparse 和 dense 召回的相同物理内容浪费 token
+        seen_keys = set()
+        deduped_candidates = []
+        for c in candidates:
+            # chunk_index 在 Metadata 里可能是 'chunk_idx'，如果在 model 里没直接映射好
+            # 使用 content 前 50 个字符 + file_id 也能很好的去重
+            content_prefix = (c.content or "")[:50]
+            key = (c.file_id, content_prefix)
+            if key not in seen_keys:
+                seen_keys.add(key)
+                deduped_candidates.append(c)
+
         # 截断输入候选集，避免超发
-        candidates_to_rerank = candidates[:self._top_n]
+        candidates_to_rerank = deduped_candidates[:self._top_n]
         if not plan.normalized_query:
             return candidates_to_rerank
 
@@ -41,15 +53,15 @@ class DashScopeReranker:
             # 构造输入 documents，包含上下文
             # 组合方式： [title_path] content，给 reranker 最充分的信息
             documents = []
+            max_doc_chars = self._settings.rerank_max_doc_chars
             for c in candidates_to_rerank:
                 path_str = " > ".join(c.title_path) if c.title_path else ""
                 prefix = f"[{path_str}]\n" if path_str else ""
                 content = c.content or ""
-                # 稍微截断以防止单词条超长
-                # dashscope rerank 通常限制单 doc 4000 token，我们粗略截取 2000 字符
+                # BUG-010: 稍微截断以防止单词条超长
                 full_text = f"{prefix}{content}"
-                if len(full_text) > 2000:
-                    full_text = full_text[:2000]
+                if len(full_text) > max_doc_chars:
+                    full_text = full_text[:max_doc_chars]
                 documents.append(full_text)
 
             # 延迟获取 API Key，避免在进程启动时因缺少环境变量崩溃

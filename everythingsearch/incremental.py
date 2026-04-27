@@ -34,6 +34,9 @@ from everythingsearch.infra.settings import (
     require_target_dirs,
 )
 from everythingsearch.logging_config import setup_cli_logging
+from everythingsearch.indexing.sparse_index_writer import SQLiteSparseIndexWriter
+from everythingsearch.indexing.pipeline_indexer import generate_file_id
+from everythingsearch.indexing.chunk_models import IndexedChunk
 from langchain_chroma import Chroma
 import chromadb
 
@@ -111,12 +114,21 @@ def _load_db_state(conn: sqlite3.Connection) -> dict[str, tuple[float, str]]:
     return {row[0]: (row[1], row[2]) for row in rows}
 
 
-def _delete_chunks(collection, filepath: str):
-    """Delete all ChromaDB chunks belonging to a file."""
+def _delete_chunks(collection, filepath: str, sparse_writer: SQLiteSparseIndexWriter = None):
+    """Delete all ChromaDB and FTS5 chunks belonging to a file."""
     try:
         collection.delete(where={"source": filepath})
     except Exception:
         pass
+    
+    if sparse_writer:
+        try:
+            # Assuming sparse_writer has a delete_file_by_path or similar method
+            # Since we only have file_id in pipeline_indexer, let's generate it
+            file_id = generate_file_id(filepath)
+            sparse_writer.delete_file(file_id)
+        except Exception as e:
+            logger.warning(f"删除 Sparse 索引失败 {filepath}: {e}")
 
 
 def run_incremental():
@@ -184,8 +196,8 @@ def run_incremental():
     if "local_files" not in existing_collections:
         logger.warning("ChromaDB collection 不存在，将执行完整索引。")
         conn.close()
-        from everythingsearch.indexer import build_index
-        build_index()
+        from everythingsearch.indexing.pipeline_indexer import build_pipeline_index
+        build_pipeline_index()
         _rebuild_state_db()
         return
 
@@ -201,10 +213,12 @@ def run_incremental():
         collection_name="local_files",
     )
 
+    sparse_writer = SQLiteSparseIndexWriter(settings)
+
     if deleted_paths:
         logger.info("开始删除 %s 个已移除文件的索引。", len(deleted_paths))
         for fp in deleted_paths:
-            _delete_chunks(collection, fp)
+            _delete_chunks(collection, fp, sparse_writer)
             conn.execute("DELETE FROM file_index WHERE filepath = ?", (fp,))
         conn.commit()
         # 同步清理扫描缓存，避免缓存膨胀
@@ -237,7 +251,7 @@ def run_incremental():
             mtime, stype = disk_all[fp]
 
             if fp in db_state:
-                _delete_chunks(collection, fp)
+                _delete_chunks(collection, fp, sparse_writer)
 
             docs = build_documents_for_path_cached(fp, mtime, stype, scan_cache_conn)
             if docs:
@@ -254,6 +268,63 @@ def run_incremental():
                             logger.error("索引失败 %s: %s", os.path.basename(fp), e)
                 if not ok:
                     continue
+                
+                # BUG-001: Write to FTS5 Sparse Index
+                file_id = generate_file_id(fp)
+                file_counters = {}
+                chunks_to_write = []
+                for doc in docs:
+                    meta = doc.metadata.copy()
+                    chunk_type = meta.get("chunk_type", "content")
+                    if chunk_type == "content":
+                        chunk_idx = meta.get("chunk_idx", 0)
+                        chunk_suffix = f"c{chunk_idx}"
+                    elif chunk_type == "filename":
+                        chunk_suffix = "fn"
+                    elif chunk_type == "heading":
+                        count = file_counters.get(f"{file_id}_heading", 0)
+                        chunk_suffix = f"h{count}"
+                        file_counters[f"{file_id}_heading"] = count + 1
+                    else:
+                        count = file_counters.get(f"{file_id}_{chunk_type}", 0)
+                        chunk_suffix = f"x{count}"
+                        file_counters[f"{file_id}_{chunk_type}"] = count + 1
+                        
+                    chunk_id = f"{file_id}_{chunk_suffix}"
+                    filename = meta.pop("filename", "")
+                    filetype = meta.pop("type", "")
+                    title_path_list = meta.pop("title_path", [])
+                    title_path = tuple(title_path_list) if title_path_list else ()
+                    meta.pop("chunk_type", None)
+                    doc_mtime = float(meta.pop("mtime", 0.0))
+                    ctime = float(meta.pop("ctime", 0.0))
+                    meta.pop("source", None)
+                    meta.pop("source_type", None)
+                    
+                    indexed_chunk = IndexedChunk(
+                        chunk_id=chunk_id,
+                        file_id=file_id,
+                        filepath=fp,
+                        filename=filename,
+                        source_type=stype,
+                        filetype=filetype,
+                        chunk_type=chunk_type,
+                        title_path=title_path,
+                        content=doc.page_content,
+                        embedding_text=doc.page_content,
+                        sparse_text=doc.page_content,
+                        chunk_index=meta.get("chunk_idx", 0),
+                        mtime=doc_mtime,
+                        ctime=ctime,
+                        metadata=meta
+                    )
+                    chunks_to_write.append(indexed_chunk)
+                    
+                if chunks_to_write:
+                    try:
+                        sparse_writer.upsert_chunks(chunks_to_write)
+                    except Exception as e:
+                        logger.error("写入 Sparse 索引失败 %s: %s", os.path.basename(fp), e)
 
             conn.execute(
                 "INSERT OR REPLACE INTO file_index (filepath, mtime, source_type, indexed_at) VALUES (?, ?, ?, ?)",
@@ -301,9 +372,9 @@ def _rebuild_state_db():
 
 
 def run_full():
-    """Full rebuild: use indexer.build_index then rebuild state DB."""
-    from everythingsearch.indexer import build_index
-    build_index()
+    """Full rebuild: use pipeline_indexer then rebuild state DB."""
+    from everythingsearch.indexing.pipeline_indexer import build_pipeline_index
+    build_pipeline_index()
     _rebuild_state_db()
 
 

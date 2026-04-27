@@ -72,6 +72,8 @@ class SearchService:
         try:
             results = self._pipeline.search(pipeline_req)
         except Exception as exc:
+            import logging
+            logging.getLogger(__name__).exception("Search pipeline failed: %s", exc)
             # 捕获可能的底层异常映射为 503 兼容前端
             raise SearchExecutionBusyServiceError(str(exc)) from exc
 

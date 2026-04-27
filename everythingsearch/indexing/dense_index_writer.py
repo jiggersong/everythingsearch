@@ -26,6 +26,16 @@ class DenseIndexWriter(Protocol):
         """删除指定文件的所有稠密索引块。"""
 
 
+_chroma_client_cache = {}
+
+def _get_chroma_client(persist_directory: str):
+    """获取或初始化 ChromaDB Client（单例），避免重复实例化导致内存泄漏 (BUG-009)。"""
+    import os
+    path = os.path.abspath(persist_directory)
+    if path not in _chroma_client_cache:
+        _chroma_client_cache[path] = chromadb.PersistentClient(path=path)
+    return _chroma_client_cache[path]
+
 class ChromaDenseIndexWriter:
     """基于 ChromaDB 的稠密索引写入器。"""
 
@@ -35,7 +45,7 @@ class ChromaDenseIndexWriter:
         self._collection_name = "local_files"
 
         # 初始化 Chroma 客户端
-        self._client = chromadb.PersistentClient(path=self._persist_directory)
+        self._client = _get_chroma_client(self._persist_directory)
         
         # 为了复用 Langchain 的包装（处理批次等），我们可以创建包装器
         # 但这会导致我们只能用 Document。我们自己来直接调用 self._db 会更好一点，

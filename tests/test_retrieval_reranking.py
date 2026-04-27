@@ -11,6 +11,7 @@ from everythingsearch.retrieval.models import QueryPlan, SearchCandidate
 class MockSettings:
     rerank_model = "gte-rerank"
     rerank_top_n = 5
+    rerank_max_doc_chars = 2000
     dashscope_api_key = "mock-key"
     
 @pytest.fixture
@@ -58,10 +59,12 @@ def test_dashscope_reranker_success(mock_settings):
         mock_resp.status_code = 200
         # return results: list of items with .document.index and .relevance_score
         item1 = MagicMock()
+        del item1.index
         item1.document.index = 1 # c2
         item1.relevance_score = 0.9
         
         item2 = MagicMock()
+        del item2.index
         item2.document.index = 0 # c1
         item2.relevance_score = 0.1
         

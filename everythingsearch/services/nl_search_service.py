@@ -208,10 +208,12 @@ class NLSearchService:
             
         message = message[:settings.nl_max_message_chars]
         
+        sanitized_message = message.replace("<", "&lt;").replace(">", "&gt;")
+        
         dashscope.api_key = settings.dashscope_api_key
         
         system_prompt = self.build_system_prompt(settings.enable_mweb)
-        user_prompt = f"<user_query>\n{message}\n</user_query>"
+        user_prompt = f"<user_query>\n{sanitized_message}\n</user_query>"
         
         messages = [
             {"role": "system", "content": system_prompt},

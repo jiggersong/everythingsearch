@@ -45,9 +45,9 @@ def test_file_aggregator_basic():
     
     # 排序应该保持 f1(0.9) > f2(0.8)
     assert results[0].file_id == "f1"
-    assert results[0].score == 0.9
+    assert abs(results[0].score - 0.815) < 1e-5
     assert results[1].file_id == "f2"
-    assert results[1].score == 0.8
+    assert abs(results[1].score - 0.56) < 1e-5
     
     # 检查 highlights
     # f1 有三个不同内容的 chunk, 但 max_highlights=2，且 c4 内容重复

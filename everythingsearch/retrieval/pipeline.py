@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, wait
 from typing import Any
 
 from everythingsearch.infra.settings import Settings, get_settings
@@ -46,7 +46,8 @@ class SearchPipeline:
         logger.info("Search QueryPlan: %s", plan)
 
         # 2. 多路召回 (并发执行)
-        with ThreadPoolExecutor(max_workers=2) as executor:
+        executor = ThreadPoolExecutor(max_workers=2)
+        try:
             future_sparse = executor.submit(self._sparse_retriever.retrieve, plan)
             
             # 如果是强精确匹配，则跳过 Dense 召回以避免返回仅语义相近但无对应关键字的噪音
@@ -55,8 +56,31 @@ class SearchPipeline:
             else:
                 future_dense = executor.submit(self._dense_retriever.retrieve, plan)
 
-            sparse_candidates = future_sparse.result()
-            dense_candidates = future_dense.result()
+            timeout_sec = self._settings.search_timeout_seconds
+            done, not_done = wait([future_sparse, future_dense], timeout=timeout_sec)
+            
+            for f in not_done:
+                f.cancel()
+            
+            sparse_candidates = []
+            if future_sparse in done:
+                try:
+                    sparse_candidates = future_sparse.result()
+                except Exception as e:
+                    logger.error("Sparse retrieval failed: %s", e)
+            else:
+                logger.warning("Sparse retrieval timed out after %ds", timeout_sec)
+                
+            dense_candidates = []
+            if future_dense in done:
+                try:
+                    dense_candidates = future_dense.result()
+                except Exception as e:
+                    logger.error("Dense retrieval failed: %s", e)
+            else:
+                logger.warning("Dense retrieval timed out after %ds", timeout_sec)
+        finally:
+            executor.shutdown(wait=False)
 
         logger.info(
             "Recall: sparse=%d, dense=%d", len(sparse_candidates), len(dense_candidates)
@@ -76,7 +100,7 @@ class SearchPipeline:
         )
 
         # 6. 截断到最终要求的返回数 (默认或受限于 API request.limit)
-        limit = request.limit if request.limit else 50
+        limit = request.limit if request.limit else self._settings.default_search_limit
         final_results = aggregated_results[:limit]
 
         # 转换为兼容的字典列表输出

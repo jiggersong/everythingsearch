@@ -2,6 +2,21 @@
 
 [English](CHANGELOG.en.md) | [中文](CHANGELOG.md)
 
+## [2.1.1] - 2026-04-27
+
+After releasing the new architecture a few days ago, I still encountered a few bugs during my own use. This minor release focuses on fortifying the robustness of the underlying retrieval Pipeline, while patching a few deeply hidden edge-case bugs. The overall experience is much "smoother" now, so I highly recommend everyone grab this quick update.
+
+### 🚀 Core Optimizations
+
+- **True Anti-Hang Single-Path Timeout (BUG-004)**: Previously, the `with ThreadPoolExecutor` context block looked elegant, but if an LLM or retrieval API completely hung due to network issues, the main thread would still get dragged into a blocking wait upon exiting the `with` block. This time, I abandoned the implicit context manager in favor of direct lifecycle control (`shutdown(wait=False)` + force cancelling pending tasks). It truly returns immediately when the time is up, so you'll never have to worry about a single anomalous path dragging down the entire query again.
+- **Structural Semantic Chunking for Markdown (BUG-007)**: When processing `.md` files or exported MWeb notes before, mechanically chopping text by length caused chunks to indiscriminately inherit *all* headings in the document. I've now brought in LangChain's `MarkdownHeaderTextSplitter`. Text chunks now accurately carry their own specific H1-H6 heading hierarchy, bumping the contextual understanding during vector searches up a solid tier.
+
+### 🐞 Regression Fixes
+
+- **Fixed missing SQLite transactions**: During the dual-writer architecture rewrite, I missed wrapping the `cursor.executemany` operations inside a transaction block, causing bulk operations to miss out on native atomicity and performance optimizations. These are now strictly wrapped within the `with conn:` context.
+- **Fixed broken "filler word" stripping in intent recognition**: To prevent injection risks, I previously slapped on a full `html.escape` a bit too hastily. This ended up escaping characters needed for Regex matching, breaking the intelligent search's ability to strip out conversational filler words (like "please find me..."). It's now been dialed back to only filter `<` and `>`, keeping things safe without damaging the business logic.
+- **Fixed ghost entries in incremental indexing**: Previously, when the incremental scanner detected a modified file, the old SQLite FTS records weren't being cleaned up, causing duplicate ghost snippets in search results. I've now made sure that updating a file thoroughly uproots the old entries first.
+
 ## [2.1.0] - 2026-04-25
 
 I've been playing around with LLM agents like OpenClaw lately, and I realized that letting them directly search my local files would be incredibly powerful! So in this release, I added a command-line interface to the main program, turning it into a robust local file search plugin for agents.

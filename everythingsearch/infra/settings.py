@@ -77,6 +77,21 @@ class Settings:
     # 重排 (Rerank)
     rerank_model: str
     rerank_top_n: int
+    rerank_max_doc_chars: int
+
+    # 魔法数字及文件聚合评分权重
+    indexer_batch_size: int
+    embed_max_chars: int
+    default_search_limit: int
+    
+    agg_best_weight: float
+    agg_second_weight: float
+    agg_third_weight: float
+    agg_filename_bonus: float
+    agg_heading_bonus: float
+    agg_exact_bonus: float
+    agg_multi_hit_bonus: float
+    agg_large_file_penalty: float
 
     # 智能搜索（意图识别与结果解读；需配置 DashScope API Key）
     nl_intent_model: str
@@ -258,6 +273,18 @@ def _load_settings() -> Settings:
         rrf_k=_load_int("RRF_K", legacy_config, "RRF_K", default=60),
         rerank_model=_load_str("RERANK_MODEL", legacy_config, "RERANK_MODEL", default="gte-rerank"),
         rerank_top_n=_load_int("RERANK_TOP_N", legacy_config, "RERANK_TOP_N", default=50),
+        rerank_max_doc_chars=_load_int("RERANK_MAX_DOC_CHARS", legacy_config, "RERANK_MAX_DOC_CHARS", default=2000),
+        indexer_batch_size=_load_int("INDEXER_BATCH_SIZE", legacy_config, "INDEXER_BATCH_SIZE", default=5000),
+        embed_max_chars=_load_int("EMBED_MAX_CHARS", legacy_config, "EMBED_MAX_CHARS", default=600),
+        default_search_limit=_load_int("DEFAULT_SEARCH_LIMIT", legacy_config, "DEFAULT_SEARCH_LIMIT", default=50),
+        agg_best_weight=_load_float("AGG_BEST_WEIGHT", legacy_config, "AGG_BEST_WEIGHT", default=0.70),
+        agg_second_weight=_load_float("AGG_SECOND_WEIGHT", legacy_config, "AGG_SECOND_WEIGHT", default=0.15),
+        agg_third_weight=_load_float("AGG_THIRD_WEIGHT", legacy_config, "AGG_THIRD_WEIGHT", default=0.05),
+        agg_filename_bonus=_load_float("AGG_FILENAME_BONUS", legacy_config, "AGG_FILENAME_BONUS", default=0.10),
+        agg_heading_bonus=_load_float("AGG_HEADING_BONUS", legacy_config, "AGG_HEADING_BONUS", default=0.05),
+        agg_exact_bonus=_load_float("AGG_EXACT_BONUS", legacy_config, "AGG_EXACT_BONUS", default=0.10),
+        agg_multi_hit_bonus=_load_float("AGG_MULTI_HIT_BONUS", legacy_config, "AGG_MULTI_HIT_BONUS", default=0.05),
+        agg_large_file_penalty=_load_float("AGG_LARGE_FILE_PENALTY", legacy_config, "AGG_LARGE_FILE_PENALTY", default=0.05),
         nl_intent_model=_load_str(
             "NL_INTENT_MODEL",
             legacy_config,

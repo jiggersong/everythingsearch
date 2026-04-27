@@ -41,8 +41,10 @@ class SQLiteSparseRetriever:
             return []
 
         try:
-            with self._get_connection() as conn:
-                cursor = conn.cursor()
+            import contextlib
+            with contextlib.closing(self._get_connection()) as conn:
+                with conn:
+                    cursor = conn.cursor()
                 
                 # FTS5 的 BM25 公式： bm25(fts_table, weight_col1, weight_col2...)
                 # 我们的列： filename, path_text, heading_text, content_text

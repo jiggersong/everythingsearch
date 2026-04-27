@@ -22,6 +22,16 @@ class DenseRetriever(Protocol):
         """执行稠密检索并返回候选。"""
 
 
+_chroma_client_cache = {}
+
+def _get_chroma_client(persist_directory: str):
+    """获取或初始化 ChromaDB Client（单例），避免重复实例化导致内存泄漏 (BUG-009)。"""
+    import os
+    path = os.path.abspath(persist_directory)
+    if path not in _chroma_client_cache:
+        _chroma_client_cache[path] = chromadb.PersistentClient(path=path)
+    return _chroma_client_cache[path]
+
 class ChromaDenseRetriever:
     """基于 ChromaDB 的稠密检索器。"""
 
@@ -29,7 +39,7 @@ class ChromaDenseRetriever:
         self._persist_directory = settings.persist_directory
         self._embedding = embedding
         self._collection_name = "local_files"
-        self._client = chromadb.PersistentClient(path=self._persist_directory)
+        self._client = _get_chroma_client(self._persist_directory)
 
         # 封装的 Langchain Chroma 实例
         self._db = Chroma(

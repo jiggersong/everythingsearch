@@ -43,6 +43,7 @@ XLSX_SKIP_SIZE_MB = 10
 ZIP_MAGIC = b'PK\x03\x04'
 
 # DashScope text-embedding-v2 单行最大 2048 Token，混合文本可能 1 字>1 token，保守截断
+# 此处已迁移至 Settings 统一管理，为向下兼容保留局部默认值
 EMBED_MAX_CHARS = 600
 
 _splitter: RecursiveCharacterTextSplitter | None = None
@@ -62,10 +63,12 @@ def _get_splitter() -> RecursiveCharacterTextSplitter:
 
 def _truncate_for_embed(text: str) -> str:
     """确保文本长度不超过 Embedding API 限制，空串返回空格"""
+    settings = get_settings()
+    max_chars = settings.embed_max_chars
     if not text or not text.strip():
         return " "
-    if len(text) > EMBED_MAX_CHARS:
-        return text[:EMBED_MAX_CHARS]
+    if len(text) > max_chars:
+        return text[:max_chars]
     return text
 
 
@@ -299,6 +302,55 @@ def _extract_md_headings(content: str) -> list[str]:
     """从 Markdown 内容中提取标题行"""
     return re.findall(r'^#{1,6}\s+(.+)$', content, re.MULTILINE)
 
+def _split_markdown_structurally(content: str, max_content_length: int) -> list[tuple[str, list[str]]]:
+    """
+    按 Markdown 标题结构对内容进行切块，保留结构化上下文 (BUG-007)。
+    返回列表，每个元素为 (chunk_text, title_path)。
+    """
+    if not content.strip():
+        return []
+        
+    if len(content) > max_content_length:
+        content = content[:max_content_length]
+        
+    try:
+        from langchain_text_splitters import MarkdownHeaderTextSplitter
+    except ImportError:
+        from langchain.text_splitter import MarkdownHeaderTextSplitter
+        
+    headers_to_split_on = [
+        ("#", "H1"),
+        ("##", "H2"),
+        ("###", "H3"),
+        ("####", "H4"),
+        ("#####", "H5"),
+        ("######", "H6"),
+    ]
+    
+    md_splitter = MarkdownHeaderTextSplitter(headers_to_split_on=headers_to_split_on)
+    try:
+        header_splits = md_splitter.split_text(content)
+    except Exception as e:
+        logger.warning("MarkdownHeaderTextSplitter 解析失败: %s, 降级使用普通切块", e)
+        return [(c, []) for c in _get_splitter().split_text(content)]
+        
+    results = []
+    text_splitter = _get_splitter()
+    
+    for doc in header_splits:
+        title_path = []
+        for i in range(1, 7):
+            key = f"H{i}"
+            if key in doc.metadata:
+                title_path.append(doc.metadata[key])
+                
+        sub_chunks = text_splitter.split_text(doc.page_content)
+        for sub_chunk in sub_chunks:
+            if sub_chunk.strip():
+                results.append((sub_chunk, title_path))
+                
+    return results
+
 
 def _is_valid_zip(filepath: str) -> bool:
     """Check if file starts with ZIP magic bytes (PK\\x03\\x04)."""
@@ -324,7 +376,11 @@ def load_file_content(filepath: str, ext: str) -> tuple[str, list[str]]:
     if ext in settings.text_extensions:
         try:
             content = _read_text_direct(filepath)
-            headings = _extract_md_headings(content) if ext == '.md' else []
+            if ext == '.md':
+                # Bug-007: 提取带层级的 heading 用于 title_path
+                headings = _extract_md_headings(content)
+            else:
+                headings = []
             return content, headings
         except Exception:
             return "", []
@@ -387,27 +443,48 @@ def build_documents_for_file(filepath: str, filename: str, ext: str, source_type
     content, headings = load_file_content(filepath, ext)
 
     if headings:
-        headings_text = "\n".join(dict.fromkeys(headings))
+        # 提取唯一的标题列表，并放入 title_path 元数据中
+        unique_headings = list(dict.fromkeys(headings))
+        headings_text = "\n".join(unique_headings)
         heading_content = _truncate_for_embed(f"[{filename_norm}]\n{headings_text}")
         documents.append(Document(
             page_content=heading_content,
-            metadata={**base_meta, "chunk_type": "heading"},
+            metadata={**base_meta, "chunk_type": "heading", "title_path": unique_headings},
         ))
 
     if not content:
         return documents
 
-    if len(content) > settings.max_content_length:
-        content = content[:settings.max_content_length]
+    if ext == ".md":
+        structured_chunks = _split_markdown_structurally(content, settings.max_content_length)
+        for idx, (chunk_text, title_path) in enumerate(structured_chunks):
+            formatted_text = _truncate_for_embed(f"[{filename_norm}]\n{chunk_text}")
+            documents.append(Document(
+                page_content=formatted_text,
+                metadata={
+                    **base_meta, 
+                    "chunk_type": "content", 
+                    "chunk_idx": idx,
+                    "title_path": title_path
+                },
+            ))
+    else:
+        if len(content) > settings.max_content_length:
+            content = content[:settings.max_content_length]
 
-    chunks = _get_splitter().split_text(content)
+        chunks = _get_splitter().split_text(content)
 
-    for idx, chunk in enumerate(chunks):
-        chunk_text = _truncate_for_embed(f"[{filename_norm}]\n{chunk}")
-        documents.append(Document(
-            page_content=chunk_text,
-            metadata={**base_meta, "chunk_type": "content", "chunk_idx": idx},
-        ))
+        for idx, chunk in enumerate(chunks):
+            chunk_text = _truncate_for_embed(f"[{filename_norm}]\n{chunk}")
+            documents.append(Document(
+                page_content=chunk_text,
+                metadata={
+                    **base_meta, 
+                    "chunk_type": "content", 
+                    "chunk_idx": idx,
+                    "title_path": list(dict.fromkeys(headings)) if headings else []
+                },
+            ))
 
     return documents
 
@@ -564,22 +641,29 @@ def build_documents_for_mweb(filepath: str, content: str) -> list[Document]:
     documents.append(Document(page_content=name_doc, metadata={**base_meta, "chunk_type": "filename"}))
 
     headings = _extract_md_headings(body)
+    unique_headings = list(dict.fromkeys(headings)) if headings else []
+    
     if headings:
-        heading_text = _truncate_for_embed(f"[{title}]\n" + "\n".join(dict.fromkeys(headings)))
-        documents.append(Document(page_content=heading_text, metadata={**base_meta, "chunk_type": "heading"}))
+        heading_text = _truncate_for_embed(f"[{title}]\n" + "\n".join(unique_headings))
+        documents.append(Document(
+            page_content=heading_text, 
+            metadata={**base_meta, "chunk_type": "heading", "title_path": unique_headings}
+        ))
 
     if not body:
         return documents
 
-    if len(body) > settings.max_content_length:
-        body = body[:settings.max_content_length]
-
-    chunks = _get_splitter().split_text(body)
-    for idx, chunk in enumerate(chunks):
-        chunk_text = _truncate_for_embed(f"[{title}]\n{chunk}")
+    structured_chunks = _split_markdown_structurally(body, settings.max_content_length)
+    for idx, (chunk_text, title_path) in enumerate(structured_chunks):
+        formatted_text = _truncate_for_embed(f"[{title}]\n{chunk_text}")
         documents.append(Document(
-            page_content=chunk_text,
-            metadata={**base_meta, "chunk_type": "content", "chunk_idx": idx},
+            page_content=formatted_text,
+            metadata={
+                **base_meta, 
+                "chunk_type": "content", 
+                "chunk_idx": idx,
+                "title_path": title_path
+            },
         ))
 
     return documents
@@ -686,6 +770,11 @@ def _cleanup_orphaned_hnsw_dirs(client):
 
 
 def build_index():
+    """
+    Deprecated: 请使用 everythingsearch.indexing.pipeline_indexer.build_pipeline_index()。
+    旧版索引构建函数仅向 ChromaDB 写入数据，不双写 FTS5 稀疏索引。
+    """
+    logger.warning("build_index() 已被废弃，建议切换至 pipeline_indexer.build_pipeline_index() 以支持双写索引。")
     settings = get_settings()
     require_target_dirs(settings)
     require_dashscope_api_key(settings)
@@ -724,9 +813,10 @@ def build_index():
         return
 
     # 最终校验：确保所有 doc 的 page_content 符合 API 限制
+    max_chars = settings.embed_max_chars
     for d in docs:
-        if len(d.page_content) > EMBED_MAX_CHARS:
-            d.page_content = d.page_content[:EMBED_MAX_CHARS]
+        if len(d.page_content) > max_chars:
+            d.page_content = d.page_content[:max_chars]
         if not d.page_content.strip():
             d.page_content = " "
 

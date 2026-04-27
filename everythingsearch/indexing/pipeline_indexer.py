@@ -82,6 +82,8 @@ def build_pipeline_index():
         filename = meta.pop("filename", "")
         source_type = meta.pop("source_type", "file")
         filetype = meta.pop("type", "")
+        title_path_list = meta.pop("title_path", [])
+        title_path = tuple(title_path_list) if title_path_list else ()
         meta.pop("chunk_type", None)
         mtime = float(meta.pop("mtime", 0.0))
         ctime = float(meta.pop("ctime", 0.0))
@@ -95,7 +97,7 @@ def build_pipeline_index():
             source_type=source_type,
             filetype=filetype,
             chunk_type=chunk_type,
-            title_path=(),  # 目前老版 indexer 未提取层级，留空兼容
+            title_path=title_path,
             content=doc.page_content,
             embedding_text=doc.page_content,
             sparse_text=doc.page_content,
@@ -120,11 +122,10 @@ def build_pipeline_index():
     embedding_provider = DashScopeEmbeddingProvider(settings)
     dense_writer = ChromaDenseIndexWriter(settings, embedding_provider)
     
-    # 分批写入 (这里可以稍微做大点批次，不过直接传给 Chroma 会有内置切批)
-    # 对于 SQLite 来说，大批量事务更快
+    # 分批写入
     try:
         logger.info("写入 Sparse Index (SQLite FTS5)...")
-        batch_size = 5000
+        batch_size = settings.indexer_batch_size
         for i in range(0, len(chunks_to_write), batch_size):
             batch = chunks_to_write[i:i+batch_size]
             sparse_writer.upsert_chunks(batch)
@@ -137,7 +138,7 @@ def build_pipeline_index():
         
     try:
         logger.info("写入 Dense Index (ChromaDB API)... 此过程可能调用大模型接口，请耐心等待...")
-        batch_size = 5000
+        batch_size = settings.indexer_batch_size
         for i in range(0, len(chunks_to_write), batch_size):
             batch = chunks_to_write[i:i+batch_size]
             dense_writer.upsert_chunks(batch)
