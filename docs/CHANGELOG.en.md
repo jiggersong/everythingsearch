@@ -2,6 +2,20 @@
 
 [English](CHANGELOG.en.md) | [中文](CHANGELOG.md)
 
+## [2.2.0] - 2026-04-27
+
+The project keeps shipping updates across releases. To help users on older installs upgrade smoothly to the latest version, I've added an automated upgrade script so you can one-click upgrade your local project to the newest bits and pick up the latest features without a painful manual merge.
+
+### 🚀 One-Click Upgrade
+
+- **`scripts/upgrade.sh`** (macOS): Defaults to probing `~/Documents/code/EverythingSearch`, and accepts an explicit path to your old install. It classifies the upgrade scenario from on-disk layout (legacy Chroma layout, whether the FTS5 sparse index already exists, and so on), `rsync`s new code into the old tree while preserving `config.py` and `data/` until backup and merge are done, snapshots critical files under `upgrade_backups_<timestamp>/`, regenerates `config.py` from the new `etc/config.example.py` with parsed values for `MY_API_KEY`, `TARGET_DIR`, and MWeb-related fields, then cleans incompatible vector stores or only scan caches depending on the scenario, reinstalls dependencies from `requirements/base.txt`, refreshes launchd wrappers, and optionally guides you through a foreground full reindex with `caffeinate` to prevent sleep.
+
+### 📘 Documentation
+
+- **`INSTALL` / `INSTALL.en`**: Adds a full "Version upgrade" section (prep work, command examples, step-by-step walkthrough, post-upgrade checks, and FAQs) and lists `upgrade.sh` in the file manifest.
+- **`README` / `README.zh-CN`**: Adds a short version-upgrade section with a pointer to the install guide for the full walkthrough.
+- **`PROJECT_MANUAL` / `PROJECT_MANUAL.en`**: Supplements the manual with upgrade steps aligned to the script, so readers who already went through the technical manual can line up their actions with the same path.
+
 ## [2.1.2] - 2026-04-27
 
 Many macOS users can get confused by prompts like "Python wants to access data from other apps": this is not a broken build. When background jobs do not have Full Disk Access, macOS blocks each scheduled indexing run with a permission gate. This patch writes the guidance into the install docs and prints the exact paths and steps directly in the installer flow, so users are much less likely to get stuck. No functional search code changed; this is purely a documentation and installation UX hardening pass.

@@ -2,6 +2,20 @@
 
 [English](CHANGELOG.en.md) | [中文](CHANGELOG.md)
 
+## [2.2.0] - 2026-04-27
+
+因为项目一直在做版本更新，为了方便旧版本的用户可以优雅的升级到最新版本，我为项目增加了自动升级脚本，支持用户可以一键升级本地项目到最新版本，方便使用最新的功能。
+
+### 🚀 一键升级
+
+- `**scripts/upgrade.sh**`：面向 macOS，默认探测 `~/Documents/code/EverythingSearch`，也支持显式传入旧项目路径。脚本会按目录特征判断升级场景（旧 Chroma 布局、是否已有 FTS5 稀疏索引等），用 `rsync` 把新代码同步到旧安装路径（保留你的 `config.py` 与 `data/` 直到备份与合并完成）、把关键文件备份到 `upgrade_backups_时间戳/`、从新版 `etc/config.example.py` 生成 `config.py` 并写入已解析的 `MY_API_KEY`、`TARGET_DIR`、MWeb 相关项；再按场景清理不兼容的旧向量库或仅清扫描缓存、更新 `requirements/base.txt`、刷新 launchd wrapper，并在需要时引导你前台跑全量索引（`caffeinate` 防休眠）。
+
+### 📘 文档
+
+- `**INSTALL` / `INSTALL.en**`：新增「版本升级」整节（含准备工作、命令示例、过程拆解、升级后自检与常见问题），并在文件清单中标注 `upgrade.sh`。
+- `**README` / `README.zh-CN**`：增加简短的版本升级步骤，并指向安装文档详解。
+- `**PROJECT_MANUAL` / `PROJECT_MANUAL.en**`：在手册中补充与脚本一致的升级路径说明，方便已经读过技术文档的同学直接对齐操作。
+
 ## [2.1.2] - 2026-04-27
 
 很多 macOS 用户会被「python 想访问其他 App 的数据」这类弹窗搞懵：不是程序坏了，而是后台任务没拿到「完全磁盘访问」时，系统每次定时跑索引都会拦一道。这个补丁把说明写进安装文档，并在安装脚本里当场把路径和操作步骤摆到眼前，尽量让大家少踩坑。功能代码一行没动，纯粹是体验与文档层面的补强。
@@ -9,8 +23,8 @@
 ### 📘 文档与安装引导
 
 - **安装文档**：在 `INSTALL` 中新增「完全磁盘访问」必读小节——如何打印当前 venv 的真实 Python 路径、为何还要加入 `/bin/bash`、用终端直达隐私面板，以及 Homebrew 小版本升级后路径变化需重新授权的说明。
-- **`scripts/install.sh`**：若本次安装选择了 launchd 后台服务，安装流程末尾会输出醒目的分步引导，并默认询问是否立即打开「完全磁盘访问」设置页；同时打印当前解释器路径，避免用户猜路径。
-- **`scripts/install_launchd_wrappers.sh`**：脚本结束时增加简短提醒，指向 `INSTALL` 与系统设置，方便只跑 wrapper 安装的用户也能看到。
+- `**scripts/install.sh`**：若本次安装选择了 launchd 后台服务，安装流程末尾会输出醒目的分步引导，并默认询问是否立即打开「完全磁盘访问」设置页；同时打印当前解释器路径，避免用户猜路径。
+- `**scripts/install_launchd_wrappers.sh**`：脚本结束时增加简短提醒，指向 `INSTALL` 与系统设置，方便只跑 wrapper 安装的用户也能看到。
 
 ## [2.1.1] - 2026-04-27
 

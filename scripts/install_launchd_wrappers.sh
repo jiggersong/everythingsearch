@@ -5,7 +5,7 @@
 #   ./scripts/install_launchd_wrappers.sh [项目根目录]
 #   PROJECT_ROOT 默认为本脚本所在仓库根目录。
 #
-# 会先 bootout 再写文件再 bootstrap；需已存在 venv 与 everythingsearch 包。
+# 会先 bootout 再写文件再 bootstrap；需已存在 venv/.venv 与 everythingsearch 包。
 #
 set -euo pipefail
 
@@ -16,9 +16,27 @@ LABEL_APP="com.jigger.everythingsearch.app"
 LABEL_INDEX="com.jigger.everythingsearch"
 UID_GUI="$(id -u)"
 
+find_python_bin() {
+    if [[ -x "${PROJECT_ROOT}/venv/bin/python" ]]; then
+        echo "${PROJECT_ROOT}/venv/bin/python"
+        return 0
+    fi
+    if [[ -x "${PROJECT_ROOT}/.venv/bin/python" ]]; then
+        echo "${PROJECT_ROOT}/.venv/bin/python"
+        return 0
+    fi
+    return 1
+}
+
+if ! PYTHON_BIN="$(find_python_bin)"; then
+    echo "未找到虚拟环境 Python：请先创建 venv 或 .venv 并安装 requirements/base.txt" >&2
+    exit 1
+fi
+
 mkdir -p "$WRAPPER_DIR" "$LAUNCH_AGENTS"
 
 echo "项目目录: $PROJECT_ROOT"
+echo "Python: $PYTHON_BIN"
 echo "停止 launchd 任务（若存在）..."
 launchctl bootout "gui/${UID_GUI}/${LABEL_APP}" 2>/dev/null || true
 launchctl bootout "gui/${UID_GUI}/${LABEL_INDEX}" 2>/dev/null || true
@@ -28,13 +46,14 @@ cat > "${WRAPPER_DIR}/everythingsearch_start.sh" << EOF
 #!/usr/bin/env bash
 # 由 install_launchd_wrappers.sh 生成 — 勿手改 APP_DIR，请重新运行脚本。
 APP_DIR="${PROJECT_ROOT}"
+PYTHON_BIN="${PYTHON_BIN}"
 LOG_DIR="\$APP_DIR/logs"
 PORT="\${PORT:-8000}"
 LOG_DATE=\$(date +%Y-%m-%d)
 mkdir -p "\$LOG_DIR"
 cd "\$APP_DIR" || exit 1
 exec >>"\$LOG_DIR/launchd_app_\${LOG_DATE}.log" 2>&1
-exec "\$APP_DIR/venv/bin/python" -m gunicorn \\
+exec "\$PYTHON_BIN" -m gunicorn \\
   -c "\$APP_DIR/gunicorn.conf.py" \\
   -w 1 -b "127.0.0.1:\$PORT" --timeout 120 \\
   everythingsearch.app:app
@@ -45,12 +64,13 @@ cat > "${WRAPPER_DIR}/everythingsearch_index.sh" << EOF
 #!/usr/bin/env bash
 # 由 install_launchd_wrappers.sh 生成
 APP_DIR="${PROJECT_ROOT}"
+PYTHON_BIN="${PYTHON_BIN}"
 LOG_DIR="\$APP_DIR/logs"
 LOG_DATE=\$(date +%Y-%m-%d)
 mkdir -p "\$LOG_DIR"
 cd "\$APP_DIR" || exit 1
 exec >>"\$LOG_DIR/incremental_\${LOG_DATE}.log" 2>&1
-exec "\$APP_DIR/venv/bin/python" -m everythingsearch.incremental
+exec "\$PYTHON_BIN" -m everythingsearch.incremental
 EOF
 chmod +x "${WRAPPER_DIR}/everythingsearch_index.sh"
 

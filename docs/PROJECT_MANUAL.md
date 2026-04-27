@@ -440,6 +440,39 @@ caffeinate -i nohup ./venv/bin/python -m everythingsearch.incremental --full >> 
 
 `caffeinate -i` 防止电脑睡眠中断进程。
 
+### 版本升级（从旧版本迁移）
+
+如果已安装过 v1.0.0 之后任一旧版本，可通过自动升级脚本将数据和配置迁移到当前最新版。
+
+**操作流程：**
+
+1. **下载新版到新目录**（不要把新版直接覆盖旧目录）：
+
+   ```bash
+   git clone https://github.com/jiggersong/everythingsearch.git ~/Downloads/EverythingSearch-new
+   cd ~/Downloads/EverythingSearch-new
+   ```
+
+2. **运行升级脚本**（默认检测 `~/Documents/code/EverythingSearch`）：
+
+   ```bash
+   ./scripts/upgrade.sh [旧项目路径]
+   ```
+
+3. **按脚本提示确认**每一步操作：版本检测 → 代码同步 → 数据备份 → 配置合并 → 数据清理 → 依赖更新 → launchd 更新 → 索引重建。
+
+4. **清理**：升级完成后，新下载的目录（如 `~/Downloads/EverythingSearch-new`）可直接删除；旧项目目录已更新为最新版，继续使用即可。
+
+升级场景说明：
+
+| 场景 | 旧版本 | 操作概要 |
+|------|--------|----------|
+| A | v1.0.x–v1.1.x | 删除旧索引，全量重建 |
+| B | v1.2.0–v1.5.2 | 删除不兼容 ChromaDB，保留 embedding 缓存，全量重建 |
+| C | v2.0.0+ | 格式兼容，仅合并配置新字段，建议运行增量索引验证 |
+
+详见 [INSTALL.md](INSTALL.md) 第九节。
+
 ### 查看增量索引日志
 
 ```bash

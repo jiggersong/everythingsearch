@@ -441,6 +441,39 @@ caffeinate -i nohup ./venv/bin/python -m everythingsearch.incremental --full >> 
 
 `caffeinate -i` prevents sleep from killing the job.
 
+### Version upgrade (migrating from an older version)
+
+If you have an older version (v1.0.0 or later) installed, use the auto-upgrade script to migrate data and configuration.
+
+**Step by step:**
+
+1. **Download the new version to a separate directory** (do not overwrite the old one):
+
+   ```bash
+   git clone https://github.com/jiggersong/everythingsearch.git ~/Downloads/EverythingSearch-new
+   cd ~/Downloads/EverythingSearch-new
+   ```
+
+2. **Run the upgrade script** (looks for the old install at `~/Documents/code/EverythingSearch` by default):
+
+   ```bash
+   ./scripts/upgrade.sh [old-project-path]
+   ```
+
+3. **Follow the prompts** for each step: version detection → code sync → data backup → config merge → data cleanup → dependency update → launchd update → index rebuild.
+
+4. **Clean up**: After the upgrade, the new download directory (e.g. `~/Downloads/EverythingSearch-new`) can be deleted; your old project directory is now updated and ready to use.
+
+Upgrade scenarios:
+
+| Scenario | Old Version | Summary |
+|----------|-------------|---------|
+| A | v1.0.x–v1.1.x | Delete old index, full rebuild |
+| B | v1.2.0–v1.5.2 | Delete incompatible ChromaDB, keep embedding cache, full rebuild |
+| C | v2.0.0+ | Format-compatible, only merge new config fields, verify with incremental index |
+
+See [INSTALL.en.md](INSTALL.en.md) §9 for details.
+
 ### Incremental index logs
 
 ```bash

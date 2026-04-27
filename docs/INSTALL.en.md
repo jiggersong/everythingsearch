@@ -257,6 +257,7 @@ caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full
 | File or Path | Purpose |
 | --- | --- |
 | `scripts/install.sh` | Interactive installer |
+| `scripts/upgrade.sh` | Auto version upgrade script (v1.0+ → latest) |
 | `scripts/install_launchd_wrappers.sh` | Generate launchd wrappers and plist files |
 | `scripts/run_app.sh` | App lifecycle management |
 | `docs/PROJECT_MANUAL.en.md` | Technical manual |
@@ -271,6 +272,111 @@ caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full
 | `~/.local/bin/everythingsearch_index.sh` | Generated incremental-index wrapper |
 
 Version history: [GitHub Releases](https://github.com/jiggersong/everythingsearch/releases).
+
+## 9. Version Upgrade
+
+If you have an older version (v1.0.0 or later) installed, this section walks you through upgrading to the latest version. The entire process is handled automatically by `scripts/upgrade.sh` on macOS and requires `rsync` — **you don't need to manually deal with index files or data migration**.
+
+### 9.1 Preparation: Download the new version
+
+**Important: Do not extract or copy the new version directly over your old project directory.** Download it to a **completely separate directory** first:
+
+```bash
+# Option 1: via git clone (recommended)
+git clone https://github.com/jiggersong/everythingsearch.git ~/Downloads/EverythingSearch-new
+
+# Option 2: Download the zip from GitHub Releases and unzip
+# Assuming you unzipped to ~/Downloads/EverythingSearch-new
+```
+
+> **Why not overwrite directly?** Your old project directory contains runtime files (virtual environment, index data, logs, config) that could conflict or be lost if overwritten. The upgrade script safely syncs the new code over.
+
+### 9.2 Run the Upgrade
+
+Enter the newly downloaded directory and run the upgrade script:
+
+```bash
+cd ~/Downloads/EverythingSearch-new
+./scripts/upgrade.sh
+```
+
+The script looks for your old installation at `~/Documents/code/EverythingSearch` by default. If it's elsewhere, specify the path:
+
+```bash
+./scripts/upgrade.sh /path/to/your/old/installation
+```
+
+### 9.3 What Happens During Upgrade
+
+The script walks you through these steps interactively, explaining each one:
+
+**① Version Detection** — The script examines your old project's files (directory structure, index format, config) to determine which version you're upgrading from.
+
+**② Deployment Confirmation** — If the old project path differs from the current directory, the script asks "Deploy new version to old installation path and upgrade?" Choose **Y** (the default).
+
+**③ Data Backup** — The following critical files are backed up to `upgrade_backups_timestamp/` inside the project directory:
+- `config.py` (your personal configuration)
+- `embedding_cache.db` (embedding cache — preserves API cost savings)
+- `chroma_db/` (old vector database)
+
+This is a key-file backup, not a full project snapshot. It does not include the virtual environment, logs, sparse index, scan cache, or every `data/*.db` file.
+
+**④ Config Merge** — The script generates a new `config.py` from the latest template and migrates only these selected fields from the old `config.py`: `MY_API_KEY`, `TARGET_DIR`, `ENABLE_MWEB`, `MWEB_LIBRARY_PATH`, and `MWEB_DIR`. Other custom edits, such as `INDEX_ONLY_KEYWORDS`, `HOST`, `PORT`, `NL_INTENT_MODEL`, or `SEARCH_INTERPRET_MODEL`, return to template defaults and should be copied over manually if still needed.
+
+**⑤ Data Cleanup** — Depending on the detected old version, incompatible files are cleaned up:
+
+| Scenario | Old Version | What Gets Cleaned |
+|----------|-------------|-------------------|
+| **A** | v1.0.x – v1.1.x | Delete old ChromaDB (metadata format incompatible with v2.x), clear scan cache and index state |
+| **B** | v1.2.0 – v1.5.2 | Delete old ChromaDB (no FTS5 sparse index), clear scan cache and index state, keep embedding cache |
+| **C** | v2.0.0+ | Index format is compatible — only clear scan cache and index state (rebuilt on next incremental run) |
+
+The integrity check stage ensures `data/` exists before the script continues. If scenario C upgrades successfully but vector search behaves abnormally, delete `data/chroma_db/` and run a full rebuild.
+
+**⑥ Dependency and Launchd Update** — Runs `venv/bin/python -m pip install -r requirements/base.txt` (or `.venv/bin/python` if that is the existing virtual environment), then runs `install_launchd_wrappers.sh` to regenerate wrapper scripts and plist files pointing to the current project path. Your existing auto-start and scheduled indexing setup is preserved.
+
+**⑦ Index Rebuild** — For scenarios A/B, you'll be asked "Rebuild index now?" **Recommended: choose Y**. The script uses `caffeinate -i` to prevent sleep and runs the full rebuild in the foreground. Depending on file count, this may take 10 minutes to several hours. Scenario C only needs a quick incremental index verification.
+
+### 9.4 Post-Upgrade Verification
+
+After the full index rebuild completes, verify everything works:
+
+```bash
+cd ~/Documents/code/EverythingSearch   # or your project path
+
+# 1. Run incremental index — should complete without errors
+./venv/bin/python -m everythingsearch.incremental
+
+# 2. Perform a search — should return results
+./venv/bin/python -m everythingsearch search "test" --json
+
+# 3. Ensure the web service is running
+./scripts/run_app.sh restart
+```
+
+Open [http://127.0.0.1:8000](http://127.0.0.1:8000) in a browser, search for a few files you remember, and confirm results look correct.
+
+### 9.5 Clean Up
+
+Once the upgrade is successful and everything is confirmed working:
+
+- **New download directory** (e.g. `~/Downloads/EverythingSearch-new`): job done — **delete it**
+- **Old project directory** (e.g. `~/Documents/code/EverythingSearch`): **now updated to the latest version** — keep using this one
+- **Backup directory** (`upgrade_backups_timestamp/` inside the project): delete after confirming everything is fine
+
+### 9.6 FAQ
+
+**Q: I already overwrote my old directory with the new version. What now?**
+
+No worries. Just run `./scripts/upgrade.sh` from the mixed directory. The script detects this as an in-place upgrade, skips the code sync step, and proceeds directly to config merge and data cleanup.
+
+**Q: The upgrade failed. How do I recover?**
+
+The `upgrade_backups_timestamp/` directory contains key files from before the upgrade, not a full project snapshot. Copy the backed-up `config.py` and data directories back as needed, then redeploy with your old version's code and rebuild the index if required.
+
+**Q: I have multiple TARGET_DIRs. Will my config migrate correctly?**
+
+Yes. The script parses your old `config.py` with Python — whether `TARGET_DIR` is a single string or a list of paths, it's extracted and written into the new config correctly.
 
 ## Copyright
 

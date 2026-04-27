@@ -25,6 +25,55 @@ cd everythingsearch
 ./scripts/install.sh
 ```
 
+## 版本升级
+
+如果电脑上已经安装过 v1.0.0 之后任一旧版本，按以下步骤升级到最新版。
+
+### 第一步：下载新版到新目录
+
+**不要把新版直接覆盖到旧目录里。** 先下载（或 `git clone`）新版到一个**单独的新目录**：
+
+```bash
+# 方式一：git clone
+git clone https://github.com/jiggersong/everythingsearch.git ~/Downloads/EverythingSearch-new
+cd ~/Downloads/EverythingSearch-new
+
+# 方式二：下载 Release 压缩包后解压
+# 假设解压到了 ~/Downloads/EverythingSearch-new
+cd ~/Downloads/EverythingSearch-new
+```
+
+### 第二步：运行升级脚本
+
+在新目录中执行升级脚本，它会自动找到旧安装（默认位置 `~/Documents/code/EverythingSearch`）：
+
+```bash
+./scripts/upgrade.sh
+```
+
+如果旧项目安装在非默认路径，可以手动指定：
+
+```bash
+./scripts/upgrade.sh /你的/旧项目/路径
+```
+
+### 第三步：按提示完成升级
+
+脚本会交互式引导你完成以下操作：
+- 说明检测到的旧版本信息，确认升级
+- 将新版代码同步到旧项目位置（保留你的配置文件和数据）
+- 备份旧版关键数据、迁移指定配置项、清理不兼容的索引，并更新 Python 依赖
+- 询问是否立即重建索引（**推荐选是**，保持终端打开直到跑完）
+
+### 第四步：清理旧文件
+
+升级完成并确认一切正常后：
+- **新目录**（如 `~/Downloads/EverythingSearch-new`）：已经没用了，可以直接删除
+- **旧项目目录**（如 `~/Documents/code/EverythingSearch`）：已被更新为最新版，继续使用这个目录
+- **备份目录**（`upgrade_backups_时间戳/` 在项目目录内）：确认升级无误后可删除
+
+详见 [INSTALL.md](docs/INSTALL.md) 第九节。
+
 ## 常用命令
 
 ```bash
