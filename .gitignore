@@ -26,6 +26,7 @@ chroma_db/
 *.db-journal
 
 # 系统与 IDE
+claude.md
 .DS_Store
 .idea/
 .vscode/
@@ -44,3 +45,4 @@ start.sh
 
 # 远期演进规划与内部开发文档（避免杂音提交至开源仓库）
 dev_docs/
+release_notes.txt

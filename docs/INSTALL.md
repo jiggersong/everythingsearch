@@ -189,6 +189,33 @@ macOS TCC 注意事项：
 - LaunchAgent 不应直接指向 `~/Documents` 等受保护目录下的脚本或日志路径
 - `~/.local/bin/` 下的 wrapper 脚本可以绕过这一限制，并在脚本内部再 `cd` 到仓库目录
 
+### ⚠️ 完全磁盘访问授权（必读）
+
+安装 launchd 服务后，**必须**授予 Python 和 bash 完全磁盘访问权限，否则每次定时索引执行时 macOS 都会弹出权限确认框，必须手动点击才能继续。
+
+**首先确认 Python 解释器的真实路径：**
+
+```bash
+cd /path/to/EverythingSearch
+./venv/bin/python -c 'import sys; print(sys.executable)'
+```
+
+**然后在系统设置中授权：**
+
+1. 打开 **系统设置 → 隐私与安全性 → 完全磁盘访问**
+2. 点击左下角「**＋**」按钮
+3. 按 `Cmd+Shift+G`，粘贴上一步输出的 Python 完整路径，点击「打开」
+4. 再次点击「**＋**」，同样方式添加 `/bin/bash`（launchd 通过 bash 调用 wrapper 脚本）
+5. 确保两个条目的开关均处于「**开启**」状态
+
+也可通过终端直接打开该面板：
+
+```bash
+open "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
+```
+
+> **注意**：Homebrew 升级 Python 小版本时（如 `3.11.15` → `3.11.16`），安装路径中的版本号会变化，需重新授权。运行上述 `python -c` 命令可随时查看最新路径。
+
 ## 六、日常使用
 
 ### Make 快捷命令

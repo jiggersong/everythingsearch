@@ -100,3 +100,7 @@ launchctl bootstrap "gui/${UID_GUI}" "${LAUNCH_AGENTS}/com.jigger.everythingsear
 
 echo "完成。搜索服务: ${LABEL_APP}，定时索引: ${LABEL_INDEX}（约每 30 分钟；修改 plist 后请 bootout + bootstrap）。"
 echo "查看状态: ./scripts/run_app.sh status"
+echo ""
+echo "⚠️  重要提醒：请授予 Python 和 /bin/bash「完全磁盘访问」权限"
+echo "   否则每次定时索引都会弹出权限确认框。"
+echo "   详情见 docs/INSTALL.md 或运行: open \"x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles\""

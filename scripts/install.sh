@@ -221,6 +221,7 @@ setup_launchd() {
     read -r install_app
 
     if [[ "$install_app" =~ ^[Yy] ]]; then
+        APP_SERVICE_INSTALLED=true
         # Generate wrapper script (outside ~/Documents to avoid macOS TCC restrictions)
         cat > "${wrapper_dir}/everythingsearch_start.sh" << WRAPPER_EOF
 #!/usr/bin/env bash
@@ -275,6 +276,7 @@ PLIST_EOF
     read -r install_cron
 
     if [[ "$install_cron" =~ ^[Yy] ]]; then
+        INDEX_SERVICE_INSTALLED=true
         # Generate wrapper script
         cat > "${wrapper_dir}/everythingsearch_index.sh" << WRAPPER_EOF
 #!/usr/bin/env bash
@@ -318,6 +320,67 @@ PLIST_EOF
     else
         log_info "跳过定时任务安装"
     fi
+}
+
+show_full_disk_access_guide() {
+    # Only relevant if launchd services were installed
+    local need_guide=false
+    if [[ "${APP_SERVICE_INSTALLED:-false}" == "true" ]] || [[ "${INDEX_SERVICE_INSTALLED:-false}" == "true" ]]; then
+        need_guide=true
+    fi
+    if [[ "$need_guide" == "false" ]]; then
+        return
+    fi
+
+    local py_path
+    py_path=$("${INSTALL_DIR}/venv/bin/python" -c 'import sys; print(sys.executable)' 2>/dev/null) || true
+
+    if [[ -z "$py_path" ]]; then
+        py_path="${INSTALL_DIR}/venv/bin/python"
+    fi
+
+    echo ""
+    echo -e "${YELLOW}╔══════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${YELLOW}║  ⚠️  重要：授予「完全磁盘访问」权限，避免反复弹窗  ⚠️       ║${NC}"
+    echo -e "${YELLOW}╚══════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    echo "  已安装 launchd 后台服务。macOS 对后台进程有严格的隐私保护，"
+    echo "  如果不授权，每次定时索引执行时都会弹出「python3.11 想访问"
+    echo "  其他 App 的数据」的权限确认框，必须手动点击才继续。"
+    echo ""
+    echo -e "  ${CYAN}请按以下步骤操作（约 30 秒）：${NC}"
+    echo ""
+    echo "  1. 打开 系统设置 → 隐私与安全性 → 完全磁盘访问"
+    echo "  2. 点击左下角「+」按钮"
+    echo "  3. 按 Cmd+Shift+G，粘贴以下路径，点击「打开」："
+    echo ""
+    echo -e "       ${GREEN}${py_path}${NC}"
+    echo ""
+    echo "  4. 再次点击「+」，同样方式添加："
+    echo ""
+    echo -e "       ${GREEN}/bin/bash${NC}"
+    echo ""
+    echo "  5. 确保两个条目的开关均处于「开启」状态（蓝色）"
+    echo ""
+    echo "  授权完成后，所有后台索引任务将静默运行，不再弹窗。"
+    echo ""
+
+    echo -n "是否现在打开系统设置的「完全磁盘访问」面板？(Y/n): "
+    read -r open_settings
+    if [[ ! "$open_settings" =~ ^[Nn] ]]; then
+        open "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
+        echo ""
+        echo -e "  ${CYAN}系统设置已打开，请按上述步骤添加以下两个条目：${NC}"
+        echo -e "    ${GREEN}${py_path}${NC}"
+        echo -e "    ${GREEN}/bin/bash${NC}"
+        echo ""
+    fi
+
+    echo -e "  ${YELLOW}💡 提示${NC}: 日后 Homebrew 升级 Python 小版本（如 3.11.15→3.11.16）"
+    echo "  路径中的版本号会变化，届时需重新授权。运行以下命令可查看最新路径："
+    echo ""
+    echo -e "    cd ${INSTALL_DIR} && ./venv/bin/python -c 'import sys; print(sys.executable)'"
+    echo ""
 }
 
 build_first_index() {
@@ -400,5 +463,6 @@ setup_directories
 configure_project
 create_launcher
 setup_launchd
+show_full_disk_access_guide
 build_first_index
 print_summary

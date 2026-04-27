@@ -189,6 +189,33 @@ macOS TCC note:
 - LaunchAgent processes should not point directly at scripts or log paths under protected locations such as `~/Documents`
 - the wrapper scripts under `~/.local/bin/` avoid that restriction and `cd` into the repo internally
 
+### ⚠️ Full Disk Access (Required)
+
+After installing launchd services, you **must** grant Full Disk Access to Python and bash. Otherwise, macOS will show a "python3.11 wants to access data from other apps" prompt on every scheduled indexing run, requiring manual approval each time.
+
+**First, find the real Python interpreter path:**
+
+```bash
+cd /path/to/EverythingSearch
+./venv/bin/python -c 'import sys; print(sys.executable)'
+```
+
+**Then grant access in System Settings:**
+
+1. Open **System Settings → Privacy & Security → Full Disk Access**
+2. Click the **+** button
+3. Press `Cmd+Shift+G`, paste the Python path from above, click **Open**
+4. Click **+** again, add `/bin/bash` the same way (launchd invokes bash → wrapper script)
+5. Make sure both toggles are **ON**
+
+You can also open the panel directly from the terminal:
+
+```bash
+open "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
+```
+
+> **Note**: Homebrew Python patch upgrades (e.g. `3.11.15` → `3.11.16`) change the path — you'll need to remove the old entry and re-add the new one. Run the `python -c` command above anytime to check the current path.
+
 ## 6. Daily Operations
 
 ### Make Shortcuts

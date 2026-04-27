@@ -2,6 +2,16 @@
 
 [English](CHANGELOG.en.md) | [中文](CHANGELOG.md)
 
+## [2.1.2] - 2026-04-27
+
+Many macOS users can get confused by prompts like "Python wants to access data from other apps": this is not a broken build. When background jobs do not have Full Disk Access, macOS blocks each scheduled indexing run with a permission gate. This patch writes the guidance into the install docs and prints the exact paths and steps directly in the installer flow, so users are much less likely to get stuck. No functional search code changed; this is purely a documentation and installation UX hardening pass.
+
+### 📘 Documentation & Install Guidance
+
+- **Install docs**: Added a required **Full Disk Access** section to `INSTALL` - how to print the real Python path from the current venv, why `/bin/bash` must also be added, how to jump straight to the privacy panel from Terminal, and why Homebrew micro-version upgrades may require re-authorization due to path changes.
+- **`scripts/install.sh`**: If launchd background services are selected during installation, the script now prints a prominent step-by-step guide at the end, prompts to open the Full Disk Access settings page, and echoes the current interpreter path so users do not have to guess.
+- **`scripts/install_launchd_wrappers.sh`**: Adds a short reminder at the end that points users to `INSTALL` and System Settings, so users running only the wrapper installation still see the guidance.
+
 ## [2.1.1] - 2026-04-27
 
 After releasing the new architecture a few days ago, I still encountered a few bugs during my own use. This minor release focuses on fortifying the robustness of the underlying retrieval Pipeline, while patching a few deeply hidden edge-case bugs. The overall experience is much "smoother" now, so I highly recommend everyone grab this quick update.
