@@ -264,6 +264,8 @@ caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full
 | `docs/NL_SEARCH_AND_WEB_UI.en.md` | NL search behavior notes |
 | `etc/config.example.py` | Config template |
 | `everythingsearch/app.py` | Flask entry and route registration |
+| `everythingsearch/retrieval/` | ★ Core multi-way retrieval pipeline (query_planner / sparse / dense / fusion / reranking / aggregation) |
+| `everythingsearch/indexing/` | Dual-write index components (FTS5 sparse + ChromaDB dense) |
 | `everythingsearch/services/` | Service layer |
 | `everythingsearch/request_validation.py` | Request parsing and validation |
 | `everythingsearch/infra/` | Settings, rate limiting, logging-related infrastructure |
@@ -274,6 +276,8 @@ caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full
 Version history: [GitHub Releases](https://github.com/jiggersong/everythingsearch/releases).
 
 ## 9. Version Upgrade
+
+> ⚠️ **Before upgrading**: The upgrade script only automatically migrates these 5 config fields: `MY_API_KEY`, `TARGET_DIR`, `ENABLE_MWEB`, `MWEB_LIBRARY_PATH`, `MWEB_DIR`. If you customized `INDEX_ONLY_KEYWORDS`, `HOST`, `PORT`, `NL_INTENT_MODEL`, `SEARCH_INTERPRET_MODEL`, `SPARSE_TOP_K`, `DENSE_TOP_K`, `RERANK_MODEL`, etc., those will revert to defaults. **Back up your old `config.py` before upgrading** and manually restore any custom values afterwards.
 
 If you have an older version (v1.0.0 or later) installed, this section walks you through upgrading to the latest version. The entire process is handled automatically by `scripts/upgrade.sh` on macOS and requires `rsync` — **you don't need to manually deal with index files or data migration**.
 

@@ -43,14 +43,27 @@ It lets users find local documents, code, and materials quickly using natural la
 └───────────────────────┬──────────────────────────────┘
                         │
 ┌───────────────────────▼──────────────────────────────┐
-│           Search engine (everythingsearch.search)     │
-│   Vector search · position weights · keyword fallback │
-│   · per-file dedup · source filter                    │
+│  Multi-way retrieval pipeline                         │
+│  (everythingsearch.retrieval.pipeline)                │
+│                                                        │
+│  query_planner  ──→  Intent parsing, query planning   │
+│       │                                                │
+│       ├──→  sparse_retriever (SQLite FTS5)            │
+│       └──→  dense_retriever  (ChromaDB)               │
+│                    │                                   │
+│                    ▼                                   │
+│            fusion (RRF rank fusion)                    │
+│                    │                                   │
+│                    ▼                                   │
+│         reranking (DashScope Rerank)                   │
+│                    │                                   │
+│                    ▼                                   │
+│        aggregation (file-level weighted scoring)       │
 └───────────────────────┬──────────────────────────────┘
                         │
 ┌───────────────────────▼──────────────────────────────┐
-│            ChromaDB (local vector database)          │
-│   collection: local_files · cosine distance           │
+│   Dual storage engines                                │
+│   ChromaDB (dense vector) + SQLite FTS5 (sparse text)  │
 └───────────────────────┬──────────────────────────────┘
                         │
 ┌───────────────────────▼──────────────────────────────┐
@@ -72,8 +85,9 @@ It lets users find local documents, code, and materials quickly using natural la
 | Language        | Python 3.11                                  | Recommended 3.11 (or 3.10); install dependencies in a virtual environment |
 | Orchestration   | LangChain                                    | Document load, chunking, and vectorization pipeline                       |
 | Embedding model | Aliyun DashScope text-embedding-v2           | Strong Chinese understanding, low cost                                    |
-| Vector database | ChromaDB                                     | Local file-based database; no Docker required                             |
-| Web framework   | Flask + Gunicorn                             | Dev / production HTTP service                                             |
+| Vector database | ChromaDB                                     | Local file-based database; no Docker required             |
+| Sparse index    | SQLite FTS5                                  | Full-text search with BM25 weighted scoring              |
+| Web framework   | Flask + Gunicorn                             | Dev / production HTTP service             |
 | File parsing    | pypdf / python-docx / openpyxl / python-pptx | Extract content from PDF, Word, Excel, PPT                                |
 | Frontend        | Single-file HTML + CSS + JS                  | No Node.js build step                                                     |
 
@@ -137,7 +151,10 @@ EverythingSearch/
 ├── logs/                     # Runtime and scheduled job logs
 ├── scripts/                  # Operations and helper scripts
 │   ├── install.sh
+│   ├── upgrade.sh             # Automatic version upgrade script (v1.0+ → latest)
+│   ├── install_launchd_wrappers.sh
 │   ├── run_app.sh
+│   ├── run_tests.sh
 │   ├── audit_dependencies.py # Dependency audit utility
 │   └── mweb_export.py        # MWeb automatic export wrapper
 ├── docs/                     # Project documentation
@@ -206,10 +223,31 @@ Local settings are concentrated here. Load order: environment variables > reposi
 | `CHUNK_SIZE`                   | `500`                                          | Text chunk size (characters)                                                                        |
 | `CHUNK_OVERLAP`                | `80`                                           | Chunk overlap (characters)                                                                          |
 | `MAX_CONTENT_LENGTH`           | `20000`                                        | Max characters indexed per file                                                                     |
-| `SEARCH_TOP_K`                 | `250`                                          | Vector retrieval candidate chunks (higher = more recall, slower)                                    |
+| `SEARCH_TOP_K`                 | `250`                                          | Vector candidate chunks (legacy indexer; new pipeline uses `DENSE_TOP_K`) |
 | `SCORE_THRESHOLD`              | `0.35`                                         | Cosine distance threshold (smaller = stricter; matches `settings.py` default)                       |
-| `POSITION_WEIGHTS`             | `filename:0.6, heading:0.8, content:1.0`       | Position weighting factors                                                                          |
+| `POSITION_WEIGHTS`             | `filename:0.60, heading:0.80, content:1.00`    | Position weighting factors                                                                          |
 | `KEYWORD_FREQ_BONUS`           | `0.03`                                         | Keyword frequency bonus coefficient                                                                 |
+| `SPARSE_TOP_K`                 | `120`                                          | SQLite FTS5 sparse candidate count                                                                 |
+| `SPARSE_FILENAME_WEIGHT`       | `8.0`                                          | Sparse filename BM25 weight                                                                        |
+| `SPARSE_PATH_WEIGHT`           | `3.0`                                          | Sparse path BM25 weight                                                                            |
+| `SPARSE_HEADING_WEIGHT`        | `4.0`                                          | Sparse heading BM25 weight                                                                         |
+| `SPARSE_CONTENT_WEIGHT`        | `1.0`                                          | Sparse content BM25 weight                                                                         |
+| `DENSE_TOP_K`                  | `120`                                          | Vector dense retrieval candidate count                                                             |
+| `FUSION_TOP_K`                 | `200`                                          | Candidates after RRF fusion                                                                        |
+| `RRF_K`                        | `60`                                           | RRF fusion smoothing constant                                                                      |
+| `RERANK_MODEL`                 | `gte-rerank`                                   | Remote rerank model name (e.g. `qwen3-rerank`, `gte-rerank`)                                       |
+| `RERANK_TOP_N`                 | `50`                                           | Candidates sent to rerank                                                                          |
+| `RERANK_MAX_DOC_CHARS`         | `2000`                                         | Max chars per doc during rerank                                                                    |
+| `AGG_BEST_WEIGHT`              | `0.70`                                         | File aggregation: best chunk weight                                                                |
+| `AGG_SECOND_WEIGHT`            | `0.15`                                         | File aggregation: second chunk weight                                                              |
+| `AGG_THIRD_WEIGHT`             | `0.05`                                         | File aggregation: third chunk weight                                                               |
+| `AGG_FILENAME_BONUS`           | `0.10`                                         | File aggregation: filename hit bonus                                                               |
+| `AGG_HEADING_BONUS`            | `0.05`                                         | File aggregation: heading hit bonus                                                                |
+| `AGG_EXACT_BONUS`              | `0.10`                                         | File aggregation: exact match bonus                                                                |
+| `AGG_MULTI_HIT_BONUS`          | `0.05`                                         | File aggregation: multi-chunk hit bonus                                                            |
+| `AGG_LARGE_FILE_PENALTY`       | `0.05`                                         | File aggregation: large file penalty                                                               |
+| `INDEXER_BATCH_SIZE`           | `5000`                                         | Index rebuild batch size                                                                           |
+| `EMBED_MAX_CHARS`              | `600`                                          | Max characters per embedding text                                                                  |
 | `TRUST_PROXY`                  | `False`                                        | Trust `X-Forwarded-For` from a reverse proxy (for per-IP rate limiting)                             |
 | `NL_INTENT_MODEL`              | `qwen-turbo`                                   | NL intent model (prefer JSON Mode–capable models)                                                   |
 | `SEARCH_INTERPRET_MODEL`       | `qwen-turbo`                                   | Model for optional “smart interpretation” of hit lists                                              |

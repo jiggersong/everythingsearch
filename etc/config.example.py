@@ -45,7 +45,7 @@ MWEB_DIR = ""
 # PORT = 8000
 
 # 说明：
-# - TARGET_DIR 与 MY_API_KEY 在运行时都会优先读取环境变量
+# - DASHSCOPE_API_KEY 环境变量优先于 MY_API_KEY；TARGET_DIR 环境变量优先于 config.py
 # - 若 DASHSCOPE_API_KEY / TARGET_DIR 缺失，搜索或索引会显式报错，这是预期行为
 
 # [可选] Skills / HTTP 客户端：/api/file/read 单次读取正文的最大字节数（防止一次读入过大文件）

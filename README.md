@@ -81,11 +81,12 @@ make help          # list all make targets with short descriptions
 make index         # incremental indexing
 make index-full    # full reindex
 make app           # run app in the foreground
+make search q="keyword"  # CLI search (JSON output)
 make app-status    # status of launchd-managed app
 make app-restart   # restart launchd-managed app
 make app-stop      # stop launchd-managed app
 
-# New CLI search feature
+# Or use the CLI module directly
 python -m everythingsearch search "your query here" --json
 ```
 

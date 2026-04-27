@@ -333,8 +333,12 @@ update_dependencies() {
     fi
 
     log_info "更新 Python 运行时依赖..."
-    "$venv_bin/python" -m pip install -r "$requirements_file"
-    log_ok "Python 依赖已更新"
+    if "$venv_bin/python" -m pip install -r "$requirements_file"; then
+        log_ok "Python 依赖已更新"
+    else
+        log_error "Python 依赖安装失败，请检查网络连接和 requirements/base.txt 后重试"
+        exit 1
+    fi
 }
 
 # ──── 数据清理 ────
@@ -366,7 +370,9 @@ cleanup_for_scenario() {
             # 仅清理扫描缓存以触发重新扫描
             rm -f "$root/data/scan_cache.db" "$root/data/scan_cache.db-wal" "$root/data/scan_cache.db-shm"
             rm -f "$root/data/index_state.db" "$root/data/index_state.db-wal" "$root/data/index_state.db-shm"
-            log_ok "已清理扫描和状态缓存（下次增量索引将自动重建）"
+            # 清理 ChromaDB WAL 残留，防止崩溃恢复后状态不一致
+            rm -f "$root/data/chroma_db/chroma.sqlite3-wal" "$root/data/chroma_db/chroma.sqlite3-shm" 2>/dev/null || true
+            log_ok "已清理扫描缓存、索引状态和 WAL 残留（下次增量索引将自动重建）"
             ;;
     esac
 

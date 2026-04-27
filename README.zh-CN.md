@@ -81,11 +81,12 @@ make help          # 列出全部 make 目标及一行说明
 make index         # 增量索引
 make index-full    # 全量重建索引
 make app           # 前台运行应用
+make search q="关键词"  # CLI 搜索 (JSON 输出)
 make app-status    # 查看 launchd 托管服务状态
 make app-restart   # 重启常驻服务
 make app-stop      # 停止常驻服务
 
-# 新增 CLI 搜索能力
+# 或者直接用 CLI 模块
 python -m everythingsearch search "你要搜的东西" --json
 ```
 
@@ -112,8 +113,9 @@ python -m everythingsearch search "你要搜的东西" --json
 | 2   | [PROJECT_MANUAL.md](docs/PROJECT_MANUAL.md)                                      | 技术参考手册          | 开发、维护、二次改造                            | 架构、模块边界、配置矩阵、索引/搜索流程、调优与部署                              |
 | 3   | [UI_DESIGN_APPLE_GOOGLE.md](docs/UI_DESIGN_APPLE_GOOGLE.md)                      | Web UI 设计说明     | 界面维护、HIG/Material 对齐、无障碍与动效           | 设计原则与设计令牌；中英文页顶互链                                       |
 | 4   | [NL_SEARCH_AND_WEB_UI.md](docs/NL_SEARCH_AND_WEB_UI.md)                          | NL 搜索行为说明       | 智能搜索联调、默认回退、接口核对                      | 意图接口、解读接口、`exact_focus`、限流、无 Key 时的行为                   |
-| 5   | [OPENCLAW_INTEGRATION.zh-CN.md](docs/OPENCLAW_INTEGRATION.zh-CN.md)              | Agent 接入指南        | 给 OpenClaw 配置本地搜索能力                        | 傻瓜式的系统提示词配置向导、验证命令，一看就会                                |
-| 6   | [skills/everythingsearch-local/SKILL.md](skills/everythingsearch-local/SKILL.md) | Agent Skill（开源） | Cursor / Claude Code 等与本机 HTTP API 集成 | 各搜索与解读接口的调用示例、`EVERYTHINGSEARCH_BASE`、安全与回退；与手册 §3.1 配套 |
+| 5   | [SEARCH_ACCURACY_TECHNICAL_DESIGN.md](docs/SEARCH_ACCURACY_TECHNICAL_DESIGN.md)  | 准确率技术设计       | 检索架构重建设计评审                          | FTS5、向量召回、RRF、远端 Rerank、文件聚合、Benchmark 规划与实施路径        |
+| 6   | [OPENCLAW_INTEGRATION.zh-CN.md](docs/OPENCLAW_INTEGRATION.zh-CN.md)              | Agent 接入指南        | 给 OpenClaw 配置本地搜索能力                        | 傻瓜式的系统提示词配置向导、验证命令，一看就会                                |
+| 7   | [skills/everythingsearch-local/SKILL.md](skills/everythingsearch-local/SKILL.md) | Agent Skill（开源） | Cursor / Claude Code 等与本机 HTTP API 集成 | 各搜索与解读接口的调用示例、`EVERYTHINGSEARCH_BASE`、安全与回退；与手册 §3.1 配套 |
 
 
 ## Agent Skill（开源）

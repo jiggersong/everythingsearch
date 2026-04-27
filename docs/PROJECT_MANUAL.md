@@ -39,13 +39,26 @@ EverythingSearch 是一个运行在 macOS 上的**本地文件语义搜索引擎
 └───────────────────────┬──────────────────────────────┘
                         │
 ┌───────────────────────▼──────────────────────────────┐
-│            搜索引擎 (everythingsearch.search)           │
-│  向量搜索 · 位置加权 · 关键词回退 · 文件去重 · 来源过滤   │
+│   多路检索管道 (everythingsearch.retrieval.pipeline)   │
+│                                                        │
+│  query_planner  ──→  意图解析、Query 结构化规划        │
+│       │                                                │
+│       ├──→  sparse_retriever (SQLite FTS5 稀疏召回)    │
+│       └──→  dense_retriever  (ChromaDB 稠密召回)       │
+│                    │                                   │
+│                    ▼                                   │
+│            fusion (RRF 倒数排名融合)                    │
+│                    │                                   │
+│                    ▼                                   │
+│         reranking (DashScope Rerank 远端精排)          │
+│                    │                                   │
+│                    ▼                                   │
+│        aggregation (文件级加权聚合, 按文件归并排序)      │
 └───────────────────────┬──────────────────────────────┘
                         │
 ┌───────────────────────▼──────────────────────────────┐
-│            ChromaDB (本地向量数据库)                     │
-│  collection: local_files · cosine 距离                 │
+│   双存储引擎                                          │
+│   ChromaDB (稠密向量)  +  SQLite FTS5 (稀疏全文索引)   │
 └───────────────────────┬──────────────────────────────┘
                         │
 ┌───────────────────────▼──────────────────────────────┐
@@ -68,6 +81,7 @@ EverythingSearch 是一个运行在 macOS 上的**本地文件语义搜索引擎
 | 编排框架   | LangChain                                    | 文档加载、切分和向量化流程编排             |
 | 向量模型   | Aliyun DashScope text-embedding-v2           | 中文理解好，成本低                   |
 | 向量数据库  | ChromaDB                                     | 本地文件型数据库，无需 Docker          |
+| 稀疏索引   | SQLite FTS5                                  | 全文检索，支持 BM25 加权排序           |
 | Web 框架 | Flask + Gunicorn                             | 开发/生产 HTTP 服务               |
 | 文件解析   | pypdf / python-docx / openpyxl / python-pptx | PDF、Word、Excel、PPT 内容提取     |
 | 前端     | 单文件 HTML + CSS + JS                          | 无需 Node.js 构建               |
@@ -132,7 +146,10 @@ EverythingSearch/
 ├── logs/                     # 运行与定时任务日志
 ├── scripts/                  # 运维与辅助脚本
 │   ├── install.sh
+│   ├── upgrade.sh             # 自动版本升级脚本 (v1.0+ → 最新版)
+│   ├── install_launchd_wrappers.sh
 │   ├── run_app.sh
+│   ├── run_tests.sh
 │   ├── audit_dependencies.py # 依赖审计
 │   └── mweb_export.py        # MWeb 自动导出脚手架
 ├── docs/                     # 项目文档集
@@ -201,10 +218,31 @@ python -m everythingsearch search "<查询词>" --json
 | `CHUNK_SIZE`                   | `500`                                         | 文本切分块大小（字符）                               |
 | `CHUNK_OVERLAP`                | `80`                                          | 切分块重叠长度                                   |
 | `MAX_CONTENT_LENGTH`           | `20000`                                       | 单文件最大索引字符数                                |
-| `SEARCH_TOP_K`                 | `250`                                         | 向量检索候选 chunk 数量（越大召回越高但越慢）                |
+| `SEARCH_TOP_K`                 | `250`                                         | 向量检索候选 chunk 数量（旧版 indexer 兼容保留字段；新管道使用 `DENSE_TOP_K`） |
 | `SCORE_THRESHOLD`              | `0.35`                                        | cosine 距离阈值（越小越严格；与 `settings.py` 默认一致）   |
-| `POSITION_WEIGHTS`             | `filename:0.6, heading:0.8, content:1.0`      | 位置加权因子                                    |
+| `POSITION_WEIGHTS`             | `filename:0.60, heading:0.80, content:1.00`   | 位置加权因子                                    |
 | `KEYWORD_FREQ_BONUS`           | `0.03`                                        | 关键词频次加分系数                                 |
+| `SPARSE_TOP_K`                 | `120`                                         | SQLite FTS5 稀疏检索候选数量                         |
+| `SPARSE_FILENAME_WEIGHT`       | `8.0`                                         | 稀疏检索文件名 BM25 权重                            |
+| `SPARSE_PATH_WEIGHT`           | `3.0`                                         | 稀疏检索路径 BM25 权重                             |
+| `SPARSE_HEADING_WEIGHT`        | `4.0`                                         | 稀疏检索标题 BM25 权重                             |
+| `SPARSE_CONTENT_WEIGHT`        | `1.0`                                         | 稀疏检索正文 BM25 权重                             |
+| `DENSE_TOP_K`                  | `120`                                         | 向量稠密检索候选数量                                |
+| `FUSION_TOP_K`                 | `200`                                         | RRF 融合排序后的候选数量                             |
+| `RRF_K`                        | `60`                                          | RRF 融合算法平滑常数                               |
+| `RERANK_MODEL`                 | `gte-rerank`                                  | 远端精排模型名称（如 `qwen3-rerank`、`gte-rerank`）     |
+| `RERANK_TOP_N`                 | `50`                                          | 送入 Rerank 精排的候选数量                           |
+| `RERANK_MAX_DOC_CHARS`         | `2000`                                        | Rerank 阶段单文档截断字符数                           |
+| `AGG_BEST_WEIGHT`              | `0.70`                                        | 文件聚合：最佳 chunk 权重                            |
+| `AGG_SECOND_WEIGHT`            | `0.15`                                        | 文件聚合：次佳 chunk 权重                            |
+| `AGG_THIRD_WEIGHT`             | `0.05`                                        | 文件聚合：第三 chunk 权重                            |
+| `AGG_FILENAME_BONUS`           | `0.10`                                        | 文件聚合：命中文件名额外加分                            |
+| `AGG_HEADING_BONUS`            | `0.05`                                        | 文件聚合：命中标题额外加分                             |
+| `AGG_EXACT_BONUS`              | `0.10`                                        | 文件聚合：精确匹配额外加分                             |
+| `AGG_MULTI_HIT_BONUS`          | `0.05`                                        | 文件聚合：多 chunk 命中额外加分                        |
+| `AGG_LARGE_FILE_PENALTY`       | `0.05`                                        | 文件聚合：超大文件扣分系数                             |
+| `INDEXER_BATCH_SIZE`           | `5000`                                        | 索引重建批次大小                                   |
+| `EMBED_MAX_CHARS`              | `600`                                         | 单条 Embedding 文本截断字符数                        |
 | `TRUST_PROXY`                  | `False`                                       | 是否信任反向代理传入的 `X-Forwarded-For`（限流取真实 IP）   |
 | `NL_INTENT_MODEL`              | `qwen-turbo`                                  | 自然语言意图识别模型（建议选用支持 JSON Mode 的模型）          |
 | `SEARCH_INTERPRET_MODEL`       | `qwen-turbo`                                  | 搜索结果「智能解读」所用模型                            |

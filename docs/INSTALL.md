@@ -264,6 +264,8 @@ caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full
 | `docs/NL_SEARCH_AND_WEB_UI.md` | NL 搜索行为说明 |
 | `etc/config.example.py` | 配置模板 |
 | `everythingsearch/app.py` | Flask 入口与路由注册 |
+| `everythingsearch/retrieval/` | ★ 核心多路检索管道（query_planner / sparse / dense / fusion / reranking / aggregation） |
+| `everythingsearch/indexing/` | 双写索引组件（FTS5 稀疏 + ChromaDB 稠密） |
 | `everythingsearch/services/` | 服务层 |
 | `everythingsearch/request_validation.py` | 请求解析与输入校验 |
 | `everythingsearch/infra/` | 设置、限流、日志相关基础设施 |
@@ -274,6 +276,8 @@ caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full
 版本与变更记录见 [GitHub Releases](https://github.com/jiggersong/everythingsearch/releases)。
 
 ## 九、版本升级
+
+> ⚠️ **升级前请注意**：升级脚本仅自动迁移 `MY_API_KEY`、`TARGET_DIR`、`ENABLE_MWEB`、`MWEB_LIBRARY_PATH`、`MWEB_DIR` 这 5 个配置项。如果你在旧 `config.py` 中自定义过 `INDEX_ONLY_KEYWORDS`、`HOST`、`PORT`、`NL_INTENT_MODEL`、`SEARCH_INTERPRET_MODEL`、`SPARSE_TOP_K`、`DENSE_TOP_K`、`RERANK_MODEL` 等参数，升级后会回到默认值，请**升级前先备份旧 `config.py`**，升级后手动补回。
 
 如果你之前安装过 v1.0.0 之后任一旧版本，本节将手把手带你升级到最新版。整个升级过程由 `scripts/upgrade.sh` 在 macOS 上自动完成，并依赖 `rsync`，**无需手动处理索引文件或数据迁移**。
 
