@@ -8,13 +8,13 @@
 
 ### 🚀 一键升级
 
-- `**scripts/upgrade.sh**`：面向 macOS，默认探测 `~/Documents/code/EverythingSearch`，也支持显式传入旧项目路径。脚本会按目录特征判断升级场景（旧 Chroma 布局、是否已有 FTS5 稀疏索引等），用 `rsync` 把新代码同步到旧安装路径（保留你的 `config.py` 与 `data/` 直到备份与合并完成）、把关键文件备份到 `upgrade_backups_时间戳/`、从新版 `etc/config.example.py` 生成 `config.py` 并写入已解析的 `MY_API_KEY`、`TARGET_DIR`、MWeb 相关项；再按场景清理不兼容的旧向量库或仅清扫描缓存、更新 `requirements/base.txt`、刷新 launchd wrapper，并在需要时引导你前台跑全量索引（`caffeinate` 防休眠）。
+- **`scripts/upgrade.sh`**：面向 macOS，默认探测 `~/Documents/code/EverythingSearch`，也支持显式传入旧项目路径。脚本会按目录特征判断升级场景（旧 Chroma 布局、是否已有 FTS5 稀疏索引等），用 `rsync` 把新代码同步到旧安装路径（保留你的 `config.py` 与 `data/` 直到备份与合并完成）、把关键文件备份到 `upgrade_backups_时间戳/`、从新版 `etc/config.example.py` 生成 `config.py` 并写入已解析的 `MY_API_KEY`、`TARGET_DIR`、MWeb 相关项；再按场景清理不兼容的旧向量库或仅清扫描缓存、更新 `requirements/base.txt`、刷新 launchd wrapper，并在需要时引导你前台跑全量索引（`caffeinate` 防休眠）。
 
 ### 📘 文档
 
-- `**INSTALL` / `INSTALL.en**`：新增「版本升级」整节（含准备工作、命令示例、过程拆解、升级后自检与常见问题），并在文件清单中标注 `upgrade.sh`。
-- `**README` / `README.zh-CN**`：增加简短的版本升级步骤，并指向安装文档详解。
-- `**PROJECT_MANUAL` / `PROJECT_MANUAL.en**`：在手册中补充与脚本一致的升级路径说明，方便已经读过技术文档的同学直接对齐操作。
+- **`INSTALL` / `INSTALL.en`**：新增「版本升级」整节（含准备工作、命令示例、过程拆解、升级后自检与常见问题），并在文件清单中标注 `upgrade.sh`。
+- **`README` / `README.zh-CN`**：增加简短的版本升级步骤，并指向安装文档详解。
+- **`PROJECT_MANUAL` / `PROJECT_MANUAL.en`**：在手册中补充与脚本一致的升级路径说明，方便已经读过技术文档的同学直接对齐操作。
 
 ## [2.1.2] - 2026-04-27
 
