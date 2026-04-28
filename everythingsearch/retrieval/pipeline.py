@@ -96,8 +96,15 @@ class SearchPipeline:
 
         # 5. 聚合为文件级结果
         aggregated_results = self._aggregator.aggregate(
-            reranked_candidates, max_highlights=3
+            reranked_candidates, plan.normalized_query, max_highlights=3
         )
+
+        # 5.5 按分数阈值过滤低质结果
+        # 仅重排成功（rerank_score 有值）时生效；重排降级时融合分（RRF）量级远小于 1，
+        # 硬套同一阈值会导致结果骤减甚至为空，因此降级路径跳过阈值过滤。
+        if any(c.rerank_score is not None for c in reranked_candidates):
+            score_threshold = self._settings.score_threshold
+            aggregated_results = [r for r in aggregated_results if r.score >= score_threshold]
 
         # 6. 截断到最终要求的返回数 (默认或受限于 API request.limit)
         limit = request.limit if request.limit else self._settings.default_search_limit
@@ -109,7 +116,7 @@ class SearchPipeline:
             # 兼容老前端需要的一些特定字段
             tag = "精确匹配" if plan.exactness_level == "high" else "语义匹配"
             # relevance 原逻辑：关键词命中 or "x%"
-            relevance = "关键词命中" if plan.exactness_level == "high" else f"{max(0, (3 - res.score)/3) * 100:.0f}%"
+            relevance = "关键词命中" if plan.exactness_level == "high" else f"{min(100, round(res.score * 100))}%"
 
             output.append(
                 {

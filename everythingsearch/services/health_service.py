@@ -93,10 +93,15 @@ class HealthService:
         )
 
     def _get_vectordb_health(self) -> VectorDbHealth:
-        """读取向量数据库健康信息。"""
+        """读取新版检索管道 ChromaDB 向量库的文档数量。"""
         try:
-            # TODO: 实现新版检索管道的监控状态获取
-            return VectorDbHealth(status="ok", document_count=0)
+            from ..infra.settings import get_settings
+            import chromadb
+
+            settings = get_settings()
+            client = chromadb.PersistentClient(path=settings.persist_directory)
+            collection = client.get_collection("local_files")
+            return VectorDbHealth(status="ok", document_count=collection.count())
         except Exception as exc:
             return VectorDbHealth(status=f"error: {str(exc)}", document_count=0)
 

@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 class ResultAggregator(Protocol):
     """结果聚合器协议。"""
 
-    def aggregate(self, candidates: list[SearchCandidate], max_highlights: int = 3) -> list[AggregatedResult]:
+    def aggregate(self, candidates: list[SearchCandidate], query: str = "", max_highlights: int = 3) -> list[AggregatedResult]:
         """将候选块聚合为文件级结果。"""
 
 
@@ -23,11 +23,12 @@ from everythingsearch.infra.settings import get_settings
 class DefaultFileAggregator:
     """默认的文件级聚合器实现。"""
 
-    def aggregate(self, candidates: list[SearchCandidate], max_highlights: int = 3) -> list[AggregatedResult]:
+    def aggregate(self, candidates: list[SearchCandidate], query: str = "", max_highlights: int = 3) -> list[AggregatedResult]:
         if not candidates:
             return []
-            
+
         settings = get_settings()
+        query_lower = query.lower().strip() if query else ""
 
         # 按 file_id 分组
         grouped: dict[str, list[SearchCandidate]] = defaultdict(list)
@@ -63,13 +64,20 @@ class DefaultFileAggregator:
                 bonus += settings.agg_filename_bonus
             if "heading" in chunk_types:
                 bonus += settings.agg_heading_bonus
-                
+
+            # 精确短语命中加权：任一 chunk 内容包含检索词时触发
+            # 跳过长度 < 2 的查询，避免单字符/单字母等常见子串误触发
+            if query_lower and len(query_lower) >= 2:
+                for c in sorted_group:
+                    content = (c.content or "").lower()
+                    if query_lower in content:
+                        bonus += settings.agg_exact_bonus
+                        break
+
             # Multi-hit bonus (hitting many chunks in the same file)
             if len(sorted_group) > 3:
                 bonus += settings.agg_multi_hit_bonus * min(len(sorted_group) - 3, 5)  # Cap the bonus
-                
-            # TODO: exact_phrase_bonus, large_file_penalty can be added if metadata exists
-            
+
             final_score = base_score + bonus
 
             # 收集高亮片段，去重并限制数量

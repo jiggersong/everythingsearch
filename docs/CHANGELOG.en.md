@@ -2,6 +2,13 @@
 
 [English](CHANGELOG.en.md) | [中文](CHANGELOG.md)
 
+## [2.2.1] - 2026-04-28
+
+### Fixes & improvements
+
+- **Search pipeline**: Fix inverted relevance percentage; apply `SCORE_THRESHOLD` after aggregation only when rerank scores exist (skip on RRF-only fallback); implement `AGG_EXACT_BONUS` for query-in-content (query length ≥ 2); add aggregation tests.
+- **Health**: Vector DB document count now reads Chroma `local_files` collection count.
+
 ## [2.2.0] - 2026-04-27
 
 The project keeps shipping updates across releases. To help users on older installs upgrade smoothly to the latest version, I've added an automated upgrade script so you can one-click upgrade your local project to the newest bits and pick up the latest features without a painful manual merge.
