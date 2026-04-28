@@ -19,6 +19,13 @@ from everythingsearch.retrieval.sparse_retriever import SQLiteSparseRetriever
 logger = logging.getLogger(__name__)
 
 
+def _build_relevance(score: float, exactness_level: str) -> str:
+    """根据聚合分数和精确度级别计算展示用匹配度字符串。"""
+    if exactness_level == "high":
+        return "关键词命中"
+    return f"{min(100, round(score * 100))}%"
+
+
 class SearchPipeline:
     """完整的高精度多路召回搜索管线。"""
 
@@ -115,8 +122,7 @@ class SearchPipeline:
         for res in final_results:
             # 兼容老前端需要的一些特定字段
             tag = "精确匹配" if plan.exactness_level == "high" else "语义匹配"
-            # relevance 原逻辑：关键词命中 or "x%"
-            relevance = "关键词命中" if plan.exactness_level == "high" else f"{min(100, round(res.score * 100))}%"
+            relevance = _build_relevance(res.score, plan.exactness_level)
 
             output.append(
                 {
