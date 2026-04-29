@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import sqlite3
 from pathlib import Path
 from typing import Protocol
@@ -104,12 +105,33 @@ class SQLiteSparseIndexWriter:
         # 使用超时并允许在多线程中共享连接（仅做读写操作时通过上下文管理控制事务）
         return sqlite3.connect(self._db_path, timeout=30.0, check_same_thread=False)
 
+    # CJK 字符范围（含扩展区），用于补充 n-gram 索引
+    _CJK_RE = re.compile(r'[一-鿿㐀-䶿\U00020000-\U0002a6df]+')
+
+    @classmethod
+    def _extract_cjk_bigrams(cls, text: str) -> list[str]:
+        """提取文本中所有 CJK 字符二元组，作为 jieba 分词遗漏人名/专有词的兜底。
+
+        jieba.cut_for_search 仅输出 FREQ 字典中存在的二元组，导致“跟罗毅”中的
+        “罗毅”被丢弃——索引中存在“跟罗毅”但不存在“罗毅”，用户搜索“罗毅”时命中不了。
+        此方法对每个 CJK 连续片段独立提取二元组，补齐被 jieba 遗漏的子串。
+        """
+        bigrams: list[str] = []
+        for match in cls._CJK_RE.finditer(text):
+            segment = match.group()
+            if len(segment) < 2:
+                continue
+            bigrams.extend(segment[i:i + 2] for i in range(len(segment) - 1))
+        return bigrams
+
     def _tokenize_text(self, text: str) -> str:
         """使用 jieba 对文本进行分词处理，以便存入 FTS5。"""
         if not text:
             return ""
         # 使用 cut_for_search 以提高长难句中短词的召回率
-        tokens = jieba.cut_for_search(text)
+        tokens = list(jieba.cut_for_search(text))
+        # 补充 CJK 二元组，兜底 jieba FREQ 字典中不存在的人名/专有词
+        tokens.extend(self._extract_cjk_bigrams(text))
         # 用空格连接，以便 unicode61 分词器能将它们切分为独立的 token
         return " ".join(tokens)
 

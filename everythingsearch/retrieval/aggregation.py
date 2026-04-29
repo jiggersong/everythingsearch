@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from collections import defaultdict
 from typing import Protocol
 
@@ -77,6 +78,14 @@ class DefaultFileAggregator:
             # Multi-hit bonus (hitting many chunks in the same file)
             if len(sorted_group) > 3:
                 bonus += settings.agg_multi_hit_bonus * min(len(sorted_group) - 3, 5)  # Cap the bonus
+
+            # 时间衰减加权：越新的文件加成越多，指数衰减
+            now = time.time()
+            candidate_mtime = float(best_chunk.metadata.get("mtime", 0.0))
+            if candidate_mtime > 0:
+                days_ago = max(0.0, (now - candidate_mtime) / 86400.0)
+                recency_bonus = settings.agg_recency_bonus_max * (0.5 ** (days_ago / settings.agg_recency_halflife_days))
+                bonus += recency_bonus
 
             final_score = base_score + bonus
 

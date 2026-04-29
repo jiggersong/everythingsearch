@@ -98,6 +98,78 @@ def test_sparse_retriever_source_filter(populated_db):
     results = retriever.retrieve(plan)
     assert len(results) == 0
 
+@pytest.fixture
+def cjk_populated_db(mock_settings):
+    """包含中文人名/专有名词的索引，用于验证 jieba + CJK bigram 的互补覆盖。"""
+    import jieba
+    writer = SQLiteSparseIndexWriter(mock_settings)
+    chunks = [
+        IndexedChunk(
+            chunk_id="cn1",
+            file_id="fn1",
+            filepath="/docs/跟罗毅沟通纪要.md",
+            filename="2026-04-29 跟罗毅沟通算法团队职能缺失问题和规划方向.md",
+            source_type="file",
+            filetype=".md",
+            chunk_type="filename",
+            title_path=(),
+            content="文件名: 2026-04-29 跟罗毅沟通算法团队职能缺失问题和规划方向.md",
+            embedding_text="...",
+            sparse_text="文件名: 2026-04-29 跟罗毅沟通算法团队职能缺失问题和规划方向.md",
+            chunk_index=0,
+            mtime=100.0,
+            ctime=100.0,
+            metadata={}
+        ),
+        IndexedChunk(
+            chunk_id="cn2",
+            file_id="fn2",
+            filepath="/docs/other.md",
+            filename="other.md",
+            source_type="file",
+            filetype=".md",
+            chunk_type="content",
+            title_path=(),
+            content="这是一段不相关的文本。",
+            embedding_text="...",
+            sparse_text="这是一段不相关的文本。",
+            chunk_index=0,
+            mtime=200.0,
+            ctime=200.0,
+            metadata={}
+        ),
+    ]
+    writer.upsert_chunks(chunks)
+    return mock_settings
+
+
+def test_sparse_retriever_cjk_name_in_context(cjk_populated_db):
+    """搜索“罗毅”应命中包含“跟罗毅”的文件——验证 CJK bigram 兜底生效。"""
+    retriever = SQLiteSparseRetriever(cjk_populated_db)
+    planner = DefaultQueryPlanner()
+
+    req = SearchRequest(query="罗毅", source="all", date_field="mtime", date_from=None, date_to=None, limit=10)
+    plan = planner.plan(req)
+
+    results = retriever.retrieve(plan)
+    matched_ids = {r.chunk_id for r in results}
+    assert "cn1" in matched_ids, f"搜索“罗毅”应命中 cn1，实际结果: {matched_ids}"
+
+
+def test_sparse_retriever_cjk_name_in_filename(cjk_populated_db):
+    """文件名中包含“罗毅”，搜索时应能命中。"""
+    retriever = SQLiteSparseRetriever(cjk_populated_db)
+    planner = DefaultQueryPlanner()
+
+    req = SearchRequest(query="罗毅", source="all", date_field="mtime", date_from=None, date_to=None, limit=10)
+    plan = planner.plan(req)
+
+    results = retriever.retrieve(plan)
+    matched_filenames = {r.filename for r in results}
+    assert any("罗毅" in fn for fn in matched_filenames), \
+        f"搜索结果的文件名中应包含“罗毅”，实际: {matched_filenames}"
+
+
 def test_sparse_retriever_time_filter(populated_db):
     retriever = SQLiteSparseRetriever(populated_db)
     planner = DefaultQueryPlanner()

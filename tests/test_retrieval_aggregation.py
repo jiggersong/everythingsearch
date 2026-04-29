@@ -1,17 +1,31 @@
 """结果聚合模块单元测试。"""
 
+import time
+
 import pytest
 
 from everythingsearch.retrieval.aggregation import DefaultFileAggregator
 from everythingsearch.retrieval.models import SearchCandidate
 
-def create_candidate(cid: str, fid: str, score: float, content: str) -> SearchCandidate:
+
+def create_candidate(
+    cid: str,
+    fid: str,
+    score: float,
+    content: str,
+    *,
+    chunk_type: str = "content",
+    metadata: dict | None = None,
+) -> SearchCandidate:
+    base_meta = {"author": "AI"}
+    if metadata:
+        base_meta.update(metadata)
     return SearchCandidate(
         chunk_id=cid,
         file_id=fid,
         filepath=f"/test/{fid}.txt",
         filename=f"{fid}.txt",
-        chunk_type="content",
+        chunk_type=chunk_type,
         content=content,
         title_path=(),
         source_type="file",
@@ -21,9 +35,9 @@ def create_candidate(cid: str, fid: str, score: float, content: str) -> SearchCa
         sparse_score=None,
         dense_score=None,
         fusion_score=score,
-        rerank_score=score, # 为了测试，假设 rerank 成功
+        rerank_score=score,  # 为了测试，假设 rerank 成功
         rerank_rank=None,
-        metadata={"author": "AI"}
+        metadata=base_meta,
     )
 
 def test_file_aggregator_basic():
@@ -95,3 +109,53 @@ def test_exact_phrase_bonus_short_query_skipped():
 
     # 单字符查询不触发 bonus，分数应与不传 query 时一致
     assert results_with_query[0].score == results_without_query[0].score
+
+
+def test_recency_bonus_newer_file_ranks_higher():
+    """mtime 更新的文件应获得时间加权，在相关性相同时排名更靠前。"""
+    aggregator = DefaultFileAggregator()
+    now = time.time()
+    today_mtime = now - 3600         # 1 小时前
+    old_mtime = now - 30 * 86400     # 30 天前
+
+    candidates = [
+        create_candidate("c1", "old", 0.8, "old file content", metadata={"mtime": old_mtime}),
+        create_candidate("c2", "new", 0.8, "new file content", metadata={"mtime": today_mtime}),
+    ]
+
+    results = aggregator.aggregate(candidates, max_highlights=2)
+
+    assert len(results) == 2
+    # 新文件应排前面
+    assert results[0].file_id == "new"
+    assert results[1].file_id == "old"
+    # 新文件分数应严格高于旧文件
+    assert results[0].score > results[1].score
+
+
+def test_recency_bonus_old_files_same():
+    """mtime 相同的旧文件分数应一致。"""
+    aggregator = DefaultFileAggregator()
+    now = time.time()
+    one_year_ago = now - 365 * 86400
+
+    candidates = [
+        create_candidate("c1", "f1", 0.8, "content 1", metadata={"mtime": one_year_ago}),
+        create_candidate("c2", "f2", 0.8, "content 2", metadata={"mtime": one_year_ago}),
+    ]
+
+    results = aggregator.aggregate(candidates, max_highlights=2)
+    assert len(results) == 2
+    # 两年老文件的时间加权都接近 0，分数应该相等
+    assert abs(results[0].score - results[1].score) < 0.001
+
+
+def test_recency_bonus_no_mtime_no_crash():
+    """mtime 缺失时不抛异常，正常聚合。"""
+    aggregator = DefaultFileAggregator()
+    candidates = [
+        create_candidate("c1", "f1", 0.8, "content 1"),  # 无 mtime
+        create_candidate("c2", "f2", 0.8, "content 2", metadata={"mtime": time.time()}),
+    ]
+    results = aggregator.aggregate(candidates, max_highlights=2)
+    assert len(results) == 2

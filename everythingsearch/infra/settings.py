@@ -92,6 +92,8 @@ class Settings:
     agg_exact_bonus: float
     agg_multi_hit_bonus: float
     agg_large_file_penalty: float
+    agg_recency_bonus_max: float
+    agg_recency_halflife_days: int
 
     # 智能搜索（意图识别与结果解读；需配置 DashScope API Key）
     nl_intent_model: str
@@ -285,6 +287,8 @@ def _load_settings() -> Settings:
         agg_exact_bonus=_load_float("AGG_EXACT_BONUS", legacy_config, "AGG_EXACT_BONUS", default=0.10),
         agg_multi_hit_bonus=_load_float("AGG_MULTI_HIT_BONUS", legacy_config, "AGG_MULTI_HIT_BONUS", default=0.05),
         agg_large_file_penalty=_load_float("AGG_LARGE_FILE_PENALTY", legacy_config, "AGG_LARGE_FILE_PENALTY", default=0.05),
+        agg_recency_bonus_max=_load_float("AGG_RECENCY_BONUS_MAX", legacy_config, "AGG_RECENCY_BONUS_MAX", default=0.05),
+        agg_recency_halflife_days=_load_int("AGG_RECENCY_HALFLIFE_DAYS", legacy_config, "AGG_RECENCY_HALFLIFE_DAYS", default=7),
         nl_intent_model=_load_str(
             "NL_INTENT_MODEL",
             legacy_config,

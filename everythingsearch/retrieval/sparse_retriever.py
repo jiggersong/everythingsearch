@@ -54,10 +54,11 @@ class SQLiteSparseRetriever:
                 # 我们可以取其负值或原样排序并在返回时转换，这里我们在 SQL 中就 ORDER BY bm25_score (升序)。
                 
                 query_sql = f"""
-                    SELECT 
-                        c.chunk_id, c.file_id, c.filepath, c.filename, 
-                        c.source_type, c.filetype, c.chunk_type, 
+                    SELECT
+                        c.chunk_id, c.file_id, c.filepath, c.filename,
+                        c.source_type, c.filetype, c.chunk_type,
                         c.title_path, c.content, c.metadata_json,
+                        c.mtime,
                         bm25(sparse_chunks_fts, ?, ?, ?, ?) AS bm25_score
                     FROM sparse_chunks_fts f
                     JOIN sparse_chunks c ON c.chunk_id = f.chunk_id
@@ -98,15 +99,17 @@ class SQLiteSparseRetriever:
 
                 candidates = []
                 for rank, row in enumerate(rows, start=1):
-                    (chunk_id, file_id, filepath, filename, source_type, filetype, 
-                     chunk_type, title_path_json, content, metadata_json, bm25_score) = row
-                    
+                    (chunk_id, file_id, filepath, filename, source_type, filetype,
+                     chunk_type, title_path_json, content, metadata_json, chunk_mtime, bm25_score) = row
+
                     try:
                         title_path = tuple(json.loads(title_path_json))
                         metadata = json.loads(metadata_json)
                     except (TypeError, ValueError):
                         title_path = ()
                         metadata = {}
+                    # 将 mtime 注入 metadata，供聚合层时间加权使用
+                    metadata["mtime"] = chunk_mtime
 
                     # 将 bm25 分数转换为越大越好。可以简单地用一个常数减去，或者取反。
                     # 由于 RRF 融合其实主要依赖 rank，绝对分数不那么重要，但为了调试直观，这里直接取负。
