@@ -231,12 +231,16 @@ make app-restart
 make app-stop
 ```
 
+`make index` and `make index-full` print file scale, estimated index chunks, estimated tokens, and estimated duration before work starts. During long runs they log progress every 30 seconds and finish with a short summary. Token counts are local estimates; actual billing is determined by the model provider.
+
 ### Manual Incremental Index
 
 ```bash
 ./venv/bin/python -m everythingsearch.incremental
 ./scripts/run_app.sh restart
 ```
+
+Incremental indexing first reports added, modified, and deleted file counts plus estimated cost. If the current vector collection is missing, it explicitly falls back to a full rebuild.
 
 ### Full Rebuild
 

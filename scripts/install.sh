@@ -388,6 +388,8 @@ build_first_index() {
     echo -e "${CYAN}══════════ 首次索引 ══════════${NC}"
     echo ""
     echo "首次使用需要构建索引，根据文件数量可能需要 10 分钟到数小时不等。"
+    echo "开始后会先输出文件规模、预计索引块、预计 Token 和预计耗时。"
+    echo "构建过程中每 30 秒会输出一次进度，完成后会输出总结报告。"
     echo "建议在电脑不使用时执行（脚本会自动防止系统休眠）。"
     echo ""
     echo -n "现在开始构建索引? (y/N): "
@@ -448,6 +450,7 @@ print_summary() {
     echo ""
     echo -e "  ${YELLOW}完整重建索引${NC}:"
     echo "    cd $INSTALL_DIR && caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full"
+    echo "    索引任务会自动输出规模预估、30 秒进度和完成总结。"
     echo ""
 }
 

@@ -4,6 +4,7 @@ import logging
 import sqlite3
 import threading
 import time
+from dataclasses import dataclass
 from typing import Any
 from queue import Queue, Empty
 
@@ -11,6 +12,15 @@ from pydantic import ConfigDict, PrivateAttr
 from langchain_community.embeddings import DashScopeEmbeddings
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class EmbeddingStatsSnapshot:
+    """embedding 缓存与远端调用统计快照。"""
+
+    cache_hit_text_count: int
+    uncached_text_count: int
+    remote_batch_count: int
 
 
 class ConnectionPool:
@@ -177,6 +187,7 @@ class CachedEmbeddings(DashScopeEmbeddings):
     _cache: Any = None
     cache_hits: int = 0
     api_calls: int = 0
+    remote_batch_count: int = 0
     _stats_lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
 
     def __init__(self, cache_path: str, **kwargs):
@@ -184,6 +195,9 @@ class CachedEmbeddings(DashScopeEmbeddings):
             raise ValueError("CachedEmbeddings 需要 cache_path（请传入 config.EMBEDDING_CACHE_PATH）")
         super().__init__(**kwargs)
         object.__setattr__(self, "_cache", EmbeddingCache(cache_path))
+        object.__setattr__(self, "cache_hits", 0)
+        object.__setattr__(self, "api_calls", 0)
+        object.__setattr__(self, "remote_batch_count", 0)
 
     # DashScope 单行最大 2048 Token，混合文本保守截断
     _EMBED_MAX = 600
@@ -210,6 +224,8 @@ class CachedEmbeddings(DashScopeEmbeddings):
 
         if uncached_indices:
             uncached_texts = [safe_texts[i] for i in uncached_indices]
+            with self._stats_lock:
+                self.remote_batch_count += 1
             new_vectors = super().embed_documents(uncached_texts)
             to_cache = []
             for idx, vec in zip(uncached_indices, new_vectors):
@@ -228,16 +244,29 @@ class CachedEmbeddings(DashScopeEmbeddings):
             return result[safe]
         with self._stats_lock:
             self.api_calls += 1
+            self.remote_batch_count += 1
         vec = super().embed_query(safe)
         self._cache.put_many(self.model, [(safe, vec)])
         return vec
 
-    def stats_str(self) -> str:
+    def stats_snapshot(self) -> EmbeddingStatsSnapshot:
+        """返回当前 embedding 缓存与远端调用统计快照。"""
         with self._stats_lock:
-            total = self.cache_hits + self.api_calls
-            if total == 0:
-                return "无嵌入调用"
-            return f"API 调用: {self.api_calls} / {total} ({self.cache_hits} 缓存命中)"
+            return EmbeddingStatsSnapshot(
+                cache_hit_text_count=self.cache_hits,
+                uncached_text_count=self.api_calls,
+                remote_batch_count=self.remote_batch_count,
+            )
+
+    def stats_str(self) -> str:
+        snapshot = self.stats_snapshot()
+        total = snapshot.cache_hit_text_count + snapshot.uncached_text_count
+        if total == 0:
+            return "无嵌入调用"
+        return (
+            f"远端文本: {snapshot.uncached_text_count} / {total} "
+            f"({snapshot.cache_hit_text_count} 缓存命中, {snapshot.remote_batch_count} 批次)"
+        )
     
     def cleanup_cache(self, max_age_days: int = 30) -> int:
         """清理旧缓存条目"""

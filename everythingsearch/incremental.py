@@ -13,7 +13,6 @@ import time
 import sqlite3
 import subprocess
 import argparse
-import unicodedata
 import logging
 
 # 直接执行 `python everythingsearch/incremental.py` 时，sys.path 里只有包目录；
@@ -23,7 +22,6 @@ if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
 from everythingsearch.indexer import (
-    normalize_path,
     build_documents_for_path_cached,
 )
 from everythingsearch.embedding_cache import CachedEmbeddings
@@ -34,6 +32,20 @@ from everythingsearch.infra.settings import (
     require_target_dirs,
 )
 from everythingsearch.logging_config import setup_cli_logging
+from everythingsearch.indexing.file_scanner import (
+    scan_disk_files_for_index,
+    scan_mweb_notes_for_index,
+)
+from everythingsearch.indexing.progress_estimator import (
+    IndexScaleSnapshot,
+    estimate_incremental_cost,
+    estimate_tokens_from_texts,
+    load_historical_chunks_per_file,
+)
+from everythingsearch.indexing.progress_reporter import (
+    IndexProgressReporter,
+    IndexProgressState,
+)
 from everythingsearch.indexing.sparse_index_writer import SQLiteSparseIndexWriter
 from everythingsearch.indexing.pipeline_indexer import generate_file_id
 from everythingsearch.indexing.chunk_models import IndexedChunk
@@ -55,57 +67,16 @@ def _init_state_db(conn: sqlite3.Connection):
     conn.commit()
 
 
+# 迁移兼容层：以下两个 wrapper 仅保留用于兼容旧代码和测试，
+# 新代码应直接从 everythingsearch.indexing.file_scanner 导入。
 def _scan_disk_files() -> dict[str, tuple[float, str]]:
     """Scan TARGET_DIR(s) and return {filepath: (mtime, 'file')}."""
-    settings = get_settings()
-    result = {}
-    for target_dir in require_target_dirs(settings):
-        if not os.path.isdir(target_dir):
-            continue
-        for root, dirs, files in os.walk(target_dir):
-            dirs[:] = [d for d in dirs if not d.startswith('.')]
-            for f in files:
-                if f.startswith('.'):
-                    continue
-                _, ext = os.path.splitext(f)
-                ext = ext.lower()
-                if ext not in settings.supported_extensions:
-                    continue
-                raw_path = os.path.join(root, f)
-                filepath = normalize_path(raw_path)
-                if settings.index_only_keywords:
-                    if not any(kw in filepath for kw in settings.index_only_keywords):
-                        continue
-                try:
-                    mtime = os.path.getmtime(filepath)
-                except OSError:
-                    continue
-                result[filepath] = (mtime, "file")
-    return result
+    return scan_disk_files_for_index()
 
 
 def _scan_disk_mweb() -> dict[str, tuple[float, str]]:
     """Scan MWEB_DIR and return {filepath: (mtime, 'mweb')}."""
-    settings = get_settings()
-    result = {}
-    if not settings.enable_mweb:
-        return result
-    mweb_dir = settings.mweb_dir
-    if not mweb_dir or not os.path.isdir(mweb_dir):
-        return result
-    for root, dirs, files in os.walk(mweb_dir):
-        dirs[:] = [d for d in dirs if not d.startswith('.')]
-        for f in files:
-            if not f.endswith('.md') or f.startswith('.'):
-                continue
-            raw_path = os.path.join(root, f)
-            filepath = normalize_path(raw_path)
-            try:
-                mtime = os.path.getmtime(filepath)
-            except OSError:
-                continue
-            result[filepath] = (mtime, "mweb")
-    return result
+    return scan_mweb_notes_for_index()
 
 
 def _load_db_state(conn: sqlite3.Connection) -> dict[str, tuple[float, str]]:
@@ -139,9 +110,8 @@ def run_incremental():
     db_path = settings.index_state_db
     total_start = time.time()
 
-    logger.info("增量索引开始。")
-
     if settings.enable_mweb and settings.mweb_export_script and os.path.isfile(settings.mweb_export_script):
+        print("正在运行 MWeb 导出...")
         logger.info("开始运行 MWeb 导出脚本。")
         try:
             subprocess.run(
@@ -156,12 +126,12 @@ def run_incremental():
     conn = sqlite3.connect(db_path)
     _init_state_db(conn)
 
+    print("正在扫描文件系统...")
     logger.info("开始扫描文件系统。")
     disk_files = _scan_disk_files()
-    logger.info("扫描到文件数: %s", len(disk_files))
-
     disk_mweb = _scan_disk_mweb()
-    logger.info("扫描到 MWeb 笔记数: %s", len(disk_mweb))
+    logger.info("扫描到文件数: %s, MWeb 笔记数: %s", len(disk_files), len(disk_mweb))
+    print(f"  文件: {len(disk_files)}  笔记: {len(disk_mweb)}")
 
     disk_all = {**disk_files, **disk_mweb}
     db_state = _load_db_state(conn)
@@ -180,26 +150,59 @@ def run_incremental():
         if fp not in disk_all:
             deleted_paths.append(fp)
 
-    logger.info("变更统计开始。")
-    logger.info("新增: %s", len(new_paths))
-    logger.info("修改: %s", len(modified_paths))
-    logger.info("删除: %s", len(deleted_paths))
+    logger.info("变更统计: 新增=%s, 修改=%s, 删除=%s", len(new_paths), len(modified_paths), len(deleted_paths))
+    print(f"变更: +{len(new_paths)} ~{len(modified_paths)} -{len(deleted_paths)}  (新增/修改/删除)")
 
     if not new_paths and not modified_paths and not deleted_paths:
+        print("索引已是最新，无需更新。")
         logger.info("索引已是最新，无需更新。")
         conn.close()
         return
+
+    to_index = modified_paths + new_paths
+    scale_snapshot = IndexScaleSnapshot(
+        disk_file_count=len(disk_files),
+        mweb_note_count=len(disk_mweb),
+        new_file_count=len(new_paths),
+        modified_file_count=len(modified_paths),
+        deleted_file_count=len(deleted_paths),
+        pending_file_count=len(to_index) + len(deleted_paths),
+        existing_state_file_count=len(db_state),
+    )
+    chunks_per_file = load_historical_chunks_per_file(
+        settings.sparse_index_path,
+        fallback_file_count=len(db_state),
+    )
+    estimate = estimate_incremental_cost(
+        pending_file_count=len(to_index),
+        historical_chunks_per_file=chunks_per_file,
+    )
 
     client = chromadb.PersistentClient(path=settings.persist_directory)
     existing_collections = [c.name for c in client.list_collections()]
 
     if "local_files" not in existing_collections:
-        logger.warning("ChromaDB collection 不存在，将执行完整索引。")
+        logger.warning("现有 Dense collection 不存在，增量更新无法执行，将切换为全量索引构建。")
         conn.close()
         from everythingsearch.indexing.pipeline_indexer import build_pipeline_index
-        build_pipeline_index()
+        build_pipeline_index(
+            initial_scale_snapshot=scale_snapshot,
+            transition_reason="Dense collection 不存在",
+        )
         _rebuild_state_db()
         return
+
+    reporter = IndexProgressReporter("增量索引更新", logger)
+    reporter.start(
+        IndexProgressState(
+            phase_name="准备索引更新",
+            total_file_count=len(disk_all),
+            pending_file_count=scale_snapshot.pending_file_count,
+            estimated_total_chunk_count=estimate.estimated_chunk_count,
+            estimated_total_token_count=estimate.estimated_input_token_count,
+        ),
+        estimate,
+    )
 
     collection = client.get_collection("local_files")
 
@@ -216,10 +219,19 @@ def run_incremental():
     sparse_writer = SQLiteSparseIndexWriter(settings)
 
     if deleted_paths:
+        reporter.update_phase("删除已移除文件索引")
+        print(f"正在删除 {len(deleted_paths)} 个已移除文件的索引...")
         logger.info("开始删除 %s 个已移除文件的索引。", len(deleted_paths))
+        deleted_batch_count = 0
         for fp in deleted_paths:
             _delete_chunks(collection, fp, sparse_writer)
             conn.execute("DELETE FROM file_index WHERE filepath = ?", (fp,))
+            deleted_batch_count += 1
+            if deleted_batch_count >= 50:
+                reporter.add_deleted_files(deleted_batch_count)
+                deleted_batch_count = 0
+        if deleted_batch_count:
+            reporter.add_deleted_files(deleted_batch_count)
         conn.commit()
         # 同步清理扫描缓存，避免缓存膨胀
         cache_path = settings.scan_cache_path
@@ -233,14 +245,15 @@ def run_incremental():
             scan_conn.close()
         logger.info("删除完成。")
 
-    to_index = modified_paths + new_paths
     scan_cache_conn = None
     if to_index:
+        reporter.update_phase("新增与修改文件索引")
         cache_path = settings.scan_cache_path
         scan_cache_conn = sqlite3.connect(cache_path) if cache_path else None
         if scan_cache_conn:
             from everythingsearch.indexer import _init_scan_cache
             _init_scan_cache(scan_cache_conn)
+        print(f"正在索引 {len(to_index)} 个文件 ({len(modified_paths)} 修改 + {len(new_paths)} 新增)...")
         logger.info(
             "开始索引 %s 个文件 (%s 修改 + %s 新增)。",
             len(to_index),
@@ -255,11 +268,19 @@ def run_incremental():
 
             docs = build_documents_for_path_cached(fp, mtime, stype, scan_cache_conn)
             if docs:
+                file_estimated_tokens = estimate_tokens_from_texts([doc.page_content for doc in docs])
                 ok = False
                 for attempt in range(3):
                     try:
                         vectordb.add_documents(docs)
                         ok = True
+                        embedding_stats = embeddings.stats_snapshot()
+                        reporter.set_embedding_stats(
+                            embedding_stats.cache_hit_text_count,
+                            embedding_stats.uncached_text_count,
+                            embedding_stats.remote_batch_count,
+                        )
+                        reporter.add_dense_chunks(len(docs))
                         break
                     except Exception as e:
                         if attempt < 2:
@@ -267,6 +288,7 @@ def run_incremental():
                         else:
                             logger.error("索引失败 %s: %s", os.path.basename(fp), e)
                 if not ok:
+                    reporter.add_failed_file()
                     continue
                 
                 # BUG-001: Write to FTS5 Sparse Index
@@ -323,8 +345,13 @@ def run_incremental():
                 if chunks_to_write:
                     try:
                         sparse_writer.upsert_chunks(chunks_to_write)
+                        reporter.add_sparse_chunks(len(chunks_to_write))
                     except Exception as e:
                         logger.error("写入 Sparse 索引失败 %s: %s", os.path.basename(fp), e)
+                        reporter.add_failed_file()
+                reporter.add_processed_file(len(docs), file_estimated_tokens)
+            else:
+                reporter.add_skipped_file()
 
             conn.execute(
                 "INSERT OR REPLACE INTO file_index (filepath, mtime, source_type, indexed_at) VALUES (?, ?, ?, ?)",
@@ -334,6 +361,7 @@ def run_incremental():
             if (i + 1) % 20 == 0 or i == len(to_index) - 1:
                 conn.commit()
                 pct = (i + 1) / len(to_index) * 100
+                print(f"  进度: {pct:.0f}% ({i+1}/{len(to_index)})")
                 logger.info("增量索引进度: %.0f%% (%s/%s)", pct, i + 1, len(to_index))
                 time.sleep(0.2)
 
@@ -344,12 +372,10 @@ def run_incremental():
     conn.close()
     elapsed = time.time() - total_start
 
-    logger.info("增量索引完成。")
-    logger.info("新增: %s", len(new_paths))
-    logger.info("修改: %s", len(modified_paths))
-    logger.info("删除: %s", len(deleted_paths))
+    logger.info("增量索引完成。新增=%s, 修改=%s, 删除=%s", len(new_paths), len(modified_paths), len(deleted_paths))
     logger.info("嵌入缓存: %s", embeddings.stats_str())
     logger.info("总耗时: %.1fs", elapsed)
+    reporter.finish()
 
 def _rebuild_state_db():
     """Rebuild the state DB after a full index by scanning disk state."""
@@ -368,6 +394,7 @@ def _rebuild_state_db():
         )
     conn.commit()
     conn.close()
+    print(f"状态数据库已重建: {len(disk_files)} 文件 + {len(disk_mweb)} 笔记")
     logger.info("状态数据库已重建: %s 文件 + %s 笔记", len(disk_files), len(disk_mweb))
 
 

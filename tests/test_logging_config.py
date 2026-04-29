@@ -119,14 +119,16 @@ class TestConfigImportUsage:
             )
             assert has_direct_config_import is False, module_path.name
 
-    def test_incremental_has_no_print_calls(self):
-        """incremental 核心路径源码不应再包含 print 调用。"""
+    def test_incremental_uses_print_for_terminal_and_logger_for_file(self):
+        """incremental 源码应同时使用 print（终端友好输出）和 logger（文件日志）。"""
         source = (_PROJECT_ROOT / "everythingsearch" / "incremental.py").read_text(encoding="utf-8")
         tree = ast.parse(source)
 
-        assert not any(
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id == "print"
+        calls = [
+            (node.lineno, node.func.id)
             for node in ast.walk(tree)
-        )
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id in ("print",)
+        ]
+        assert calls, "incremental.py 应包含 print() 调用用于终端友好输出"

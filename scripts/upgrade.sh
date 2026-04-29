@@ -415,6 +415,8 @@ rebuild_index() {
             echo "由于旧版索引格式与当前版本不兼容，必须全量重建索引。"
             echo "根据文件数量，可能需要 10 分钟到数小时不等。"
             echo "期间会调用 DashScope 嵌入 API（可能产生少量费用）。"
+            echo "重建开始后会先输出文件规模、预计索引块、预计 Token 和预计耗时。"
+            echo "执行过程中每 30 秒输出一次进度，完成后输出总结报告。"
             echo ""
             echo -n "是否现在开始重建索引? (y/N): "
             read -r build_now
@@ -506,6 +508,7 @@ print_guide() {
     echo ""
     echo -e "  ${YELLOW}完整重建索引${NC}:"
     echo "    cd $TARGET_ROOT && caffeinate -i $(python_command_hint "$TARGET_ROOT") -m everythingsearch.incremental --full"
+    echo "    该命令会输出索引规模预估、运行中进度和完成总结。"
     echo ""
 }
 

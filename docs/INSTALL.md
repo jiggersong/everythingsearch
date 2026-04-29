@@ -231,12 +231,16 @@ make app-restart
 make app-stop
 ```
 
+`make index` 与 `make index-full` 会在开始前输出文件规模、预计索引块、预计 Token 和预计耗时；运行中每 30 秒输出一次进度，完成后输出总结报告。Token 为本地估算值，实际账单以模型服务商为准。
+
 ### 手动增量索引
 
 ```bash
 ./venv/bin/python -m everythingsearch.incremental
 ./scripts/run_app.sh restart
 ```
+
+增量索引会先显示新增、修改、删除数量以及预计成本；如果当前向量 collection 缺失，会明确提示并切换到全量重建。
 
 ### 全量重建
 

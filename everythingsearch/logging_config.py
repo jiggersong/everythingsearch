@@ -72,24 +72,18 @@ def setup_flask_dev_daily_file_logging() -> None:
 
 
 def setup_cli_logging(*, level: int = logging.INFO) -> None:
-    """CLI 任务（增量/全量索引、indexer 直跑等）：统一日志格式。
+    """CLI 任务（增量/全量索引）日志配置。
 
-    - 在 **root** 上配置 stdout Handler（``%(asctime)s … [%(name)s] …``），launchd 重定向到
-      ``incremental_*.log`` 时也有时间戳；第三方库走 root 时不再出现无时间的 LastResort 行。
-    - 仍写入按天滚动的 ``logs/cli.log``（与 stdout 同格式）。
-    - 压低 chromadb/httpx 等噪音。
+    终端输出与日志文件分离：
+    - 详细日志（INFO+）写入按天滚动的 ``logs/cli.log``。
+    - 终端仅输出 WARNING+ 到 stderr，避免 INFO 日志刷屏。
+    - 用户友好的进度信息由调用方通过 ``print()`` 直接输出。
+    - 压低 chromadb/httpx 等第三方库噪音。
     """
     fmt = "%(asctime)s %(levelname)s [%(name)s] %(message)s"
     datefmt = "%Y-%m-%d %H:%M:%S"
 
-    logging.basicConfig(
-        level=level,
-        format=fmt,
-        datefmt=datefmt,
-        stream=sys.stdout,
-        force=True,
-    )
-
+    # 文件日志：完整 INFO+ 信息写入 cli.log
     log_es = logging.getLogger("everythingsearch")
     log_es.setLevel(level)
     attach_timed_rotating_file(
@@ -99,6 +93,17 @@ def setup_cli_logging(*, level: int = logging.INFO) -> None:
         fmt=fmt,
         datefmt=datefmt,
     )
+
+    # 终端：仅 WARNING+ 输出到 stderr
+    stderr_handler = logging.StreamHandler(sys.stderr)
+    stderr_handler.setLevel(logging.WARNING)
+    stderr_handler.setFormatter(logging.Formatter(fmt, datefmt=datefmt))
+
+    root = logging.getLogger()
+    root.setLevel(logging.WARNING)
+    for h in root.handlers[:]:
+        root.removeHandler(h)
+    root.addHandler(stderr_handler)
 
     for name in (
         "chromadb",

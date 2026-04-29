@@ -2,6 +2,12 @@
 
 [English](CHANGELOG.en.md) | [中文](CHANGELOG.md)
 
+## [2.2.2] - 2026-04-29
+
+### Fixes & improvements
+
+- **Index progress and cost hints**: Full rebuilds and incremental updates now print file scale, estimated chunks, estimated tokens, and estimated duration before work starts; long runs log key progress every 30 seconds and end with a short summary.
+
 ## [2.2.1] - 2026-04-28
 
 ### Fixes & improvements

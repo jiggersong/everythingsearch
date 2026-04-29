@@ -478,6 +478,12 @@ caffeinate -i nohup ./venv/bin/python -m everythingsearch.incremental --full >> 
 
 `caffeinate -i` 防止电脑睡眠中断进程。
 
+### 索引进度与成本提示
+
+全量构建和增量更新都会在开始前输出文件规模、预计索引块、预计输入 Token、预计远端 embedding 文本数和预计耗时。运行中每 30 秒输出一次进度，包含已耗时、已处理文件数、已写入 Sparse/Dense 索引块、embedding 缓存命中、远端 embedding 文本数、预计剩余耗时和剩余 Token。
+
+Token 数量是本地估算值：按最终送入 embedding 的文本长度估算，并与当前 `CachedEmbeddings` 的 600 字符截断口径保持一致。它用于帮助判断任务规模，不等同于模型服务商账单。
+
 ### 版本升级（从旧版本迁移）
 
 如果已安装过 v1.0.0 之后任一旧版本，可通过自动升级脚本将数据和配置迁移到当前最新版。

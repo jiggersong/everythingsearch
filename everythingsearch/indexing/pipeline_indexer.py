@@ -10,6 +10,20 @@ from everythingsearch.logging_config import setup_cli_logging
 from everythingsearch.indexer import scan_files, scan_mweb_notes
 from everythingsearch.indexing.chunk_models import IndexedChunk
 from everythingsearch.indexing.dense_index_writer import ChromaDenseIndexWriter
+from everythingsearch.indexing.file_scanner import (
+    scan_disk_files_for_index,
+    scan_mweb_notes_for_index,
+)
+from everythingsearch.indexing.progress_estimator import (
+    IndexScaleSnapshot,
+    estimate_cost_from_chunks,
+    estimate_full_cost_from_file_count,
+    load_historical_chunks_per_file,
+)
+from everythingsearch.indexing.progress_reporter import (
+    IndexProgressReporter,
+    IndexProgressState,
+)
 from everythingsearch.indexing.sparse_index_writer import SQLiteSparseIndexWriter
 from everythingsearch.retrieval.embedding import DashScopeEmbeddingProvider
 
@@ -19,7 +33,10 @@ def generate_file_id(filepath: str) -> str:
     """基于文件路径生成稳定的 file_id。"""
     return hashlib.md5(filepath.encode("utf-8")).hexdigest()
 
-def build_pipeline_index():
+def build_pipeline_index(
+    initial_scale_snapshot: IndexScaleSnapshot | None = None,
+    transition_reason: str | None = None,
+):
     """构建专属于新版 Pipeline 的底层索引。
     
     复用原版的扫描逻辑获得 langchain Document，
@@ -30,22 +47,57 @@ def build_pipeline_index():
     require_dashscope_api_key(settings)
     apply_sdk_environment(settings)
     
-    logger.info("开始执行 Pipeline 全量双写索引构建...")
+    if transition_reason:
+        logger.info("全量索引触发原因: %s", transition_reason)
     total_start = time.time()
+
+    if initial_scale_snapshot is None:
+        disk_files = scan_disk_files_for_index()
+        mweb_notes = scan_mweb_notes_for_index()
+        initial_scale_snapshot = IndexScaleSnapshot(
+            disk_file_count=len(disk_files),
+            mweb_note_count=len(mweb_notes),
+            pending_file_count=len(disk_files) + len(mweb_notes),
+        )
+    file_count = initial_scale_snapshot.disk_file_count + initial_scale_snapshot.mweb_note_count
+    chunks_per_file = load_historical_chunks_per_file(
+        settings.sparse_index_path,
+        fallback_file_count=file_count,
+    )
+    initial_estimate = estimate_full_cost_from_file_count(
+        file_count=file_count,
+        historical_chunks_per_file=chunks_per_file,
+    )
+    reporter = IndexProgressReporter("全量索引构建", logger)
+    reporter.start(
+        IndexProgressState(
+            phase_name="扫描与解析文件",
+            total_file_count=file_count,
+            pending_file_count=file_count,
+            estimated_total_chunk_count=initial_estimate.estimated_chunk_count,
+            estimated_total_token_count=initial_estimate.estimated_input_token_count,
+        ),
+        initial_estimate,
+    )
     
     # 1. 扫描文件
-    logger.info("开始扫描本地文件...")
-    docs, _ = scan_files()
-    
-    logger.info("开始扫描 MWeb 笔记...")
-    mweb_docs, _ = scan_mweb_notes()
+    print("正在扫描本地文件...")
+    logger.info("开始扫描本地文件。")
+    docs, _ = scan_files(progress_reporter=reporter)
+
+    print("正在扫描 MWeb 笔记...")
+    logger.info("开始扫描 MWeb 笔记。")
+    mweb_docs, _ = scan_mweb_notes(progress_reporter=reporter)
     docs.extend(mweb_docs)
-    
+
     if not docs:
         logger.warning("未扫描到任何文档内容，构建终止。")
+        reporter.finish()
         return
-        
+
+    print(f"扫描完成，共 {len(docs)} 个 chunk")
     logger.info("扫描完成，共获取到 %d 个 Chunk。", len(docs))
+    reporter.scanning_complete()
     
     # 2. 转换数据模型
     chunks_to_write = []
@@ -107,10 +159,14 @@ def build_pipeline_index():
             metadata=meta
         )
         chunks_to_write.append(indexed_chunk)
+
+    refined_estimate = estimate_cost_from_chunks(chunks_to_write)
+    reporter.update_estimate(refined_estimate)
         
     # 3. 双写持久化
-    logger.info("开始双写索引 (Sparse & Dense)...")
-    
+    print("开始双写索引 (Sparse + Dense)...")
+    logger.info("开始双写索引 (Sparse & Dense)。")
+
     # 删除旧的 sparse db 以加速
     sparse_db_path = Path(settings.sparse_index_path)
     if sparse_db_path.exists():
@@ -124,32 +180,48 @@ def build_pipeline_index():
     
     # 分批写入
     try:
-        logger.info("写入 Sparse Index (SQLite FTS5)...")
+        reporter.update_phase("Sparse Index 写入")
+        logger.info("写入 Sparse Index (SQLite FTS5)。")
         batch_size = settings.indexer_batch_size
         for i in range(0, len(chunks_to_write), batch_size):
             batch = chunks_to_write[i:i+batch_size]
             sparse_writer.upsert_chunks(batch)
+            reporter.add_sparse_chunks(len(batch))
             logger.info("已写入 Sparse Batch: %d / %d", min(i+batch_size, len(chunks_to_write)), len(chunks_to_write))
-        logger.info("Sparse Index 写入完成，开始执行 optimize...")
-        sparse_writer.optimize()
+        logger.info("Sparse Index 写入完成，开始 optimize。")
+        with reporter.blocking_phase("Sparse Index optimize"):
+            sparse_writer.optimize()
     except Exception as exc:
         logger.error("Sparse 索引构建失败: %s", exc)
+        reporter.finish()
         return
         
     try:
-        logger.info("写入 Dense Index (ChromaDB API)... 此过程可能调用大模型接口，请耐心等待...")
+        reporter.update_phase("Dense Index 写入")
+        print("写入 Dense 索引 (调用 Embedding API，请耐心等待)...")
+        logger.info("写入 Dense Index (ChromaDB API)，调用大模型接口。")
         batch_size = settings.indexer_batch_size
-        for i in range(0, len(chunks_to_write), batch_size):
-            batch = chunks_to_write[i:i+batch_size]
-            dense_writer.upsert_chunks(batch)
-            logger.info("已写入 Dense Batch: %d / %d", min(i+batch_size, len(chunks_to_write)), len(chunks_to_write))
-        logger.info("Dense Index 写入完成！")
+        with reporter.blocking_phase("Dense Index 写入"):
+            for i in range(0, len(chunks_to_write), batch_size):
+                batch = chunks_to_write[i:i+batch_size]
+                dense_writer.upsert_chunks(batch)
+                reporter.add_dense_chunks(len(batch))
+                embedding_stats = embedding_provider.stats_snapshot()
+                reporter.set_embedding_stats(
+                    embedding_stats.cache_hit_text_count,
+                    embedding_stats.uncached_text_count,
+                    embedding_stats.remote_batch_count,
+                )
+                logger.info("已写入 Dense Batch: %d / %d", min(i+batch_size, len(chunks_to_write)), len(chunks_to_write))
+        logger.info("Dense Index 写入完成。")
     except Exception as exc:
         logger.error("Dense 索引构建失败: %s", exc)
+        reporter.finish()
         return
         
     duration = time.time() - total_start
     logger.info("Pipeline 索引全量构建完成！总耗时: %.2f 秒", duration)
+    reporter.finish()
 
 if __name__ == "__main__":
     setup_cli_logging()

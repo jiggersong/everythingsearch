@@ -479,6 +479,12 @@ caffeinate -i nohup ./venv/bin/python -m everythingsearch.incremental --full >> 
 
 `caffeinate -i` prevents sleep from killing the job.
 
+### Index Progress And Cost Hints
+
+Full rebuilds and incremental updates now print file scale, estimated index chunks, estimated input tokens, estimated remote embedding texts, and estimated duration before work starts. During long runs, progress is logged every 30 seconds with elapsed time, processed files, Sparse/Dense chunks written, embedding cache hits, remote embedding texts, estimated remaining time, and remaining tokens.
+
+Token counts are local estimates. They are calculated from the text that will be sent to embedding after the current `CachedEmbeddings` 600-character truncation rule. They are useful for sizing the job, but they are not billing-grade provider usage.
+
 ### Version upgrade (migrating from an older version)
 
 If you have an older version (v1.0.0 or later) installed, use the auto-upgrade script to migrate data and configuration.

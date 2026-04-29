@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Protocol
 
-from everythingsearch.embedding_cache import CachedEmbeddings
+from everythingsearch.embedding_cache import CachedEmbeddings, EmbeddingStatsSnapshot
 from everythingsearch.infra.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -56,3 +56,13 @@ class DashScopeEmbeddingProvider:
         if not text:
             return []
         return self._get_embeddings().embed_query(text)
+
+    def stats_snapshot(self) -> EmbeddingStatsSnapshot:
+        """返回底层 CachedEmbeddings 的统计快照。"""
+        if self._embeddings is None:
+            return EmbeddingStatsSnapshot(
+                cache_hit_text_count=0,
+                uncached_text_count=0,
+                remote_batch_count=0,
+            )
+        return self._get_embeddings().stats_snapshot()

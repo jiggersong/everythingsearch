@@ -16,6 +16,8 @@ from langchain_chroma import Chroma
 from langchain_core.documents import Document
 
 from .embedding_cache import CachedEmbeddings
+from .indexing.progress_estimator import estimate_tokens_from_texts
+from .indexing.progress_reporter import IndexProgressReporter
 from .infra.settings import (
     apply_sdk_environment,
     get_settings,
@@ -489,7 +491,17 @@ def build_documents_for_file(filepath: str, filename: str, ext: str, source_type
     return documents
 
 
-def scan_files():
+def scan_files(progress_reporter: IndexProgressReporter | None = None):
+    """扫描 TARGET_DIR 中的普通文件并解析为 Document 列表。
+
+    Args:
+        progress_reporter: 可选的进度上报器，传入后每解析一个文件会记录扫描进度。
+            扫描阶段调用 ``add_scanned_file`` 而非 ``add_processed_file``，
+            避免进度百分比在索引写入前就跳到 100%。
+
+    Returns:
+        tuple[list[Document], float]: (文档列表, 耗时秒数)。
+    """
     settings = get_settings()
     documents = []
     target_dirs = require_target_dirs(settings)
@@ -552,6 +564,11 @@ def scan_files():
                         documents.extend(cached)
                         file_count += 1
                         cache_hits += 1
+                        if progress_reporter:
+                            progress_reporter.add_scanned_file(
+                                len(cached),
+                                estimate_tokens_from_texts([doc.page_content for doc in cached]),
+                            )
                         if file_count % 50 == 0:
                             logger.info(
                                 "扫描进度: 已捕获 %s 个文件 (扫描 %s, 缓存命中 %s)",
@@ -566,6 +583,11 @@ def scan_files():
                 if conn:
                     _save_cached_docs(conn, filepath, mtime, "file", file_docs, auto_commit=False)
                 file_count += 1
+                if progress_reporter:
+                    progress_reporter.add_scanned_file(
+                        len(file_docs),
+                        estimate_tokens_from_texts([doc.page_content for doc in file_docs]),
+                    )
                 if file_count % 50 == 0:
                     if conn:
                         conn.commit()
@@ -669,8 +691,16 @@ def build_documents_for_mweb(filepath: str, content: str) -> list[Document]:
     return documents
 
 
-def scan_mweb_notes():
-    """Scan MWeb exported markdown notes."""
+def scan_mweb_notes(progress_reporter: IndexProgressReporter | None = None):
+    """扫描 MWeb 导出的 Markdown 笔记并解析为 Document 列表。
+
+    Args:
+        progress_reporter: 可选的进度上报器，传入后每解析一篇笔记会记录扫描进度。
+            扫描阶段调用 ``add_scanned_file`` 而非 ``add_processed_file``。
+
+    Returns:
+        tuple[list[Document], float]: (文档列表, 耗时秒数)。
+    """
     settings = get_settings()
     if not settings.enable_mweb:
         logger.info("已关闭 MWeb 数据源（ENABLE_MWEB=False），跳过 MWeb 扫描。")
@@ -709,6 +739,11 @@ def scan_mweb_notes():
                     documents.extend(cached)
                     note_count += 1
                     cache_hits += 1
+                    if progress_reporter:
+                        progress_reporter.add_scanned_file(
+                            len(cached),
+                            estimate_tokens_from_texts([doc.page_content for doc in cached]),
+                        )
                     if note_count % 50 == 0:
                         logger.info(
                             "MWeb 扫描进度: 已捕获 %s 篇笔记 (缓存命中 %s)",
@@ -728,6 +763,11 @@ def scan_mweb_notes():
             if conn:
                 _save_cached_docs(conn, filepath, mtime, "mweb", note_docs, auto_commit=False)
             note_count += 1
+            if progress_reporter:
+                progress_reporter.add_scanned_file(
+                    len(note_docs),
+                    estimate_tokens_from_texts([doc.page_content for doc in note_docs]),
+                )
             if note_count % 50 == 0:
                 if conn:
                     conn.commit()

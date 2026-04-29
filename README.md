@@ -10,7 +10,7 @@ EverythingSearch is a **local semantic file search engine for macOS**, comparabl
 - **Filenames and body text together**: Matches aren’t limited to filenames—headings and document text count too; results that already show your clues in the name or title tend to rank higher so you scroll less.
 - **Narrow the hunt**: Filter by folder and by modified or created time, or switch to a filename-focused mode when that’s all you recall.
 - **Comfortable in the browser**: Search and skim results in a local web UI with a clear layout and a roomy results pane; turn on optional AI-assisted interpretation when you have a working model endpoint configured.
-- **One heavier build, then mostly incremental**: The first full index scans the disk and can take time; later runs update only what changed, keeping day-to-day waits and disk churn manageable.
+- **One heavier build, then mostly incremental**: The first full index scans the disk and can take time; indexing now prints file-scale, token, and time estimates first, then progress every 30 seconds. Later runs update only what changed, keeping day-to-day waits and disk churn manageable.
 - **Your data stays primarily local**: Indexes and vectors live on your Mac by default. Text is sent to your configured model service only when building embeddings or when you use smart search / interpretation features; behavior without an API key is described in [NL_SEARCH_AND_WEB_UI.en.md](docs/NL_SEARCH_AND_WEB_UI.en.md).
 - **MWeb in one toggle**: If you keep notes in MWeb, flip one setting to fold that library into the same index.
 - **Supercharge your Agent (CLI Support)**: I frequently tinker with LLM agents like OpenClaw, so I wrote a clean, JSON-outputting CLI interface for this search engine. Just paste a simple prompt, and your agent instantly gains "local eyes" to find files on your machine!
@@ -78,8 +78,8 @@ See [INSTALL.en.md](docs/INSTALL.en.md) §9 for details.
 
 ```bash
 make help          # list all make targets with short descriptions
-make index         # incremental indexing
-make index-full    # full reindex
+make index         # incremental indexing with scale/token estimates and 30s progress
+make index-full    # full reindex with scale/token estimates and 30s progress
 make app           # run app in the foreground
 make search q="keyword"  # CLI search (JSON output)
 make app-status    # status of launchd-managed app

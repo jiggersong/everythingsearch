@@ -9,7 +9,7 @@ import threading
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from everythingsearch.embedding_cache import ConnectionPool, EmbeddingCache
+from everythingsearch.embedding_cache import CachedEmbeddings, ConnectionPool, EmbeddingCache
 
 
 class TestConnectionPool:
@@ -211,3 +211,52 @@ class TestEmbeddingCache:
             t.join()
         
         assert len(errors) == 0, f"线程安全测试失败: {errors}"
+
+
+class TestCachedEmbeddingsStats:
+    """测试 CachedEmbeddings 统计快照。"""
+
+    @pytest.fixture
+    def temp_db(self):
+        """创建临时数据库。"""
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        os.unlink(path)
+        yield path
+        for ext in ["", "-shm", "-wal"]:
+            try:
+                os.unlink(path + ext)
+            except OSError:
+                pass
+
+    def test_stats_are_instance_scoped(self, temp_db, tmp_path):
+        """不同 CachedEmbeddings 实例不应共享统计计数器。"""
+        first = CachedEmbeddings(model="text-embedding-v2", cache_path=temp_db)
+        second = CachedEmbeddings(model="text-embedding-v2", cache_path=str(tmp_path / "second.db"))
+
+        object.__setattr__(first, "cache_hits", 2)
+        object.__setattr__(first, "api_calls", 3)
+        object.__setattr__(first, "remote_batch_count", 1)
+
+        first_snapshot = first.stats_snapshot()
+        second_snapshot = second.stats_snapshot()
+
+        assert first_snapshot.cache_hit_text_count == 2
+        assert first_snapshot.uncached_text_count == 3
+        assert first_snapshot.remote_batch_count == 1
+        assert second_snapshot.cache_hit_text_count == 0
+        assert second_snapshot.uncached_text_count == 0
+        assert second_snapshot.remote_batch_count == 0
+
+    def test_stats_str_uses_snapshot(self, temp_db):
+        """stats_str 应基于结构化 snapshot 输出可读统计。"""
+        embeddings = CachedEmbeddings(model="text-embedding-v2", cache_path=temp_db)
+        object.__setattr__(embeddings, "cache_hits", 4)
+        object.__setattr__(embeddings, "api_calls", 6)
+        object.__setattr__(embeddings, "remote_batch_count", 2)
+
+        result = embeddings.stats_str()
+
+        assert "远端文本: 6 / 10" in result
+        assert "4 缓存命中" in result
+        assert "2 批次" in result
