@@ -279,7 +279,7 @@ def _run_incremental_impl():
                 _delete_chunks(collection, fp, sparse_writer)
 
         # Phase B: 并行读取所有文件并构建 Document
-        reporter.update_phase("并行读取文件")
+        reporter.update_phase("并行扫描文件")
         all_docs: dict[str, list] = {}
 
         def _read_one(fp: str):
@@ -293,9 +293,13 @@ def _run_incremental_impl():
             for future in as_completed(futures):
                 fp = futures[future]
                 try:
-                    all_docs[fp] = future.result()
+                    docs = future.result() or []
+                    all_docs[fp] = docs
                 except Exception:
-                    all_docs[fp] = []
+                    docs = []
+                    all_docs[fp] = docs
+                reporter.add_scanned_file(len(docs), 0)
+        reporter.scanning_complete()
 
         # Phase C: 串行写入索引 (Embedding API + Sparse + 状态更新)
         reporter.update_phase("写入索引")
