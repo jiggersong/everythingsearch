@@ -299,7 +299,6 @@ def _run_incremental_impl():
                     docs = []
                     all_docs[fp] = docs
                 reporter.add_scanned_file(len(docs), 0)
-        reporter.scanning_complete()
 
         # Phase C: 串行写入索引 (Embedding API + Sparse + 状态更新)
         reporter.update_phase("写入索引")
