@@ -108,6 +108,8 @@ def normalize_path(path_str):
 
 
 def _init_scan_cache(conn: sqlite3.Connection):
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
     conn.execute("""
         CREATE TABLE IF NOT EXISTS scan_cache (
             filepath TEXT PRIMARY KEY,
