@@ -580,7 +580,7 @@ def scan_files(progress_reporter: IndexProgressReporter | None = None):
     cache_path = settings.scan_cache_path
     conn = None
     if cache_path:
-        conn = sqlite3.connect(cache_path)
+        conn = sqlite3.connect(cache_path, timeout=30)
         _init_scan_cache(conn)
 
     start = time.time()
@@ -827,7 +827,7 @@ def scan_mweb_notes(progress_reporter: IndexProgressReporter | None = None):
     cache_path = settings.scan_cache_path
     conn = None
     if cache_path:
-        conn = sqlite3.connect(cache_path)
+        conn = sqlite3.connect(cache_path, timeout=30)
         _init_scan_cache(conn)
 
     documents = []
@@ -975,7 +975,7 @@ def build_index():
     cache_path = settings.scan_cache_path
     if cache_path and docs:
         valid_sources = {d.metadata.get("source", "") for d in docs if d.metadata.get("source")}
-        conn = sqlite3.connect(cache_path)
+        conn = sqlite3.connect(cache_path, timeout=30)
         _init_scan_cache(conn)
         _prune_scan_cache(conn, valid_sources)
         conn.close()

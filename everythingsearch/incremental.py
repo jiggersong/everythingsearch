@@ -249,7 +249,7 @@ def _run_incremental_impl():
         cache_path = settings.scan_cache_path
         if cache_path:
             from everythingsearch.indexer import _init_scan_cache
-            scan_conn = sqlite3.connect(cache_path)
+            scan_conn = sqlite3.connect(cache_path, timeout=30)
             _init_scan_cache(scan_conn)
             for fp in deleted_paths:
                 scan_conn.execute("DELETE FROM scan_cache WHERE filepath = ?", (fp,))
@@ -261,7 +261,7 @@ def _run_incremental_impl():
     if to_index:
         reporter.update_phase("新增与修改文件索引")
         cache_path = settings.scan_cache_path
-        scan_cache_conn = sqlite3.connect(cache_path) if cache_path else None
+        scan_cache_conn = sqlite3.connect(cache_path, timeout=30) if cache_path else None
         if scan_cache_conn:
             from everythingsearch.indexer import _init_scan_cache
             _init_scan_cache(scan_cache_conn)
