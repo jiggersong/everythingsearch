@@ -332,7 +332,18 @@ update_dependencies() {
         return
     fi
 
-    log_info "更新 Python 运行时依赖..."
+    # 根据依赖数量预估安装时间
+    local pkg_count
+    pkg_count=$(grep -cE '^[a-zA-Z0-9]' "$requirements_file" 2>/dev/null || echo "0")
+    local est_low=$(( pkg_count * 2 / 60 ))
+    local est_high=$(( pkg_count * 4 / 60 ))
+    if (( est_low < 1 )); then est_low=1; fi
+    if (( est_high < est_low )); then est_high=$((est_low + 1)); fi
+
+    log_info "更新 Python 运行时依赖 (${pkg_count} 个包，预计 ${est_low}-${est_high} 分钟)..."
+    echo -e "  ${YELLOW}提示${NC}: 若网络访问 PyPI 较慢，可设置镜像源: pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple"
+    echo ""
+
     if "$venv_bin/python" -m pip install -r "$requirements_file"; then
         log_ok "Python 依赖已更新"
     else
