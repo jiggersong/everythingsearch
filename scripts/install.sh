@@ -14,7 +14,7 @@ BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-INSTALL_DIR="${HOME}/Documents/code/EverythingSearch"
+INSTALL_DIR="$PWD"
 
 banner() {
     echo ""
