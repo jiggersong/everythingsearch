@@ -431,6 +431,9 @@ show_full_disk_access_guide() {
         py_path="${INSTALL_DIR}/venv/bin/python"
     fi
 
+    # 将 Python 路径写入剪贴板，方便用户粘贴
+    printf '%s' "$py_path" | pbcopy
+
     echo ""
     echo -e "${YELLOW}╔══════════════════════════════════════════════════════════════╗${NC}"
     echo -e "${YELLOW}║  🔐 授权指南：消除上面提到的隐私弹窗（约 30 秒）              ║${NC}"
@@ -439,16 +442,20 @@ show_full_disk_access_guide() {
     echo "  按以下步骤授予「完全磁盘访问」权限："
     echo ""
     echo "  1. 打开 系统设置 → 隐私与安全性 → 完全磁盘访问"
-    echo "  2. 点击左下角「+」按钮"
-    echo "  3. 按 Cmd+Shift+G，粘贴路径，点击「打开」："
+    echo "  2. 点击左下角「+」按钮，弹出文件选择器"
+    echo "  3. 在文件选择器中按 Cmd+Shift+G，弹出路径输入框"
+    echo "  4. 按 Cmd+V 粘贴（路径已自动复制到剪贴板），回车「打开」"
     echo ""
     echo -e "       ${GREEN}${py_path}${NC}"
     echo ""
-    echo "  4. 再次点击「+」，添加："
+    echo "     ⚠️ 该路径在 /opt 下，Finder 默认隐藏，无法通过鼠标浏览找到，"
+    echo "        必须用 Cmd+Shift+G 直接输入路径。"
+    echo ""
+    echo "  5. 再次点击「+」，同样方式添加 /bin/bash："
     echo ""
     echo -e "       ${GREEN}/bin/bash${NC}"
     echo ""
-    echo "  5. 确保两个条目的开关均为「开启」（蓝色）"
+    echo "  6. 确保两个条目的开关均为「开启」（蓝色）"
     echo ""
     echo "  授权后所有后台任务静默运行，不再弹窗。"
     echo ""
@@ -458,14 +465,14 @@ show_full_disk_access_guide() {
     if [[ ! "$open_settings" =~ ^[Nn] ]]; then
         open "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
         echo ""
-        echo -e "  ${CYAN}系统设置已打开，请按上述步骤添加：${NC}"
+        echo -e "  ${CYAN}系统设置已打开。点击左下角「+」，按 Cmd+Shift+G → Cmd+V 添加：${NC}"
         echo -e "    ${GREEN}${py_path}${NC}"
         echo -e "    ${GREEN}/bin/bash${NC}"
         echo ""
     fi
 
     echo -e "  ${YELLOW}💡 提示${NC}: Homebrew 升级 Python 小版本（如 3.11.15→3.11.16）后"
-    echo "  路径中的版本号会变化，届时需重新授权。运行以下命令查看最新路径："
+    echo "  路径中的版本号会变化，届时需重新授权。运行以下命令获取最新路径："
     echo ""
     echo -e "    cd ${INSTALL_DIR} && ./venv/bin/python -c 'import os, sys; print(os.path.realpath(sys.executable))'"
     echo ""
