@@ -298,12 +298,12 @@ class IndexProgressReporter:
         state = self._snapshot()
         elapsed = max(0.0, now - self._start_time)
         is_scan_phase = "扫描" in state.phase_name
-        if is_scan_phase and state.scanned_file_count > 0:
+        if is_scan_phase:
             file_done = state.scanned_file_count
-            file_label = "已扫描文件"
+            file_label = "已扫描"
         else:
             file_done = state.processed_file_count + state.deleted_file_count
-            file_label = "已处理文件"
+            file_label = "已处理"
         remaining_files = max(0, state.pending_file_count - file_done)
         remaining_tokens = max(0, state.estimated_total_token_count - state.processed_token_count)
         remaining_seconds = estimate_remaining_seconds(
@@ -315,7 +315,7 @@ class IndexProgressReporter:
 
         # 终端：简洁进度行
         remaining_str = format_duration(remaining_seconds) if remaining_seconds is not None else "计算中"
-        print(f"  [{progress_pct:5.1f}%] {file_done}/{state.pending_file_count}"
+        print(f"  {file_label} [{progress_pct:5.1f}%] {file_done}/{state.pending_file_count}"
               f"  已耗时: {format_duration(elapsed)}"
               f"  预计剩余: {remaining_str}")
 

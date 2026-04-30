@@ -279,7 +279,6 @@ def _run_incremental_impl():
                 _delete_chunks(collection, fp, sparse_writer)
 
         # Phase B: 并行读取所有文件并构建 Document
-        reporter.update_phase("并行扫描文件")
         all_docs: dict[str, list] = {}
 
         def _read_one(fp: str):
@@ -288,17 +287,18 @@ def _run_incremental_impl():
 
         cpu = os.cpu_count() or 4
         max_workers = min(max(4, cpu - 1), len(to_index))
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = {executor.submit(_read_one, fp): fp for fp in to_index}
-            for future in as_completed(futures):
-                fp = futures[future]
-                try:
-                    docs = future.result() or []
-                    all_docs[fp] = docs
-                except Exception:
-                    docs = []
-                    all_docs[fp] = docs
-                reporter.add_scanned_file(len(docs), 0)
+        with reporter.blocking_phase("并行扫描文件"):
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = {executor.submit(_read_one, fp): fp for fp in to_index}
+                for future in as_completed(futures):
+                    fp = futures[future]
+                    try:
+                        docs = future.result() or []
+                        all_docs[fp] = docs
+                    except Exception:
+                        docs = []
+                        all_docs[fp] = docs
+                    reporter.add_scanned_file(len(docs), 0)
 
         # Phase C: 串行写入索引 (Embedding API + Sparse + 状态更新)
         reporter.update_phase("写入索引")
