@@ -423,7 +423,9 @@ show_full_disk_access_guide() {
     fi
 
     local py_path
-    py_path=$("${INSTALL_DIR}/venv/bin/python" -c 'import sys; print(sys.executable)' 2>/dev/null) || true
+    # sys.executable 返回 venv 内的符号链接，macOS 文件选择器无法选中链接目标
+    # 用 os.path.realpath() 解析为 Homebrew 安装的真实 Python 路径
+    py_path=$("${INSTALL_DIR}/venv/bin/python" -c 'import os, sys; print(os.path.realpath(sys.executable))' 2>/dev/null) || true
 
     if [[ -z "$py_path" ]]; then
         py_path="${INSTALL_DIR}/venv/bin/python"
@@ -465,7 +467,7 @@ show_full_disk_access_guide() {
     echo -e "  ${YELLOW}💡 提示${NC}: Homebrew 升级 Python 小版本（如 3.11.15→3.11.16）后"
     echo "  路径中的版本号会变化，届时需重新授权。运行以下命令查看最新路径："
     echo ""
-    echo -e "    cd ${INSTALL_DIR} && ./venv/bin/python -c 'import sys; print(sys.executable)'"
+    echo -e "    cd ${INSTALL_DIR} && ./venv/bin/python -c 'import os, sys; print(os.path.realpath(sys.executable))'"
     echo ""
 }
 
