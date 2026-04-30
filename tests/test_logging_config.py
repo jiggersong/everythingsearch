@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import logging
+import sys
 from pathlib import Path
 
 from everythingsearch import logging_config
@@ -13,6 +14,13 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 def _count_root_stream_handlers() -> int:
     return sum(1 for h in logging.root.handlers if isinstance(h, logging.StreamHandler))
+
+
+def _count_root_stderr_handlers() -> int:
+    return sum(
+        1 for h in logging.root.handlers
+        if isinstance(h, logging.StreamHandler) and getattr(h, "stream", None) is sys.stderr
+    )
 
 
 def _count_daily_marks(logger: logging.Logger) -> int:
@@ -26,7 +34,7 @@ class TestLoggingConfig:
     """测试日志配置。"""
 
     def test_setup_cli_logging_does_not_duplicate_handlers(self):
-        """CLI 日志初始化不应重复挂接 handler。"""
+        """CLI 日志初始化不应重复挂接 handler，且仅有文件 handler 无 stream handler。"""
         logger = logging.getLogger("everythingsearch")
         original_es_handlers = list(logger.handlers)
         original_es_level = logger.level
@@ -41,8 +49,10 @@ class TestLoggingConfig:
             logging_config.setup_cli_logging()
             logging_config.setup_cli_logging()
 
-            assert _count_root_stream_handlers() == 1
-            assert _count_daily_marks(logger) == 1
+            # 终端不应有任何输出到 stderr 的 handler
+            assert _count_root_stderr_handlers() == 0
+            # 文件 handler 挂载在 root logger，重复调用不重复挂接
+            assert _count_daily_marks(logging.root) == 1
         finally:
             logger.handlers = original_es_handlers
             logger.setLevel(original_es_level)
@@ -50,7 +60,7 @@ class TestLoggingConfig:
             logging.root.setLevel(original_root_level)
 
     def test_cli_logging_can_attach_separate_file_after_flask_logging(self):
-        """同一 logger 上应允许挂接不同文件的日滚动 handler。"""
+        """Flask 和 CLI 日志配置应各自挂接 handler 到正确的 logger 上。"""
         logger = logging.getLogger("everythingsearch")
         original_es_handlers = list(logger.handlers)
         original_es_level = logger.level
@@ -65,12 +75,21 @@ class TestLoggingConfig:
             logging_config.setup_flask_dev_daily_file_logging()
             logging_config.setup_cli_logging()
 
-            filenames = sorted(
+            # everythingsearch logger 上应有 Flask 的 app_dev.log
+            es_filenames = sorted(
                 Path(handler.baseFilename).name
                 for handler in logger.handlers
                 if getattr(handler, logging_config._MARK, False)
             )
-            assert filenames == ["app_dev.log", "cli.log"]
+            assert es_filenames == ["app_dev.log"]
+
+            # root logger 上应有 CLI 的 cli.log
+            root_filenames = sorted(
+                Path(handler.baseFilename).name
+                for handler in logging.root.handlers
+                if getattr(handler, logging_config._MARK, False)
+            )
+            assert root_filenames == ["cli.log"]
         finally:
             logger.handlers = original_es_handlers
             logger.setLevel(original_es_level)

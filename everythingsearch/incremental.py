@@ -14,6 +14,7 @@ import sqlite3
 import subprocess
 import argparse
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # 直接执行 `python everythingsearch/incremental.py` 时，sys.path 里只有包目录；
 # 这里补上仓库根目录，保证绝对包导入和 legacy config 兼容加载都可用。
@@ -22,6 +23,8 @@ if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
 from everythingsearch.indexer import (
+    _init_scan_cache,
+    _save_cached_docs,
     build_documents_for_path_cached,
 )
 from everythingsearch.embedding_cache import CachedEmbeddings
@@ -103,6 +106,15 @@ def _delete_chunks(collection, filepath: str, sparse_writer: SQLiteSparseIndexWr
 
 
 def run_incremental():
+    try:
+        _run_incremental_impl()
+    except KeyboardInterrupt:
+        print("\n用户中断，索引已停止。")
+        logger.info("用户中断索引操作。")
+        sys.exit(1)
+
+
+def _run_incremental_impl():
     settings = get_settings()
     require_target_dirs(settings)
     require_dashscope_api_key(settings)
@@ -260,13 +272,41 @@ def run_incremental():
             len(modified_paths),
             len(new_paths),
         )
-        for i, fp in enumerate(to_index):
-            mtime, stype = disk_all[fp]
 
+        # Phase A: 删除修改文件的旧索引 chunks（先删后读，避免索引残留）
+        for fp in to_index:
             if fp in db_state:
                 _delete_chunks(collection, fp, sparse_writer)
 
-            docs = build_documents_for_path_cached(fp, mtime, stype, scan_cache_conn)
+        # Phase B: 并行读取所有文件并构建 Document
+        reporter.update_phase("并行读取文件")
+        all_docs: dict[str, list] = {}
+
+        def _read_one(fp: str):
+            mtime, stype = disk_all[fp]
+            return build_documents_for_path_cached(fp, mtime, stype, conn=None)
+
+        cpu = os.cpu_count() or 4
+        max_workers = min(max(4, cpu - 1), len(to_index))
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(_read_one, fp): fp for fp in to_index}
+            for future in as_completed(futures):
+                fp = futures[future]
+                try:
+                    all_docs[fp] = future.result()
+                except Exception:
+                    all_docs[fp] = []
+
+        # Phase C: 串行写入索引 (Embedding API + Sparse + 状态更新)
+        reporter.update_phase("写入索引")
+        for i, fp in enumerate(to_index):
+            mtime, stype = disk_all[fp]
+            docs = all_docs[fp]
+
+            # 写回扫描缓存
+            if scan_cache_conn and docs:
+                _save_cached_docs(scan_cache_conn, fp, mtime, stype, docs, auto_commit=False)
+
             if docs:
                 file_estimated_tokens = estimate_tokens_from_texts([doc.page_content for doc in docs])
                 ok = False
@@ -290,8 +330,8 @@ def run_incremental():
                 if not ok:
                     reporter.add_failed_file()
                     continue
-                
-                # BUG-001: Write to FTS5 Sparse Index
+
+                # Write to FTS5 Sparse Index
                 file_id = generate_file_id(fp)
                 file_counters = {}
                 chunks_to_write = []
@@ -311,7 +351,7 @@ def run_incremental():
                         count = file_counters.get(f"{file_id}_{chunk_type}", 0)
                         chunk_suffix = f"x{count}"
                         file_counters[f"{file_id}_{chunk_type}"] = count + 1
-                        
+
                     chunk_id = f"{file_id}_{chunk_suffix}"
                     filename = meta.pop("filename", "")
                     filetype = meta.pop("type", "")
@@ -322,7 +362,7 @@ def run_incremental():
                     ctime = float(meta.pop("ctime", 0.0))
                     meta.pop("source", None)
                     meta.pop("source_type", None)
-                    
+
                     indexed_chunk = IndexedChunk(
                         chunk_id=chunk_id,
                         file_id=file_id,
@@ -341,7 +381,7 @@ def run_incremental():
                         metadata=meta
                     )
                     chunks_to_write.append(indexed_chunk)
-                    
+
                 if chunks_to_write:
                     try:
                         sparse_writer.upsert_chunks(chunks_to_write)
@@ -363,7 +403,6 @@ def run_incremental():
                 pct = (i + 1) / len(to_index) * 100
                 print(f"  进度: {pct:.0f}% ({i+1}/{len(to_index)})")
                 logger.info("增量索引进度: %.0f%% (%s/%s)", pct, i + 1, len(to_index))
-                time.sleep(0.2)
 
         conn.commit()
 
@@ -400,18 +439,27 @@ def _rebuild_state_db():
 
 def run_full():
     """Full rebuild: use pipeline_indexer then rebuild state DB."""
-    from everythingsearch.indexing.pipeline_indexer import build_pipeline_index
-    build_pipeline_index()
-    _rebuild_state_db()
+    try:
+        from everythingsearch.indexing.pipeline_indexer import build_pipeline_index
+        build_pipeline_index()
+        _rebuild_state_db()
+    except KeyboardInterrupt:
+        print("\n用户中断，索引已停止。")
+        logger.info("用户中断索引操作。")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
-    setup_cli_logging()
-    parser = argparse.ArgumentParser(description="增量/全量索引")
-    parser.add_argument("--full", action="store_true", help="执行完整重建（而非增量更新）")
-    args = parser.parse_args()
+    try:
+        setup_cli_logging()
+        parser = argparse.ArgumentParser(description="增量/全量索引")
+        parser.add_argument("--full", action="store_true", help="执行完整重建（而非增量更新）")
+        args = parser.parse_args()
 
-    if args.full:
-        run_full()
-    else:
-        run_incremental()
+        if args.full:
+            run_full()
+        else:
+            run_incremental()
+    except KeyboardInterrupt:
+        print("\n用户中断，已退出。")
+        sys.exit(1)

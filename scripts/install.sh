@@ -162,7 +162,7 @@ configure_project() {
 
     if [[ -n "$api_key" ]]; then
         api_key_esc="$(escape_sed_repl "$api_key")"
-        sed -i '' "s|sk-your-api-key-here|${api_key_esc}|g" "$config_file"
+        sed -i '' "s|^MY_API_KEY = .*|MY_API_KEY = \"${api_key_esc}\"|" "$config_file"
         log_ok "API Key 已配置"
     else
         log_warn "未输入 API Key，请稍后手动编辑 config.py"

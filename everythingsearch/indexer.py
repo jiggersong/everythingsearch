@@ -1,11 +1,14 @@
 import json
 import os
 import re
+import signal
 import sqlite3
 import time
 import unicodedata
 import yaml
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from multiprocessing import Process, Queue
+from queue import Empty as QueueEmpty
 
 try:
     from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -38,11 +41,23 @@ import docx
 import openpyxl
 from pptx import Presentation
 
-FILE_READ_TIMEOUT = 30
+FILE_READ_TIMEOUT = 10
 MAX_FILE_SIZE_MB = 100
 XLSX_SKIP_SIZE_MB = 10
+MAX_PDF_PAGES = 50
+MAX_DOCX_PARAGRAPHS = 500
+MAX_DOCX_TABLES = 20
+MAX_DOCX_TABLE_ROWS = 500
+MAX_XLSX_ROWS = 2000
+MAX_PPTX_SLIDES = 50
 
 ZIP_MAGIC = b'PK\x03\x04'
+
+
+def _worker_count() -> int:
+    """返回并行文件处理的 Worker 数量，自适应 CPU 核数（至少 4，留 1 核给系统）。"""
+    cpu = os.cpu_count() or 4
+    return max(4, cpu - 1)
 
 # DashScope text-embedding-v2 单行最大 2048 Token，混合文本可能 1 字>1 token，保守截断
 # 此处已迁移至 Settings 统一管理，为向下兼容保留局部默认值
@@ -180,6 +195,7 @@ def _read_file_worker(
     q: Queue,
 ):
     """在子进程中执行文件读取，返回 (content, headings)，可被父进程强制终止。"""
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
     warnings.filterwarnings("ignore", category=UserWarning)
     logging.getLogger("pypdf").setLevel(logging.ERROR)
     text = ""
@@ -191,14 +207,18 @@ def _read_file_worker(
 
         elif ext == '.pdf':
             reader = pypdf.PdfReader(filepath)
-            for page in reader.pages:
-                extracted = page.extract_text()
+            total_pages = len(reader.pages)
+            pages_to_read = min(total_pages, MAX_PDF_PAGES)
+            for i in range(pages_to_read):
+                extracted = reader.pages[i].extract_text()
                 if extracted:
                     text += extracted + "\n"
                     for line in extracted.split("\n"):
                         line = line.strip()
                         if line and len(line) < 80 and not line.endswith(("。", "，", "；", ".", ",", ";")):
                             headings.append(line)
+            if total_pages > MAX_PDF_PAGES:
+                text += f"\n[本文档共 {total_pages} 页，仅索引前 {MAX_PDF_PAGES} 页]\n"
 
         elif ext == '.docx':
             try:
@@ -211,15 +231,27 @@ def _read_file_worker(
                 )
                 q.put(("", []))
                 return
+            para_count = 0
             for para in doc.paragraphs:
+                if para_count >= MAX_DOCX_PARAGRAPHS:
+                    break
                 if para.text.strip():
                     text += para.text + "\n"
+                    para_count += 1
                     style_name = para.style.name if para.style else ""
                     if style_name.startswith("Heading") or style_name.startswith("标题"):
                         headings.append(para.text.strip())
+            if len(doc.paragraphs) > MAX_DOCX_PARAGRAPHS:
+                text += f"\n[本文档共 {len(doc.paragraphs)} 段，仅索引前 {MAX_DOCX_PARAGRAPHS} 段]\n"
             try:
+                table_count = 0
                 for table in doc.tables:
+                    if table_count >= MAX_DOCX_TABLES:
+                        break
+                    row_count = 0
                     for row in table.rows:
+                        if row_count >= MAX_DOCX_TABLE_ROWS:
+                            break
                         cells = set()
                         row_parts = []
                         for cell in row.cells:
@@ -229,28 +261,43 @@ def _read_file_worker(
                                 row_parts.append(ct)
                         if row_parts:
                             text += " | ".join(row_parts) + "\n"
+                        row_count += 1
+                    table_count += 1
             except KeyError:
                 pass
 
         elif ext == '.xlsx':
             wb = openpyxl.load_workbook(filepath, read_only=True, data_only=True)
+            sheet_count = len(wb.worksheets)
+            total_rows = 0
             for sheet in wb.worksheets:
                 headings.append(sheet.title)
                 text += f"Sheet: {sheet.title}\n"
                 for row in sheet.iter_rows(values_only=True):
+                    if total_rows >= MAX_XLSX_ROWS:
+                        break
                     row_text = " ".join(str(cell) for cell in row if cell is not None)
                     if row_text.strip():
                         text += row_text + "\n"
+                        total_rows += 1
+                if total_rows >= MAX_XLSX_ROWS:
+                    text += f"\n[表格共 {sheet_count} 个工作表，仅索引前 {MAX_XLSX_ROWS} 行]\n"
+                    break
             wb.close()
 
         elif ext == '.pptx':
             prs = Presentation(filepath)
-            for slide in prs.slides:
+            total_slides = len(prs.slides)
+            slides_to_read = min(total_slides, MAX_PPTX_SLIDES)
+            for i in range(slides_to_read):
+                slide = prs.slides[i]
                 if slide.shapes.title and slide.shapes.title.text.strip():
                     headings.append(slide.shapes.title.text.strip())
                 for shape in slide.shapes:
                     if hasattr(shape, "text") and shape.text.strip():
                         text += shape.text + "\n"
+            if total_slides > MAX_PPTX_SLIDES:
+                text += f"\n[本演示文稿共 {total_slides} 页，仅索引前 {MAX_PPTX_SLIDES} 页]\n"
 
         elif ext in media_extensions:
             pass
@@ -274,7 +321,12 @@ def _read_text_direct(filepath: str) -> str:
 
 
 def _read_via_subprocess(filepath: str, ext: str) -> tuple[str, list[str]]:
-    """通过子进程读取办公文档，防止 C 扩展死锁。返回 (content, headings)"""
+    """通过子进程读取办公文档，防止 C 扩展死锁。返回 (content, headings)。
+
+    关键：先调用 q.get() 再 p.join()。若先 join 再 get，当子进程产出的文本
+    超过 OS 管道缓冲（macOS 默认 ~16KB），子进程会阻塞在 q.put() 等待父进程
+    读取，父进程阻塞在 p.join() 等待子进程退出 → 死锁直到超时。
+    """
     settings = get_settings()
     q = Queue()
     p = Process(
@@ -282,9 +334,17 @@ def _read_via_subprocess(filepath: str, ext: str) -> tuple[str, list[str]]:
         args=(filepath, ext, settings.text_extensions, settings.media_extensions, q),
     )
     p.start()
-    p.join(timeout=FILE_READ_TIMEOUT)
 
-    if p.is_alive():
+    try:
+        content, headings = q.get(timeout=FILE_READ_TIMEOUT)
+    except KeyboardInterrupt:
+        p.terminate()
+        p.join(timeout=5)
+        if p.is_alive():
+            p.kill()
+            p.join()
+        raise
+    except QueueEmpty:
         p.terminate()
         p.join(timeout=5)
         if p.is_alive():
@@ -293,11 +353,15 @@ def _read_via_subprocess(filepath: str, ext: str) -> tuple[str, list[str]]:
         filename = normalize_path(os.path.basename(filepath))
         logger.warning("文件读取超时 (%ss): %s", FILE_READ_TIMEOUT, filename)
         return "", []
-
-    try:
-        return q.get_nowait()
-    except Exception:
-        return "", []
+    else:
+        p.join(timeout=5)
+        if p.is_alive():
+            p.terminate()
+            p.join(timeout=5)
+            if p.is_alive():
+                p.kill()
+                p.join()
+        return content, headings
 
 
 def _extract_md_headings(content: str) -> list[str]:
@@ -494,6 +558,9 @@ def build_documents_for_file(filepath: str, filename: str, ext: str, source_type
 def scan_files(progress_reporter: IndexProgressReporter | None = None):
     """扫描 TARGET_DIR 中的普通文件并解析为 Document 列表。
 
+    未缓存的办公文档（PDF/docx/xlsx/pptx）通过线程池并行处理，
+    避免单个文件读取超时阻塞整体进度。
+
     Args:
         progress_reporter: 可选的进度上报器，传入后每解析一个文件会记录扫描进度。
             扫描阶段调用 ``add_scanned_file`` 而非 ``add_processed_file``，
@@ -521,6 +588,9 @@ def scan_files(progress_reporter: IndexProgressReporter | None = None):
     scanned = 0
     cache_hits = 0
 
+    # Phase 1: 遍历目录，收集有效文件，命中缓存则直接追加
+    candidates = []  # (filepath, filename, ext, mtime)
+
     for target_dir in target_dirs:
         if not os.path.isdir(target_dir):
             logger.warning("跳过不存在的目录: %s", target_dir)
@@ -545,7 +615,6 @@ def scan_files(progress_reporter: IndexProgressReporter | None = None):
                 if ext not in settings.supported_extensions:
                     continue
 
-                # 大文件提前跳过，避免进入解析流程
                 if ext in (settings.text_extensions | settings.office_extensions):
                     try:
                         if os.path.getsize(filepath) > MAX_FILE_SIZE_MB * 1024 * 1024:
@@ -578,20 +647,53 @@ def scan_files(progress_reporter: IndexProgressReporter | None = None):
                             )
                         continue
 
-                file_docs = build_documents_for_file(filepath, file, ext)
+                candidates.append((filepath, file, ext, mtime))
+
+    # Phase 2: 并行处理未缓存文件，办公文档各自在独立子进程中读取
+    if candidates:
+        max_workers = min(_worker_count(), len(candidates))
+        executor = ThreadPoolExecutor(max_workers=max_workers)
+        kb_interrupt = False
+        try:
+            future_to_info = {}
+            for filepath, filename, ext, mtime in candidates:
+                future = executor.submit(build_documents_for_file, filepath, filename, ext)
+                future_to_info[future] = (filepath, filename, ext, mtime)
+
+            for future in as_completed(future_to_info):
+                filepath, filename, ext, mtime = future_to_info[future]
+                try:
+                    file_docs = future.result()
+                except Exception:
+                    file_docs = []
+
                 documents.extend(file_docs)
-                if conn:
-                    _save_cached_docs(conn, filepath, mtime, "file", file_docs, auto_commit=False)
                 file_count += 1
+
+                if conn and file_docs:
+                    _save_cached_docs(conn, filepath, mtime, "file", file_docs, auto_commit=False)
+
                 if progress_reporter:
                     progress_reporter.add_scanned_file(
                         len(file_docs),
                         estimate_tokens_from_texts([doc.page_content for doc in file_docs]),
                     )
+
                 if file_count % 50 == 0:
                     if conn:
                         conn.commit()
                     logger.info("扫描进度: 已捕获 %s 个文件 (扫描 %s)", file_count, scanned)
+        except KeyboardInterrupt:
+            logger.info("用户中断扫描，正在清理...")
+            kb_interrupt = True
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
+
+        if kb_interrupt:
+            if conn:
+                conn.commit()
+                conn.close()
+            raise KeyboardInterrupt
 
     if conn:
         conn.commit()
@@ -691,8 +793,20 @@ def build_documents_for_mweb(filepath: str, content: str) -> list[Document]:
     return documents
 
 
+def _build_mweb_docs(filepath: str) -> list[Document]:
+    """读取 MWeb 笔记文件并构建 Document 列表（供并行调用）。"""
+    try:
+        with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
+            content = f.read()
+    except OSError:
+        return []
+    return build_documents_for_mweb(filepath, content)
+
+
 def scan_mweb_notes(progress_reporter: IndexProgressReporter | None = None):
     """扫描 MWeb 导出的 Markdown 笔记并解析为 Document 列表。
+
+    未缓存的笔记通过线程池并行处理。
 
     Args:
         progress_reporter: 可选的进度上报器，传入后每解析一篇笔记会记录扫描进度。
@@ -721,6 +835,9 @@ def scan_mweb_notes(progress_reporter: IndexProgressReporter | None = None):
     start = time.time()
     note_count = 0
     cache_hits = 0
+
+    # Phase 1: 遍历目录，命中缓存则直接追加
+    candidates = []  # (filepath, mtime)
 
     for root, dirs, files in os.walk(mweb_dir):
         dirs[:] = [d for d in dirs if not d.startswith('.')]
@@ -752,26 +869,53 @@ def scan_mweb_notes(progress_reporter: IndexProgressReporter | None = None):
                         )
                     continue
 
-            try:
-                with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
-                    content = f.read()
-            except OSError:
-                continue
+            candidates.append((filepath, mtime))
 
-            note_docs = build_documents_for_mweb(filepath, content)
-            documents.extend(note_docs)
+    # Phase 2: 并行处理未缓存笔记
+    if candidates:
+        max_workers = min(_worker_count(), len(candidates))
+        executor = ThreadPoolExecutor(max_workers=max_workers)
+        kb_interrupt = False
+        try:
+            future_to_info = {}
+            for filepath, mtime in candidates:
+                future = executor.submit(_build_mweb_docs, filepath)
+                future_to_info[future] = (filepath, mtime)
+
+            for future in as_completed(future_to_info):
+                filepath, mtime = future_to_info[future]
+                try:
+                    note_docs = future.result()
+                except Exception:
+                    note_docs = []
+
+                documents.extend(note_docs)
+                note_count += 1
+
+                if conn and note_docs:
+                    _save_cached_docs(conn, filepath, mtime, "mweb", note_docs, auto_commit=False)
+
+                if progress_reporter:
+                    progress_reporter.add_scanned_file(
+                        len(note_docs),
+                        estimate_tokens_from_texts([doc.page_content for doc in note_docs]),
+                    )
+
+                if note_count % 50 == 0:
+                    if conn:
+                        conn.commit()
+                    logger.info("MWeb 扫描进度: 已捕获 %s 篇笔记", note_count)
+        except KeyboardInterrupt:
+            logger.info("用户中断 MWeb 扫描，正在清理...")
+            kb_interrupt = True
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
+
+        if kb_interrupt:
             if conn:
-                _save_cached_docs(conn, filepath, mtime, "mweb", note_docs, auto_commit=False)
-            note_count += 1
-            if progress_reporter:
-                progress_reporter.add_scanned_file(
-                    len(note_docs),
-                    estimate_tokens_from_texts([doc.page_content for doc in note_docs]),
-                )
-            if note_count % 50 == 0:
-                if conn:
-                    conn.commit()
-                logger.info("MWeb 扫描进度: 已捕获 %s 篇笔记", note_count)
+                conn.commit()
+                conn.close()
+            raise KeyboardInterrupt
 
     if conn:
         conn.commit()

@@ -2,7 +2,11 @@
 
 import hashlib
 import logging
+import os
+import sys
 import time
+from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from pathlib import Path
 from everythingsearch.infra.settings import get_settings, require_dashscope_api_key, require_target_dirs, apply_sdk_environment
@@ -99,66 +103,73 @@ def build_pipeline_index(
     logger.info("扫描完成，共获取到 %d 个 Chunk。", len(docs))
     reporter.scanning_complete()
     
-    # 2. 转换数据模型
-    chunks_to_write = []
-    
-    # 为了保证同一个文件的不同类型 chunk 有唯一 chunk_id
-    file_counters = {}
-    
+    # 2. 转换数据模型（按文件路径分组并行，同文件内保持 chunk_id 递增）
+    groups: dict[str, list[Document]] = defaultdict(list)
     for doc in docs:
-        meta = doc.metadata.copy()
-        filepath = meta.get("source", "")
+        filepath = doc.metadata.get("source", "")
+        groups[filepath].append(doc)
+
+    def _convert_group(filepath: str, group_docs: list[Document]) -> list[IndexedChunk]:
         file_id = generate_file_id(filepath)
-        
-        # 获取或分配 chunk_idx
-        chunk_type = meta.get("chunk_type", "content")
-        
-        if chunk_type == "content":
-            chunk_idx = meta.get("chunk_idx", 0)
-            chunk_suffix = f"c{chunk_idx}"
-        elif chunk_type == "filename":
-            chunk_suffix = "fn"
-        elif chunk_type == "heading":
-            # 可能有多个 heading chunk
-            count = file_counters.get(f"{file_id}_heading", 0)
-            chunk_suffix = f"h{count}"
-            file_counters[f"{file_id}_heading"] = count + 1
-        else:
-            count = file_counters.get(f"{file_id}_{chunk_type}", 0)
-            chunk_suffix = f"x{count}"
-            file_counters[f"{file_id}_{chunk_type}"] = count + 1
-            
-        chunk_id = f"{file_id}_{chunk_suffix}"
-        
-        # 移除会被强类型化的元数据
-        filename = meta.pop("filename", "")
-        source_type = meta.pop("source_type", "file")
-        filetype = meta.pop("type", "")
-        title_path_list = meta.pop("title_path", [])
-        title_path = tuple(title_path_list) if title_path_list else ()
-        meta.pop("chunk_type", None)
-        mtime = float(meta.pop("mtime", 0.0))
-        ctime = float(meta.pop("ctime", 0.0))
-        meta.pop("source", None)
-        
-        indexed_chunk = IndexedChunk(
-            chunk_id=chunk_id,
-            file_id=file_id,
-            filepath=filepath,
-            filename=filename,
-            source_type=source_type,
-            filetype=filetype,
-            chunk_type=chunk_type,
-            title_path=title_path,
-            content=doc.page_content,
-            embedding_text=doc.page_content,
-            sparse_text=doc.page_content,
-            chunk_index=meta.get("chunk_idx", 0),
-            mtime=mtime,
-            ctime=ctime,
-            metadata=meta
-        )
-        chunks_to_write.append(indexed_chunk)
+        chunks: list[IndexedChunk] = []
+        counters: dict[str, int] = {}
+        for doc in group_docs:
+            meta = doc.metadata.copy()
+            chunk_type = meta.get("chunk_type", "content")
+            if chunk_type == "content":
+                chunk_idx = meta.get("chunk_idx", 0)
+                chunk_suffix = f"c{chunk_idx}"
+            elif chunk_type == "filename":
+                chunk_suffix = "fn"
+            elif chunk_type == "heading":
+                count = counters.get("heading", 0)
+                chunk_suffix = f"h{count}"
+                counters["heading"] = count + 1
+            else:
+                count = counters.get(chunk_type, 0)
+                chunk_suffix = f"x{count}"
+                counters[chunk_type] = count + 1
+
+            chunk_id = f"{file_id}_{chunk_suffix}"
+            filename = meta.pop("filename", "")
+            source_type = meta.pop("source_type", "file")
+            filetype = meta.pop("type", "")
+            title_path_list = meta.pop("title_path", [])
+            title_path = tuple(title_path_list) if title_path_list else ()
+            meta.pop("chunk_type", None)
+            mtime = float(meta.pop("mtime", 0.0))
+            ctime = float(meta.pop("ctime", 0.0))
+            meta.pop("source", None)
+
+            chunks.append(IndexedChunk(
+                chunk_id=chunk_id,
+                file_id=file_id,
+                filepath=filepath,
+                filename=filename,
+                source_type=source_type,
+                filetype=filetype,
+                chunk_type=chunk_type,
+                title_path=title_path,
+                content=doc.page_content,
+                embedding_text=doc.page_content,
+                sparse_text=doc.page_content,
+                chunk_index=meta.get("chunk_idx", 0),
+                mtime=mtime,
+                ctime=ctime,
+                metadata=meta
+            ))
+        return chunks
+
+    chunks_to_write: list[IndexedChunk] = []
+    cpu = os.cpu_count() or 4
+    max_workers = min(max(4, cpu - 1), len(groups))
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(_convert_group, fp, grp): fp for fp, grp in groups.items()}
+        for future in as_completed(futures):
+            try:
+                chunks_to_write.extend(future.result())
+            except Exception:
+                pass
 
     refined_estimate = estimate_cost_from_chunks(chunks_to_write)
     reporter.update_estimate(refined_estimate)
@@ -224,5 +235,9 @@ def build_pipeline_index(
     reporter.finish()
 
 if __name__ == "__main__":
-    setup_cli_logging()
-    build_pipeline_index()
+    try:
+        setup_cli_logging()
+        build_pipeline_index()
+    except KeyboardInterrupt:
+        print("\n用户中断，索引已停止。")
+        sys.exit(1)

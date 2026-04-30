@@ -2,6 +2,23 @@
 
 [English](CHANGELOG.en.md) | [中文](CHANGELOG.md)
 
+## [2.3.0] - 2026-04-30
+
+### 🚀 Performance
+
+- **Full pipeline parallelization**: Adaptive CPU-core-aware worker pool (`max(4, cpu-1)`) for file scanning; incremental indexing split into parallel read+chunk and sequential write phases; Document→Chunk conversion parallelized. ~2× faster full rebuild, 3-5× faster incremental on a 12-core Mac.
+- **Office document size caps**: PDF (50 pages), docx (500 paragraphs / 20 tables), xlsx (2000 rows), pptx (50 slides) — prevents oversized files from stalling the entire pipeline.
+
+### 🐞 Fixes
+
+- **Subprocess pipe deadlock**: Fixed `multiprocessing.Queue` pipe buffer deadlock when reading office documents (call `q.get()` before `p.join()`); timeout reduced to 10s.
+- **Ctrl+C graceful shutdown**: All index entry points (full, incremental, CLI) now handle KeyboardInterrupt cleanly without traceback leaks.
+
+### 📘 Docs
+
+- **Design doc**: Added `dev_docs/parallel-indexing-plan.zh-CN.md`.
+- **`PROJECT_MANUAL`**: Updated office-document timeout description.
+
 ## [2.2.2] - 2026-04-29
 
 ### Fixes & improvements

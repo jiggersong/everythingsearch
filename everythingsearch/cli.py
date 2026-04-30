@@ -10,8 +10,8 @@ from everythingsearch.services.health_service import HealthService
 from everythingsearch.services.search_service import SearchService
 from everythingsearch.services.nl_search_service import NLSearchService
 
-def setup_cli_logging():
-    """配置 CLI 模式下的日志，只输出 ERROR 级别，防止干扰标准输出 JSON。"""
+def setup_search_cli_logging():
+    """配置搜索 CLI 模式下的日志，只输出 ERROR 级别，防止干扰标准输出 JSON。"""
     # 禁用各类库的冗余日志
     os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -136,7 +136,7 @@ def run_search(query: str, limit: int, source: str, json_output: bool):
         sys.exit(1)
 
 def main():
-    setup_cli_logging()
+    setup_search_cli_logging()
     
     parser = argparse.ArgumentParser(description="EverythingSearch CLI")
     parser.add_argument("query", type=str, help="搜索词或自然语言查询")
