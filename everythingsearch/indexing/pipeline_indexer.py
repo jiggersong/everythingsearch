@@ -8,6 +8,7 @@ import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+from langchain_core.documents import Document
 from pathlib import Path
 from everythingsearch.infra.settings import get_settings, require_dashscope_api_key, require_target_dirs, apply_sdk_environment
 from everythingsearch.logging_config import setup_cli_logging
