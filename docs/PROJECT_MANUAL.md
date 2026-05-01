@@ -164,9 +164,14 @@ EverythingSearch/
 ├── pytest.ini                # 单测配置
 └── tests/                    # 单元测试与评测用例集
 
-~/.local/bin/
-├── everythingsearch_start.sh  # 搜索服务 launchd wrapper（安装时生成）
-└── everythingsearch_index.sh  # 增量索引 launchd wrapper（安装时生成）
+scripts/（安装或 `./scripts/install_launchd_wrappers.sh` 后，多实例相关生成文件，默认已 gitignore）
+├── .launchd_instance / .launchd_instance.mk  # Label、端口、plist 路径（供 run_app.sh / Makefile）
+├── launchd_app_wrapper.sh      # launchd → gunicorn（每安装目录一份）
+└── launchd_index_wrapper.sh    # launchd → 增量索引（每安装目录一份）
+
+~/Library/LaunchAgents/（每实例独立 plist，文件名含 12 位路径哈希后缀）
+├── com.jigger.everythingsearch.app.<后缀>.plist
+└── com.jigger.everythingsearch.index.<后缀>.plist
 ```
 
 ### 3.1 Agent Skill

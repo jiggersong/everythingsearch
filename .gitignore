@@ -43,6 +43,12 @@ logs/
 # 安装时生成的快捷启动脚本
 start.sh
 
+# 每安装目录唯一的 launchd 元数据与 wrapper（多实例）
+scripts/.launchd_instance
+scripts/.launchd_instance.mk
+scripts/launchd_app_wrapper.sh
+scripts/launchd_index_wrapper.sh
+
 # 远期演进规划与内部开发文档（避免杂音提交至开源仓库）
 dev_docs/
 release_notes.txt

@@ -12,9 +12,19 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$SCRIPT_DIR"
 
-PORT="${PORT:-8000}"
 PYTHON="${SCRIPT_DIR}/venv/bin/python"
-LAUNCHD_LABEL="com.jigger.everythingsearch.app"
+
+LAUNCHD_INSTANCE_FILE="$SCRIPT_DIR/scripts/.launchd_instance"
+if [[ -f "$LAUNCHD_INSTANCE_FILE" ]]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "$LAUNCHD_INSTANCE_FILE"
+    set +a
+fi
+# 未运行新版安装时，与旧版固定 Label / 默认端口兼容
+LAUNCHD_LABEL="${LABEL_APP:-com.jigger.everythingsearch.app}"
+PORT="${PORT:-${APP_PORT:-8000}}"
+LAUNCHD_PLIST="${HOME}/Library/LaunchAgents/${LAUNCHD_LABEL}.plist"
 
 mkdir -p logs
 
@@ -69,7 +79,7 @@ _stop() {
     fi
     echo "✅ 服务已停止"
     # KeepAlive=true 意味着 launchd 会自动重启，这是预期行为
-    # 如需完全停止，请使用: launchctl unload ~/Library/LaunchAgents/com.jigger.everythingsearch.app.plist
+    # 如需完全停止常驻，请使用: launchctl unload \"$LAUNCHD_PLIST\"
 }
 
 _restart() {
@@ -132,7 +142,7 @@ case "${1:-}" in
         ;;
     dev)
         echo "开发模式 (前台运行，Ctrl+C 停止)..."
-        echo "⚠️ 请先确保常驻服务已停止: launchctl unload ~/Library/LaunchAgents/$LAUNCHD_LABEL.plist"
+        echo "⚠️ 请先确保常驻服务已停止: launchctl unload \"$LAUNCHD_PLIST\""
         FLASK_DEBUG=true "$PYTHON" -m everythingsearch.app
         ;;
     *)

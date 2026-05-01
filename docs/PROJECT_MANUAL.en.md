@@ -169,9 +169,14 @@ EverythingSearch/
 ├── pytest.ini                # Unit test config
 └── tests/                    # Unit tests and evaluation cases
 
-~/.local/bin/
-├── everythingsearch_start.sh  # App launchd wrapper (created at install)
-└── everythingsearch_index.sh  # Incremental index launchd wrapper (created at install)
+scripts/ (generated after `install.sh` or `./scripts/install_launchd_wrappers.sh`; gitignored by default)
+├── .launchd_instance / .launchd_instance.mk  # Labels, port, plist paths for run_app.sh / Makefile
+├── launchd_app_wrapper.sh      # launchd → gunicorn (per install directory)
+└── launchd_index_wrapper.sh    # launchd → incremental index (per install directory)
+
+~/Library/LaunchAgents/ (one plist pair per instance; filename includes 12-hex path hash)
+├── com.jigger.everythingsearch.app.<suffix>.plist
+└── com.jigger.everythingsearch.index.<suffix>.plist
 ```
 
 ### 3.1 Agent Skill

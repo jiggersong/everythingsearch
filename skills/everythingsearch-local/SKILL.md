@@ -23,7 +23,7 @@ description: >-
 ## 前置条件
 
 1. 用户已在本机运行搜索服务（例如 `./scripts/run_app.sh start` 或 `./venv/bin/python -m everythingsearch.app`）。
-2. 若连接失败，提示用户先启动服务并确认端口（环境变量 `PORT` 或 `config.PORT`，默认 `8000`）。
+2. 若连接失败，提示用户先启动服务并确认端口（环境变量 `PORT` 或 `config.PORT`；多实例安装可查看该克隆下 `scripts/.launchd_instance` 中的 `APP_PORT`，未安装 launchd 时常见默认仍为 `8000`）。
 3. 可选环境变量 `EVERYTHINGSEARCH_BASE`：若服务绑在其他地址/端口，用该值作为基址（须带 scheme，如 `http://127.0.0.1:8000`）。
 
 ```

@@ -125,7 +125,7 @@ def test_upgrade_script_keeps_backup_in_target_and_migrates_string_target_dir(tm
 
 
 def test_install_launchd_wrappers_uses_existing_dotvenv_python(tmp_path: Path) -> None:
-    """验证 launchd wrapper 不会在只有 .venv 时写死 venv/bin/python。"""
+    """验证 launchd 仓内 wrapper 在仅有 .venv 时使用其 Python，而非写死 venv/bin/python。"""
     project_root = tmp_path / "project"
     fake_home = tmp_path / "home"
     fake_bin = tmp_path / "fake-bin"
@@ -142,6 +142,11 @@ def test_install_launchd_wrappers_uses_existing_dotvenv_python(tmp_path: Path) -
         f"echo \"$@\" >> \"{launchctl_log}\"\n"
         "exit 0\n",
     )
+    # install_launchd_wrappers.sh 会从 gunicorn.conf.py 解析默认端口
+    (project_root / "gunicorn.conf.py").write_text(
+        'bind = "127.0.0.1:{}".format(os.environ.get("PORT", "8000"))\n',
+        encoding="utf-8",
+    )
 
     env = os.environ.copy()
     env["HOME"] = str(fake_home)
@@ -156,11 +161,11 @@ def test_install_launchd_wrappers_uses_existing_dotvenv_python(tmp_path: Path) -
 
     assert completed.returncode == 0, completed.stdout + completed.stderr
 
-    app_wrapper = fake_home / ".local" / "bin" / "everythingsearch_start.sh"
-    index_wrapper = fake_home / ".local" / "bin" / "everythingsearch_index.sh"
+    app_wrapper = project_root / "scripts" / "launchd_app_wrapper.sh"
+    index_wrapper = project_root / "scripts" / "launchd_index_wrapper.sh"
     app_content = app_wrapper.read_text(encoding="utf-8")
     index_content = index_wrapper.read_text(encoding="utf-8")
-    assert f'PYTHON_BIN="{python_path}"' in app_content
-    assert f'PYTHON_BIN="{python_path}"' in index_content
+    assert str(python_path) in app_content
+    assert str(python_path) in index_content
     assert "$APP_DIR/venv/bin/python" not in app_content
     assert "$APP_DIR/venv/bin/python" not in index_content

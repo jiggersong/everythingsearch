@@ -169,12 +169,11 @@ sudo nano /etc/hosts
 ./scripts/install_launchd_wrappers.sh
 ```
 
-这个脚本会：
+这个脚本会（**多实例**：同一台 Mac 上不同安装目录可同时常驻，互不覆盖 plist）：
 
-- 生成 `~/.local/bin/everythingsearch_start.sh`
-- 生成 `~/.local/bin/everythingsearch_index.sh`
-- 写入 `~/Library/LaunchAgents/com.jigger.everythingsearch.app.plist`
-- 写入 `~/Library/LaunchAgents/com.jigger.everythingsearch.plist`
+- 按安装目录绝对路径的 SHA-256 **前 12 位**生成实例后缀，写入 `scripts/.launchd_instance` 与 `scripts/.launchd_instance.mk`（供 `run_app.sh`、`Makefile` 解析）
+- 在**本仓库** `scripts/` 下生成 `launchd_app_wrapper.sh`、`launchd_index_wrapper.sh`（launchd 通过 `/bin/bash` 执行，再 `cd` 到安装目录，避免 plist 直接指向受 TCC 限制的路径）
+- 写入 `~/Library/LaunchAgents/com.jigger.everythingsearch.app.<后缀>.plist` 与 `com.jigger.everythingsearch.index.<后缀>.plist`（Label 与文件名一致）
 
 调度行为：
 
@@ -182,12 +181,14 @@ sudo nano /etc/hosts
 - 定时索引使用 `RunAtLoad + StartInterval`
 - 默认间隔是 `1800` 秒，即约每 30 分钟执行一次
 
-仓库中的 [`scripts/launchd/`](../scripts/launchd/) 仅提供参考模板；真正运行时使用的是写入 `~/Library/LaunchAgents/` 的生成文件。
+仓库中的 [`scripts/launchd/`](../scripts/launchd/) 仅提供**旧版单实例**参考模板；当前推荐以 `install.sh` 或本脚本生成的 plist 为准。
+
+若机器上仍有旧版固定名称的 plist（`com.jigger.everythingsearch.app.plist` / `com.jigger.everythingsearch.plist`），请在确认无依赖后 `launchctl bootout` 并删除，以免与多实例并存时混淆。
 
 macOS TCC 注意事项：
 
-- LaunchAgent 不应直接指向 `~/Documents` 等受保护目录下的脚本或日志路径
-- `~/.local/bin/` 下的 wrapper 脚本可以绕过这一限制，并在脚本内部再 `cd` 到仓库目录
+- plist 的 `ProgramArguments` 指向 `/bin/bash` + 仓库内 wrapper；wrapper 再进入安装目录写日志、启动 gunicorn
+- 日志与进程工作目录仍在各实例自己的 `APP_DIR/logs` 下
 
 ### ⚠️ 完全磁盘访问授权（必读）
 
@@ -274,8 +275,8 @@ caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full
 | `everythingsearch/request_validation.py` | 请求解析与输入校验 |
 | `everythingsearch/infra/` | 设置、限流、日志相关基础设施 |
 | `scripts/launchd/*.plist` | launchd 参考模板 |
-| `~/.local/bin/everythingsearch_start.sh` | 生成后的应用启动 wrapper |
-| `~/.local/bin/everythingsearch_index.sh` | 生成后的增量索引 wrapper |
+| `scripts/launchd_app_wrapper.sh` | 安装/脚本生成后的应用启动 wrapper（gitignore） |
+| `scripts/launchd_index_wrapper.sh` | 安装/脚本生成后的增量索引 wrapper（gitignore） |
 
 版本与变更记录见 [GitHub Releases](https://github.com/jiggersong/everythingsearch/releases)。
 

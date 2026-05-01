@@ -276,15 +276,44 @@ configure_project() {
         log_info "已关闭 MWeb 数据源（ENABLE_MWEB=False）"
     fi
 
-    # Update plist paths (plists reference ~/.local/bin/ wrapper scripts, no Documents paths)
-    # Wrapper scripts will be generated in setup_launchd() with correct INSTALL_DIR
+    # launchd 元数据与 wrapper 由 setup_launchd() 按安装目录写入 scripts/
     log_ok "配置完成"
+}
+
+# 安装目录绝对路径的 SHA-256 前 12 位（launchd Label 后缀，多实例互不冲突）
+launchd_instance_suffix() {
+    local abs
+    abs="$(cd "$INSTALL_DIR" && pwd)"
+    printf '%s' "$abs" | shasum -a 256 | awk '{print substr($1,1,12)}'
+}
+
+write_launchd_instance_metadata() {
+    local label_app="$1"
+    local label_index="$2"
+    local instance_suffix="$3"
+    mkdir -p "${INSTALL_DIR}/scripts"
+    cat > "${INSTALL_DIR}/scripts/.launchd_instance" << META_EOF
+INSTANCE_SUFFIX=${instance_suffix}
+LABEL_APP=${label_app}
+LABEL_INDEX=${label_index}
+APP_PORT=${APP_PORT}
+META_EOF
+    cat > "${INSTALL_DIR}/scripts/.launchd_instance.mk" << MK_EOF
+LABEL_APP := ${label_app}
+LABEL_INDEX := ${label_index}
+APP_PLIST := ${HOME}/Library/LaunchAgents/${label_app}.plist
+INDEX_PLIST := ${HOME}/Library/LaunchAgents/${label_index}.plist
+MK_EOF
 }
 
 setup_launchd() {
     mkdir -p "${HOME}/Library/LaunchAgents"
-    mkdir -p "${HOME}/.local/bin"
-    local wrapper_dir="${HOME}/.local/bin"
+    mkdir -p "${INSTALL_DIR}/scripts"
+
+    local instance_suffix label_app label_index
+    instance_suffix="$(launchd_instance_suffix)"
+    label_app="com.jigger.everythingsearch.app.${instance_suffix}"
+    label_index="com.jigger.everythingsearch.index.${instance_suffix}"
 
     # ⚠️ 提前告知 macOS TCC 隐私弹窗问题，避免用户被连续弹窗惊吓
     echo ""
@@ -312,36 +341,36 @@ setup_launchd() {
 
     if [[ "$install_app" =~ ^[Yy] ]]; then
         APP_SERVICE_INSTALLED=true
-        # Generate wrapper script (outside ~/Documents to avoid macOS TCC restrictions)
-        cat > "${wrapper_dir}/everythingsearch_start.sh" << WRAPPER_EOF
+        local app_wrapper="${INSTALL_DIR}/scripts/launchd_app_wrapper.sh"
+        cat > "$app_wrapper" << WRAPPER_EOF
 #!/usr/bin/env bash
+set -euo pipefail
 APP_DIR="${INSTALL_DIR}"
+cd "\$APP_DIR" || exit 1
 LOG_DIR="\$APP_DIR/logs"
 PORT="\${PORT:-${APP_PORT}}"
 LOG_DATE=\$(date +%Y-%m-%d)
 mkdir -p "\$LOG_DIR"
-cd "\$APP_DIR" || exit 1
 exec >>"\$LOG_DIR/launchd_app_\${LOG_DATE}.log" 2>&1
 exec "\$APP_DIR/venv/bin/python" -m gunicorn \\
   -c "\$APP_DIR/gunicorn.conf.py" \\
   -w 1 -b "127.0.0.1:\$PORT" --timeout 120 \\
   everythingsearch.app:app
 WRAPPER_EOF
-        chmod +x "${wrapper_dir}/everythingsearch_start.sh"
+        chmod +x "$app_wrapper"
 
-        # Generate plist that calls the wrapper
-        local plist_target="${HOME}/Library/LaunchAgents/com.jigger.everythingsearch.app.plist"
+        local plist_target="${HOME}/Library/LaunchAgents/${label_app}.plist"
         cat > "$plist_target" << PLIST_EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.jigger.everythingsearch.app</string>
+    <string>${label_app}</string>
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
-        <string>${wrapper_dir}/everythingsearch_start.sh</string>
+        <string>${app_wrapper}</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
@@ -350,11 +379,11 @@ WRAPPER_EOF
 </dict>
 </plist>
 PLIST_EOF
-        launchctl bootout gui/$(id -u)/com.jigger.everythingsearch.app 2>/dev/null || true
+        launchctl bootout gui/$(id -u)/"${label_app}" 2>/dev/null || true
         sleep 1
         launchctl bootstrap gui/$(id -u) "$plist_target"
-        log_ok "搜索服务已安装为开机自启"
-        echo "  Wrapper: ${wrapper_dir}/everythingsearch_start.sh"
+        log_ok "搜索服务已安装为开机自启（实例 ${instance_suffix}，Label ${label_app}）"
+        echo "  Wrapper: ${app_wrapper}"
         echo "  Plist:   $plist_target"
     else
         log_info "跳过搜索服务常驻安装"
@@ -367,30 +396,30 @@ PLIST_EOF
 
     if [[ "$install_cron" =~ ^[Yy] ]]; then
         INDEX_SERVICE_INSTALLED=true
-        # Generate wrapper script
-        cat > "${wrapper_dir}/everythingsearch_index.sh" << WRAPPER_EOF
+        local index_wrapper="${INSTALL_DIR}/scripts/launchd_index_wrapper.sh"
+        cat > "$index_wrapper" << WRAPPER_EOF
 #!/usr/bin/env bash
+set -euo pipefail
 APP_DIR="${INSTALL_DIR}"
+cd "\$APP_DIR" || exit 1
 LOG_DIR="\$APP_DIR/logs"
 mkdir -p "\$LOG_DIR"
-cd "\$APP_DIR" || exit 1
 exec "\$APP_DIR/venv/bin/python" -m everythingsearch.incremental
 WRAPPER_EOF
-        chmod +x "${wrapper_dir}/everythingsearch_index.sh"
+        chmod +x "$index_wrapper"
 
-        # Generate plist
-        local plist_target="${HOME}/Library/LaunchAgents/com.jigger.everythingsearch.plist"
+        local plist_target="${HOME}/Library/LaunchAgents/${label_index}.plist"
         cat > "$plist_target" << PLIST_EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.jigger.everythingsearch</string>
+    <string>${label_index}</string>
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
-        <string>${wrapper_dir}/everythingsearch_index.sh</string>
+        <string>${index_wrapper}</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
@@ -399,14 +428,19 @@ WRAPPER_EOF
 </dict>
 </plist>
 PLIST_EOF
-        launchctl bootout gui/$(id -u)/com.jigger.everythingsearch 2>/dev/null || true
+        launchctl bootout gui/$(id -u)/"${label_index}" 2>/dev/null || true
         sleep 1
         launchctl bootstrap gui/$(id -u) "$plist_target"
-        log_ok "定时任务已安装 (约每 30 分钟执行增量索引；修改 plist 后需 bootout + bootstrap 才生效)"
-        echo "  Wrapper: ${wrapper_dir}/everythingsearch_index.sh"
+        log_ok "定时任务已安装（实例 ${instance_suffix}，Label ${label_index}；约每 30 分钟增量索引；修改 plist 后需 bootout + bootstrap 才生效）"
+        echo "  Wrapper: ${index_wrapper}"
         echo "  Plist:   $plist_target"
     else
         log_info "跳过定时任务安装"
+    fi
+
+    if [[ "${APP_SERVICE_INSTALLED:-false}" == "true" ]] || [[ "${INDEX_SERVICE_INSTALLED:-false}" == "true" ]]; then
+        write_launchd_instance_metadata "$label_app" "$label_index" "$instance_suffix"
+        log_ok "launchd 实例元数据: ${INSTALL_DIR}/scripts/.launchd_instance（供 run_app.sh / Makefile 使用）"
     fi
 }
 

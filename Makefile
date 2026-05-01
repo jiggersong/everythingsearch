@@ -3,11 +3,19 @@
 .PHONY: index-svc-enable index-svc-disable index-svc-status index-svc-interval
 
 PYTHON := ./venv/bin/python
-APP_LABEL := com.jigger.everythingsearch.app
-INDEX_LABEL := com.jigger.everythingsearch
-APP_PLIST := $(HOME)/Library/LaunchAgents/com.jigger.everythingsearch.app.plist
-INDEX_PLIST := $(HOME)/Library/LaunchAgents/com.jigger.everythingsearch.plist
 BOOTSTRAP_DOMAIN := gui/$(shell id -u)
+
+# 多实例：安装目录唯一哈希 → Label / plist 路径（scripts/.launchd_instance.mk）
+-include scripts/.launchd_instance.mk
+ifndef LABEL_APP
+LABEL_APP := com.jigger.everythingsearch.app
+LABEL_INDEX := com.jigger.everythingsearch
+APP_PLIST := $(HOME)/Library/LaunchAgents/$(LABEL_APP).plist
+INDEX_PLIST := $(HOME)/Library/LaunchAgents/$(LABEL_INDEX).plist
+endif
+
+APP_LABEL := $(LABEL_APP)
+INDEX_LABEL := $(LABEL_INDEX)
 
 help:
 	@echo "EverythingSearch — 可用 make 命令:"
