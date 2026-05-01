@@ -2,6 +2,16 @@
 
 [English](CHANGELOG.en.md) | [中文](CHANGELOG.md)
 
+## [2.3.1] - 2026-05-01
+
+### Fixes & Improvements
+
+- **Installer experience**: Default install path now uses the current directory; added the welcome screen, time estimates, port-conflict handling, and macOS Full Disk Access guidance. The permission guide now copies the real Python path automatically.
+- **Service management**: Added `Makefile` commands for launchd app autostart and scheduled indexing.
+- **Index stability**: Fixed scan-cache `database locked` issues under concurrent access and added timeout protection to incremental file reads.
+- **Progress reporting**: Fixed inaccurate full/incremental indexing progress across multiple phases. Dense writes now report chunk progress instead of repeatedly showing `100%` near the end of first indexing.
+- **Pipeline fix**: Restored the missing `Document` import in the full pipeline indexer.
+
 ## [2.3.0] - 2026-04-30
 
 ### 🚀 Performance

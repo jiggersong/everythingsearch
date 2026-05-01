@@ -16,6 +16,13 @@ def test_pipeline_indexer_does_not_import_incremental_module():
     assert "everythingsearch.incremental" not in source
 
 
+def test_calculate_dense_batch_size_caps_large_config():
+    """Dense 写入外层批次应避免一次阻塞过多 chunk。"""
+    assert pipeline_indexer._calculate_dense_batch_size(5000) == 50
+    assert pipeline_indexer._calculate_dense_batch_size(10) == 10
+    assert pipeline_indexer._calculate_dense_batch_size(0) == 1
+
+
 def test_build_pipeline_index_reuses_initial_scale_snapshot(monkeypatch, tmp_path):
     """外部传入规模快照时，全量入口不应重复执行轻量盘点。"""
     settings = SimpleNamespace(

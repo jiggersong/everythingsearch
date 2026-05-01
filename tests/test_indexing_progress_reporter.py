@@ -131,6 +131,22 @@ class TestIndexProgressReporter:
         assert any("已扫描文件=1/4" in message for message in handler.messages)
         assert not any("已处理文件=1/4" in message for message in handler.messages)
 
+    def test_dense_phase_reports_chunk_progress(self):
+        """Dense 阶段应展示 chunk 写入进度，而不是已完成扫描的文件数。"""
+        reporter, handler, clock = _build_reporter()
+        state = _state(pending_file_count=4)
+        state.phase_name = "Dense Index 写入"
+        state.processed_file_count = 4
+        state.estimated_total_chunk_count = 100
+        state.written_dense_chunk_count = 20
+        reporter.start(state, _estimate())
+
+        clock.value = 30.0
+        reporter.maybe_report()
+
+        assert any("已写入 Dense=20/100" in message for message in handler.messages)
+        assert not any("已处理文件=4/4" in message for message in handler.messages)
+
 
 def test_calculate_percent_handles_zero_total():
     """百分比工具应避免除零。"""

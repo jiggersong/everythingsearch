@@ -297,25 +297,19 @@ class IndexProgressReporter:
     def _report_progress(self, now: float) -> None:
         state = self._snapshot()
         elapsed = max(0.0, now - self._start_time)
-        is_scan_phase = "扫描" in state.phase_name
-        if is_scan_phase:
-            file_done = state.scanned_file_count
-            file_label = "已扫描"
-        else:
-            file_done = state.processed_file_count + state.deleted_file_count
-            file_label = "已处理"
-        remaining_files = max(0, state.pending_file_count - file_done)
+        progress_done, progress_total, progress_label = _select_progress_view(state)
+        remaining_units = max(0, progress_total - progress_done)
         remaining_tokens = max(0, state.estimated_total_token_count - state.processed_token_count)
         remaining_seconds = estimate_remaining_seconds(
             elapsed,
-            max(file_done, 1),
-            remaining_files,
+            progress_done,
+            remaining_units,
         )
-        progress_pct = calculate_percent(file_done, state.pending_file_count)
+        progress_pct = calculate_percent(progress_done, progress_total)
 
         # 终端：简洁进度行
         remaining_str = format_duration(remaining_seconds) if remaining_seconds is not None else "计算中"
-        print(f"  {file_label} [{progress_pct:5.1f}%] {file_done}/{state.pending_file_count}"
+        print(f"  [{state.phase_name}] {progress_label} {progress_done}/{progress_total}"
               f"  已耗时: {format_duration(elapsed)}"
               f"  预计剩余: {remaining_str}")
 
@@ -323,12 +317,12 @@ class IndexProgressReporter:
         self._logger.info(
             "索引进度: 阶段=%s, 已耗时=%s, %s=%s/%s (%.1f%%), "
             "已写入 Sparse=%s, 已写入 Dense=%s, 已估算 Token=%s/%s, "
-            "缓存命中=%s, 远端 embedding 文本=%s, 剩余文件=%s, 预计剩余耗时=%s, 预计剩余 Token=%s",
+            "缓存命中=%s, 远端 embedding 文本=%s, 剩余=%s, 预计剩余耗时=%s, 预计剩余 Token=%s",
             state.phase_name,
             format_duration(elapsed),
-            file_label,
-            file_done,
-            state.pending_file_count,
+            progress_label,
+            progress_done,
+            progress_total,
             progress_pct,
             state.written_sparse_chunk_count,
             state.written_dense_chunk_count,
@@ -336,10 +330,31 @@ class IndexProgressReporter:
             state.estimated_total_token_count,
             state.embedding_cache_hit_text_count,
             state.embedding_uncached_text_count,
-            remaining_files,
+            remaining_units,
             format_duration(remaining_seconds) if remaining_seconds is not None else "未知",
             remaining_tokens,
         )
+
+
+def _select_progress_view(state: IndexProgressState) -> tuple[int, int, str]:
+    """根据当前阶段选择终端与日志展示的主进度口径。
+
+    Args:
+        state: 当前索引任务状态。
+
+    Returns:
+        三元组：已完成数量、总数量、展示标签。
+    """
+    if "Dense" in state.phase_name:
+        done = state.written_dense_chunk_count
+        return done, max(state.estimated_total_chunk_count, done), "已写入 Dense"
+    if "Sparse" in state.phase_name:
+        done = state.written_sparse_chunk_count
+        return done, max(state.estimated_total_chunk_count, done), "已写入 Sparse"
+    if "扫描" in state.phase_name:
+        return state.scanned_file_count, state.pending_file_count, "已扫描文件"
+    done = state.processed_file_count + state.deleted_file_count
+    return done, state.pending_file_count, "已处理文件"
 
 
 def _print_separator() -> None:

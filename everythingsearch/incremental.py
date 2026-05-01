@@ -23,6 +23,7 @@ if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
 from everythingsearch.indexer import (
+    FILE_READ_TIMEOUT,
     _init_scan_cache,
     _save_cached_docs,
     build_documents_for_path_cached,
@@ -293,7 +294,7 @@ def _run_incremental_impl():
                 for future in as_completed(futures):
                     fp = futures[future]
                     try:
-                        docs = future.result() or []
+                        docs = future.result(timeout=FILE_READ_TIMEOUT * 2) or []
                         all_docs[fp] = docs
                     except Exception:
                         docs = []

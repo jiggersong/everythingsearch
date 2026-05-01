@@ -34,9 +34,25 @@ from everythingsearch.retrieval.embedding import DashScopeEmbeddingProvider
 
 logger = logging.getLogger(__name__)
 
+MAX_DENSE_INDEX_BATCH_SIZE = 50
+
+
 def generate_file_id(filepath: str) -> str:
     """基于文件路径生成稳定的 file_id。"""
     return hashlib.md5(filepath.encode("utf-8")).hexdigest()
+
+
+def _calculate_dense_batch_size(configured_batch_size: int) -> int:
+    """计算 Dense 外层写入批次大小。
+
+    Args:
+        configured_batch_size: 配置文件中的通用索引批次大小。
+
+    Returns:
+        至少为 1、且不超过 Dense 写入上限的批次大小。
+    """
+    return max(1, min(configured_batch_size, MAX_DENSE_INDEX_BATCH_SIZE))
+
 
 def build_pipeline_index(
     initial_scale_snapshot: IndexScaleSnapshot | None = None,
@@ -212,7 +228,8 @@ def build_pipeline_index(
         reporter.update_phase("Dense Index 写入")
         print("写入 Dense 索引 (调用 Embedding API，请耐心等待)...")
         logger.info("写入 Dense Index (ChromaDB API)，调用大模型接口。")
-        batch_size = settings.indexer_batch_size
+        batch_size = _calculate_dense_batch_size(settings.indexer_batch_size)
+        logger.info("Dense Index 外层批大小: %d", batch_size)
         with reporter.blocking_phase("Dense Index 写入"):
             for i in range(0, len(chunks_to_write), batch_size):
                 batch = chunks_to_write[i:i+batch_size]
