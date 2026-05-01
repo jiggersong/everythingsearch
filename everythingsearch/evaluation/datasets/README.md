@@ -2,6 +2,8 @@
 
 Place local JSONL evaluation datasets in this directory.
 
+**Do not commit** real absolute paths, employer names, candidate résumés, or other personally identifiable information. The checked-in `search_eval.jsonl` / `calibrated_eval.jsonl` are **synthetic placeholders** only; keep your real datasets outside the repo or in a private branch.
+
 Each non-empty line must be a JSON object:
 
 ```json
