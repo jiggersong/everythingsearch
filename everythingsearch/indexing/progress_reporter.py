@@ -69,10 +69,10 @@ class IndexProgressReporter:
         self._start_time = now
         self._last_report_time = now
 
-        # 终端：简洁标题
-        _print_separator()
-        print(f"  {self._task_name}")
-        _print_separator()
+        # 交互式 TTY：由 root 的 StreamHandler（仅 message）输出；launchd：仅写入文件
+        self._logger.info("%s", "=" * 50)
+        self._logger.info("  %s", self._task_name)
+        self._logger.info("%s", "=" * 50)
 
         # 日志：完整预估信息
         self._logger.info("%s 开始，预估: 待处理文件=%s, 预计索引块=%s, "
@@ -235,14 +235,16 @@ class IndexProgressReporter:
         elapsed = self._clock() - self._start_time
         state = self._snapshot()
 
-        # 终端：简洁汇总
-        print(f"  {'─' * 46}")
-        print(f"  结果: 成功 {state.processed_file_count}"
-              f"  删除 {state.deleted_file_count}"
-              f"  跳过 {state.skipped_file_count}"
-              f"  失败 {state.failed_file_count}")
-        print(f"  耗时: {format_duration(elapsed)}")
-        _print_separator()
+        self._logger.info("  %s", "─" * 46)
+        self._logger.info(
+            "  结果: 成功 %s  删除 %s  跳过 %s  失败 %s",
+            state.processed_file_count,
+            state.deleted_file_count,
+            state.skipped_file_count,
+            state.failed_file_count,
+        )
+        self._logger.info("  耗时: %s", format_duration(elapsed))
+        self._logger.info("%s", "=" * 50)
 
         # 日志：完整指标
         self._logger.info(
@@ -307,11 +309,16 @@ class IndexProgressReporter:
         )
         progress_pct = calculate_percent(progress_done, progress_total)
 
-        # 终端：简洁进度行
         remaining_str = format_duration(remaining_seconds) if remaining_seconds is not None else "计算中"
-        print(f"  [{state.phase_name}] {progress_label} {progress_done}/{progress_total}"
-              f"  已耗时: {format_duration(elapsed)}"
-              f"  预计剩余: {remaining_str}")
+        self._logger.info(
+            "  [%s] %s %s/%s  已耗时: %s  预计剩余: %s",
+            state.phase_name,
+            progress_label,
+            progress_done,
+            progress_total,
+            format_duration(elapsed),
+            remaining_str,
+        )
 
         # 日志：完整指标
         self._logger.info(
@@ -355,11 +362,6 @@ def _select_progress_view(state: IndexProgressState) -> tuple[int, int, str]:
         return state.scanned_file_count, state.pending_file_count, "已扫描文件"
     done = state.processed_file_count + state.deleted_file_count
     return done, state.pending_file_count, "已处理文件"
-
-
-def _print_separator() -> None:
-    """打印终端分隔线。"""
-    print("=" * 50)
 
 
 def calculate_percent(done: int, total: int) -> float:

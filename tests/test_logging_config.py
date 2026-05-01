@@ -16,6 +16,13 @@ def _count_root_stream_handlers() -> int:
     return sum(1 for h in logging.root.handlers if isinstance(h, logging.StreamHandler))
 
 
+def _count_root_stdout_tty_handlers() -> int:
+    return sum(
+        1 for h in logging.root.handlers
+        if isinstance(h, logging.StreamHandler) and getattr(h, "stream", None) is sys.stdout
+    )
+
+
 def _count_root_stderr_handlers() -> int:
     return sum(
         1 for h in logging.root.handlers
@@ -27,6 +34,13 @@ def _count_daily_marks(logger: logging.Logger) -> int:
     return sum(
         1 for handler in logger.handlers
         if getattr(handler, logging_config._MARK, False)
+    )
+
+
+def _count_incremental_marks(logger: logging.Logger) -> int:
+    return sum(
+        1 for handler in logger.handlers
+        if getattr(handler, logging_config._MARK_INCREMENTAL, False)
     )
 
 
@@ -51,6 +65,7 @@ class TestLoggingConfig:
 
             # 终端不应有任何输出到 stderr 的 handler
             assert _count_root_stderr_handlers() == 0
+            assert _count_root_stdout_tty_handlers() == 0
             # 文件 handler 挂载在 root logger，重复调用不重复挂接
             assert _count_daily_marks(logging.root) == 1
         finally:
@@ -96,6 +111,24 @@ class TestLoggingConfig:
             logging.root.handlers = original_root_handlers
             logging.root.setLevel(original_root_level)
 
+    def test_setup_cli_logging_incremental_daily_twice_single_incremental_handler(self):
+        """增量入口的按日文件 handler 重复初始化时不应重复挂接。"""
+        original_root_handlers = list(logging.root.handlers)
+        original_root_level = logging.root.level
+        try:
+            logging.root.handlers = []
+            logging.root.setLevel(logging.WARNING)
+
+            logging_config.setup_cli_logging(also_write_incremental_daily=True)
+            logging_config.setup_cli_logging(also_write_incremental_daily=True)
+
+            assert _count_daily_marks(logging.root) == 1
+            assert _count_incremental_marks(logging.root) == 1
+            assert _count_root_stderr_handlers() == 0
+        finally:
+            logging.root.handlers = original_root_handlers
+            logging.root.setLevel(original_root_level)
+
 
 class TestLoggingPrintUsage:
     """测试核心路径不再使用 print。"""
@@ -138,16 +171,16 @@ class TestConfigImportUsage:
             )
             assert has_direct_config_import is False, module_path.name
 
-    def test_incremental_uses_print_for_terminal_and_logger_for_file(self):
-        """incremental 源码应同时使用 print（终端友好输出）和 logger（文件日志）。"""
+    def test_incremental_has_no_print_calls(self):
+        """incremental 进度与说明应经 logging 输出（含按日 incremental 文件），不使用 print。"""
         source = (_PROJECT_ROOT / "everythingsearch" / "incremental.py").read_text(encoding="utf-8")
         tree = ast.parse(source)
 
-        calls = [
-            (node.lineno, node.func.id)
+        print_calls = [
+            node.lineno
             for node in ast.walk(tree)
             if isinstance(node, ast.Call)
             and isinstance(node.func, ast.Name)
-            and node.func.id in ("print",)
+            and node.func.id == "print"
         ]
-        assert calls, "incremental.py 应包含 print() 调用用于终端友好输出"
+        assert not print_calls, f"incremental.py 不应包含 print()，发现: {print_calls}"

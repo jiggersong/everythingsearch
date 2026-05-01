@@ -102,12 +102,10 @@ def build_pipeline_index(
     )
     
     # 1. 扫描文件
-    print("正在扫描本地文件...")
-    logger.info("开始扫描本地文件。")
+    logger.info("正在扫描本地文件...")
     docs, _ = scan_files(progress_reporter=reporter)
 
-    print("正在扫描 MWeb 笔记...")
-    logger.info("开始扫描 MWeb 笔记。")
+    logger.info("正在扫描 MWeb 笔记...")
     mweb_docs, _ = scan_mweb_notes(progress_reporter=reporter)
     docs.extend(mweb_docs)
 
@@ -116,8 +114,7 @@ def build_pipeline_index(
         reporter.finish()
         return
 
-    print(f"扫描完成，共 {len(docs)} 个 chunk")
-    logger.info("扫描完成，共获取到 %d 个 Chunk。", len(docs))
+    logger.info("扫描完成，共 %s 个 chunk。", len(docs))
     reporter.scanning_complete()
     
     # 2. 转换数据模型（按文件路径分组并行，同文件内保持 chunk_id 递增）
@@ -192,8 +189,7 @@ def build_pipeline_index(
     reporter.update_estimate(refined_estimate)
         
     # 3. 双写持久化
-    print("开始双写索引 (Sparse + Dense)...")
-    logger.info("开始双写索引 (Sparse & Dense)。")
+    logger.info("开始双写索引 (Sparse + Dense)...")
 
     # 删除旧的 sparse db 以加速
     sparse_db_path = Path(settings.sparse_index_path)
@@ -226,8 +222,7 @@ def build_pipeline_index(
         
     try:
         reporter.update_phase("Dense Index 写入")
-        print("写入 Dense 索引 (调用 Embedding API，请耐心等待)...")
-        logger.info("写入 Dense Index (ChromaDB API)，调用大模型接口。")
+        logger.info("写入 Dense 索引 (调用 Embedding API，请耐心等待)...")
         batch_size = _calculate_dense_batch_size(settings.indexer_batch_size)
         logger.info("Dense Index 外层批大小: %d", batch_size)
         with reporter.blocking_phase("Dense Index 写入"):
@@ -254,8 +249,8 @@ def build_pipeline_index(
 
 if __name__ == "__main__":
     try:
-        setup_cli_logging()
+        setup_cli_logging(stream_progress_to_tty=sys.stdout.isatty())
         build_pipeline_index()
     except KeyboardInterrupt:
-        print("\n用户中断，索引已停止。")
+        logger.warning("用户中断，索引已停止。")
         sys.exit(1)

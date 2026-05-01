@@ -520,7 +520,7 @@ Token 数量是本地估算值：按最终送入 embedding 的文本长度估算
 ### 查看增量索引日志
 
 ```bash
-# 按日文件：incremental_YYYY-MM-DD.log（stdout/stderr 合并写入）
+# 按日文件：incremental_YYYY-MM-DD.log（与 cli.log 相同格式，由索引进程直接写入）
 ls -1 logs/incremental_*.log
 tail -n 200 logs/incremental_$(date +%Y-%m-%d).log
 ```
@@ -710,8 +710,6 @@ cat > ~/.local/bin/everythingsearch_index.sh << 'EOF'
 APP_DIR="$HOME/Documents/code/EverythingSearch"
 mkdir -p "$APP_DIR/logs"
 cd "$APP_DIR" || exit 1
-LOG_DATE=$(date +%Y-%m-%d)
-exec >>"$APP_DIR/logs/incremental_${LOG_DATE}.log" 2>&1
 exec "$APP_DIR/venv/bin/python" -m everythingsearch.incremental
 EOF
 chmod +x ~/.local/bin/everythingsearch_index.sh

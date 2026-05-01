@@ -66,10 +66,8 @@ cat > "${WRAPPER_DIR}/everythingsearch_index.sh" << EOF
 APP_DIR="${PROJECT_ROOT}"
 PYTHON_BIN="${PYTHON_BIN}"
 LOG_DIR="\$APP_DIR/logs"
-LOG_DATE=\$(date +%Y-%m-%d)
 mkdir -p "\$LOG_DIR"
 cd "\$APP_DIR" || exit 1
-exec >>"\$LOG_DIR/incremental_\${LOG_DATE}.log" 2>&1
 exec "\$PYTHON_BIN" -m everythingsearch.incremental
 EOF
 chmod +x "${WRAPPER_DIR}/everythingsearch_index.sh"

@@ -110,8 +110,7 @@ def run_incremental():
     try:
         _run_incremental_impl()
     except KeyboardInterrupt:
-        print("\n用户中断，索引已停止。")
-        logger.info("用户中断索引操作。")
+        logger.warning("用户中断，索引已停止。")
         sys.exit(1)
 
 
@@ -124,8 +123,7 @@ def _run_incremental_impl():
     total_start = time.time()
 
     if settings.enable_mweb and settings.mweb_export_script and os.path.isfile(settings.mweb_export_script):
-        print("正在运行 MWeb 导出...")
-        logger.info("开始运行 MWeb 导出脚本。")
+        logger.info("正在运行 MWeb 导出...")
         try:
             subprocess.run(
                 [sys.executable, settings.mweb_export_script],
@@ -139,12 +137,11 @@ def _run_incremental_impl():
     conn = sqlite3.connect(db_path)
     _init_state_db(conn)
 
-    print("正在扫描文件系统...")
-    logger.info("开始扫描文件系统。")
+    logger.info("正在扫描文件系统...")
     disk_files = _scan_disk_files()
     disk_mweb = _scan_disk_mweb()
     logger.info("扫描到文件数: %s, MWeb 笔记数: %s", len(disk_files), len(disk_mweb))
-    print(f"  文件: {len(disk_files)}  笔记: {len(disk_mweb)}")
+    logger.info("  文件: %s  笔记: %s", len(disk_files), len(disk_mweb))
 
     disk_all = {**disk_files, **disk_mweb}
     db_state = _load_db_state(conn)
@@ -164,10 +161,14 @@ def _run_incremental_impl():
             deleted_paths.append(fp)
 
     logger.info("变更统计: 新增=%s, 修改=%s, 删除=%s", len(new_paths), len(modified_paths), len(deleted_paths))
-    print(f"变更: +{len(new_paths)} ~{len(modified_paths)} -{len(deleted_paths)}  (新增/修改/删除)")
+    logger.info(
+        "变更: +%s ~%s -%s  (新增/修改/删除)",
+        len(new_paths),
+        len(modified_paths),
+        len(deleted_paths),
+    )
 
     if not new_paths and not modified_paths and not deleted_paths:
-        print("索引已是最新，无需更新。")
         logger.info("索引已是最新，无需更新。")
         conn.close()
         return
@@ -233,8 +234,7 @@ def _run_incremental_impl():
 
     if deleted_paths:
         reporter.update_phase("删除已移除文件索引")
-        print(f"正在删除 {len(deleted_paths)} 个已移除文件的索引...")
-        logger.info("开始删除 %s 个已移除文件的索引。", len(deleted_paths))
+        logger.info("正在删除 %s 个已移除文件的索引...", len(deleted_paths))
         deleted_batch_count = 0
         for fp in deleted_paths:
             _delete_chunks(collection, fp, sparse_writer)
@@ -266,9 +266,8 @@ def _run_incremental_impl():
         if scan_cache_conn:
             from everythingsearch.indexer import _init_scan_cache
             _init_scan_cache(scan_cache_conn)
-        print(f"正在索引 {len(to_index)} 个文件 ({len(modified_paths)} 修改 + {len(new_paths)} 新增)...")
         logger.info(
-            "开始索引 %s 个文件 (%s 修改 + %s 新增)。",
+            "正在索引 %s 个文件 (%s 修改 + %s 新增)...",
             len(to_index),
             len(modified_paths),
             len(new_paths),
@@ -405,8 +404,7 @@ def _run_incremental_impl():
             if (i + 1) % 20 == 0 or i == len(to_index) - 1:
                 conn.commit()
                 pct = (i + 1) / len(to_index) * 100
-                print(f"  进度: {pct:.0f}% ({i+1}/{len(to_index)})")
-                logger.info("增量索引进度: %.0f%% (%s/%s)", pct, i + 1, len(to_index))
+                logger.info("  进度: %.0f%% (%s/%s)", pct, i + 1, len(to_index))
 
         conn.commit()
 
@@ -437,7 +435,6 @@ def _rebuild_state_db():
         )
     conn.commit()
     conn.close()
-    print(f"状态数据库已重建: {len(disk_files)} 文件 + {len(disk_mweb)} 笔记")
     logger.info("状态数据库已重建: %s 文件 + %s 笔记", len(disk_files), len(disk_mweb))
 
 
@@ -448,14 +445,16 @@ def run_full():
         build_pipeline_index()
         _rebuild_state_db()
     except KeyboardInterrupt:
-        print("\n用户中断，索引已停止。")
-        logger.info("用户中断索引操作。")
+        logger.warning("用户中断，索引已停止。")
         sys.exit(1)
 
 
 if __name__ == "__main__":
     try:
-        setup_cli_logging()
+        setup_cli_logging(
+            also_write_incremental_daily=True,
+            stream_progress_to_tty=sys.stdout.isatty(),
+        )
         parser = argparse.ArgumentParser(description="增量/全量索引")
         parser.add_argument("--full", action="store_true", help="执行完整重建（而非增量更新）")
         args = parser.parse_args()
@@ -465,5 +464,5 @@ if __name__ == "__main__":
         else:
             run_incremental()
     except KeyboardInterrupt:
-        print("\n用户中断，已退出。")
+        logging.getLogger(__name__).warning("用户中断，已退出。")
         sys.exit(1)

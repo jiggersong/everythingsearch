@@ -372,10 +372,8 @@ PLIST_EOF
 #!/usr/bin/env bash
 APP_DIR="${INSTALL_DIR}"
 LOG_DIR="\$APP_DIR/logs"
-LOG_DATE=\$(date +%Y-%m-%d)
 mkdir -p "\$LOG_DIR"
 cd "\$APP_DIR" || exit 1
-exec >>"\$LOG_DIR/incremental_\${LOG_DATE}.log" 2>&1
 exec "\$APP_DIR/venv/bin/python" -m everythingsearch.incremental
 WRAPPER_EOF
         chmod +x "${wrapper_dir}/everythingsearch_index.sh"
