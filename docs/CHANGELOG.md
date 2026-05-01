@@ -2,6 +2,13 @@
 
 [English](CHANGELOG.en.md) | [中文](CHANGELOG.md)
 
+## [2.3.2] - 2026-05-01
+
+### 单机多实例与运维
+
+- **launchd 多实例**：按安装目录绝对路径 SHA-256 前 12 位区分实例；搜索与定时增量各自 Label/plist，wrapper 写入各克隆 `scripts/`，`run_app.sh` / `Makefile` 通过 `scripts/.launchd_instance*` 绑定本目录，同一 Mac 可多目录、多端口常驻。
+- **增量定时日志**：`incremental_YYYY-MM-DD.log` 改为标准 logging 格式（与 `cli.log` 一致），安装脚本不再对 stdout 做 shell 重定向。
+
 ## [2.3.1] - 2026-05-01
 
 ### 修复与改进

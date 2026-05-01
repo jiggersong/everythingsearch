@@ -2,6 +2,13 @@
 
 [English](CHANGELOG.en.md) | [中文](CHANGELOG.md)
 
+## [2.3.2] - 2026-05-01
+
+### Multi-instance & ops
+
+- **launchd multi-instance**: Per-install directory gets a unique 12-hex suffix from `sha256(absolute path)`; separate Labels/plists for the web app and scheduled incremental indexing; wrappers live under each clone’s `scripts/`. `run_app.sh` / `Makefile` read `scripts/.launchd_instance*` so multiple installs and ports can run on one Mac.
+- **Scheduled incremental logs**: `incremental_YYYY-MM-DD.log` now uses the same structured logging format as `cli.log` (no shell `stdout` redirect from the installer).
+
 ## [2.3.1] - 2026-05-01
 
 ### Fixes & Improvements
