@@ -155,6 +155,23 @@ def cjk_populated_db(mock_settings):
             ctime=300.0,
             metadata={}
         ),
+        IndexedChunk(
+            chunk_id="cn4",
+            file_id="fn4",
+            filepath="/docs/2025-04-21 AI指令规范.md",
+            filename="2025-04-21 AI指令规范.md",
+            source_type="mweb",
+            filetype=".md",
+            chunk_type="content",
+            title_path=(),
+            content="你现在的身份是我的首席技术顾问、逻辑校验官及思维磨刀石。",
+            embedding_text="...",
+            sparse_text="你现在的身份是我的首席技术顾问、逻辑校验官及思维磨刀石。",
+            chunk_index=0,
+            mtime=400.0,
+            ctime=400.0,
+            metadata={}
+        ),
     ]
     writer.upsert_chunks(chunks)
     return mock_settings
@@ -198,6 +215,19 @@ def test_sparse_retriever_cjk_three_char_name_attached_to_previous_word(cjk_popu
     results = retriever.retrieve(plan)
     matched_ids = {r.chunk_id for r in results}
     assert "cn3" in matched_ids, f"搜索“范洪铭”应命中 cn3，实际结果: {matched_ids}"
+
+
+def test_sparse_retriever_cjk_phrase_with_or_group_after_terms(cjk_populated_db):
+    """中文短语中后置 OR 扩展组不应触发 FTS5 语法错误。"""
+    retriever = SQLiteSparseRetriever(cjk_populated_db)
+    planner = DefaultQueryPlanner()
+
+    req = SearchRequest(query="逻辑校验官及思维磨刀石", source="all", date_field="mtime", date_from=None, date_to=None, limit=10)
+    plan = planner.plan(req)
+
+    results = retriever.retrieve(plan)
+    matched_ids = {r.chunk_id for r in results}
+    assert "cn4" in matched_ids, f"搜索“逻辑校验官及思维磨刀石”应命中 cn4，实际结果: {matched_ids}"
 
 
 def test_sparse_retriever_time_filter(populated_db):
