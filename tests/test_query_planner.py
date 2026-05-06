@@ -70,6 +70,15 @@ class TestBuildSparseQuery:
         assert "*" in result
         assert len(result) > 0
 
+    def test_three_char_cjk_token_expands_to_bigrams(self):
+        """三字中文词补充二元组，召回与前文粘连的人名。"""
+        planner = DefaultQueryPlanner()
+        result = planner._build_sparse_query("范洪铭")
+        assert "范洪铭*" in result
+        assert "范洪*" in result
+        assert "洪铭*" in result
+        assert " OR " in result
+
     def test_filename_only_prefix(self):
         """filename_only=True 时查询串带 {filename} 前缀。"""
         planner = DefaultQueryPlanner()

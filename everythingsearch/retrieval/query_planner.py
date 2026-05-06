@@ -22,6 +22,17 @@ class QueryPlanner(Protocol):
 class DefaultQueryPlanner:
     """默认的查询规划器实现。"""
 
+    _CJK_TOKEN_RE = re.compile(r'^[一-鿿㐀-䶿\U00020000-\U0002a6df]{3,}$')
+
+    @classmethod
+    def _expand_cjk_token_for_sparse_query(cls, token: str) -> list[str]:
+        """为连续中文检索词补充二元组，兜底人名与前缀词粘连场景。"""
+        if not cls._CJK_TOKEN_RE.match(token):
+            return [token]
+        expanded_tokens = [token]
+        expanded_tokens.extend(token[index:index + 2] for index in range(len(token) - 1))
+        return list(dict.fromkeys(expanded_tokens))
+
     def plan(self, request: SearchRequest) -> QueryPlan:
         settings = get_settings()
         raw_query = request.query.strip()
@@ -112,7 +123,7 @@ class DefaultQueryPlanner:
         
         safe_tokens = []
         # BUG-008: 包含特殊字符的加引号，纯字母数字汉字的加星号前缀匹配
-        special_chars_pattern = re.compile(r'[^a-zA-Z0-9\u4e00-\u9fa5]')
+        special_chars_pattern = re.compile(r'[^a-zA-Z0-9一-鿿㐀-䶿\U00020000-\U0002a6df]')
         for t in tokens:
             t = t.strip()
             if not t:
@@ -122,7 +133,12 @@ class DefaultQueryPlanner:
                 safe_tokens.append(f'"{t}"')
             else:
                 # 纯字母数字中文字符，允许前缀匹配
-                safe_tokens.append(f'{t}*')
+                expanded_tokens = self._expand_cjk_token_for_sparse_query(t)
+                expanded_query_parts = [f'{expanded_token}*' for expanded_token in expanded_tokens]
+                if len(expanded_query_parts) == 1:
+                    safe_tokens.append(expanded_query_parts[0])
+                else:
+                    safe_tokens.append(f"({' OR '.join(expanded_query_parts)})")
             
         joined_query = " ".join(safe_tokens)
         if filename_only:
