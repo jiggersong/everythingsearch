@@ -138,6 +138,23 @@ def cjk_populated_db(mock_settings):
             ctime=200.0,
             metadata={}
         ),
+        IndexedChunk(
+            chunk_id="cn3",
+            file_id="fn3",
+            filepath="/docs/2026-05-06 AI应用研发工程师范洪铭.md",
+            filename="2026-05-06 AI应用研发工程师范洪铭.md",
+            source_type="mweb",
+            filetype=".md",
+            chunk_type="filename",
+            title_path=(),
+            content="笔记: 2026-05-06 AI应用研发工程师范洪铭",
+            embedding_text="...",
+            sparse_text="笔记: 2026-05-06 AI应用研发工程师范洪铭",
+            chunk_index=0,
+            mtime=300.0,
+            ctime=300.0,
+            metadata={}
+        ),
     ]
     writer.upsert_chunks(chunks)
     return mock_settings
@@ -168,6 +185,19 @@ def test_sparse_retriever_cjk_name_in_filename(cjk_populated_db):
     matched_filenames = {r.filename for r in results}
     assert any("罗毅" in fn for fn in matched_filenames), \
         f"搜索结果的文件名中应包含“罗毅”，实际: {matched_filenames}"
+
+
+def test_sparse_retriever_cjk_three_char_name_attached_to_previous_word(cjk_populated_db):
+    """搜索三字姓名时，应命中“工程师范洪铭”这类前后无空格的标题。"""
+    retriever = SQLiteSparseRetriever(cjk_populated_db)
+    planner = DefaultQueryPlanner()
+
+    req = SearchRequest(query="范洪铭", source="all", date_field="mtime", date_from=None, date_to=None, limit=10)
+    plan = planner.plan(req)
+
+    results = retriever.retrieve(plan)
+    matched_ids = {r.chunk_id for r in results}
+    assert "cn3" in matched_ids, f"搜索“范洪铭”应命中 cn3，实际结果: {matched_ids}"
 
 
 def test_sparse_retriever_time_filter(populated_db):
