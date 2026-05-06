@@ -140,7 +140,7 @@ class DefaultQueryPlanner:
                 else:
                     safe_tokens.append(f"({' OR '.join(expanded_query_parts)})")
             
-        joined_query = " ".join(safe_tokens)
+        joined_query = " AND ".join(safe_tokens)
         if filename_only:
             return f"{{filename}} : {joined_query}"
         return joined_query
