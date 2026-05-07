@@ -1,8 +1,9 @@
-.PHONY: help index index-full app app-start app-stop app-restart app-status app-enable app-disable
+.PHONY: help test index index-full app app-start app-stop app-restart app-status app-enable app-disable
 .PHONY: mweb-export search
 .PHONY: index-svc-enable index-svc-disable index-svc-status index-svc-interval
 
 PYTHON := ./venv/bin/python
+PYTEST := ./venv/bin/pytest
 BOOTSTRAP_DOMAIN := gui/$(shell id -u)
 
 # 多实例：安装目录唯一哈希 → Label / plist 路径（scripts/.launchd_instance.mk）
@@ -21,6 +22,7 @@ help:
 	@echo "EverythingSearch — 可用 make 命令:"
 	@echo ""
 	@echo "  make help              显示本说明"
+	@echo "  make test              运行全量测试（固定使用 venv）"
 	@echo "  make index             增量索引（everythingsearch.incremental）"
 	@echo "  make index-full        全量重建索引（--full）"
 	@echo "  make mweb-export       仅单独执行 MWeb 笔记强制全量扫描导出"
@@ -46,6 +48,10 @@ help:
 # Run CLI search
 search:
 	$(PYTHON) -m everythingsearch search "$(q)" --json
+
+# Run full test suite with project venv
+test:
+	$(PYTEST)
 
 # Run incremental indexing
 index:
