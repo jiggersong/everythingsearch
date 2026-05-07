@@ -32,6 +32,7 @@ claude.md
 .vscode/
 # Cursor：不参与开源发布；个人 IDE 配置与本地状态保留在工作区即可
 .cursor/
+.claude/
 *.swp
 *.swo
 
