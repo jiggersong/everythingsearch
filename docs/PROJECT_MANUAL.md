@@ -235,7 +235,7 @@ python -m everythingsearch search "<查询词>" --json
 | `DENSE_TOP_K`                  | `120`                                         | 向量稠密检索候选数量                                |
 | `FUSION_TOP_K`                 | `200`                                         | RRF 融合排序后的候选数量                             |
 | `RRF_K`                        | `60`                                          | RRF 融合算法平滑常数                               |
-| `RERANK_MODEL`                 | `gte-rerank`                                  | 远端精排模型名称（如 `qwen3-rerank`、`gte-rerank`）     |
+| `RERANK_MODEL`                 | `qwen3-rerank`                                | 远端精排模型名称（如 `qwen3-rerank`、`gte-rerank`）     |
 | `RERANK_TOP_N`                 | `50`                                          | 送入 Rerank 精排的候选数量                           |
 | `RERANK_MAX_DOC_CHARS`         | `2000`                                        | Rerank 阶段单文档截断字符数                           |
 | `AGG_BEST_WEIGHT`              | `0.70`                                        | 文件聚合：最佳 chunk 权重                            |

@@ -9,7 +9,7 @@ from everythingsearch.retrieval.reranking import DashScopeReranker
 from everythingsearch.retrieval.models import QueryPlan, SearchCandidate
 
 class MockSettings:
-    rerank_model = "gte-rerank"
+    rerank_model = "qwen3-rerank"
     rerank_top_n = 5
     rerank_max_doc_chars = 2000
     dashscope_api_key = "mock-key"

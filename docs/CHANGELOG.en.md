@@ -2,6 +2,14 @@
 
 [English](CHANGELOG.en.md) | [中文](CHANGELOG.md)
 
+## [2.3.3] - 2026-05-07
+
+### Fixes & Improvements
+
+- **Rerank model migration**: Switched the default `RERANK_MODEL` from `gte-rerank` to `qwen3-rerank` to align with upstream model deprecation.
+- **Documentation alignment**: Updated `INSTALL` and `PROJECT_MANUAL` (both Chinese and English) so default rerank model docs match runtime defaults.
+- **Test alignment**: Updated default model in `test_retrieval_reranking` settings fixture to keep test semantics consistent with production defaults.
+
 ## [2.3.2] - 2026-05-01
 
 ### Multi-instance & ops
