@@ -152,7 +152,7 @@ sudo nano /etc/hosts
 | `SPARSE_TOP_K` | `120` | SQLite FTS5 稀疏检索候选数量 |
 | `DENSE_TOP_K` | `120` | 向量库稠密检索候选数量 |
 | `FUSION_TOP_K` | `200` | RRF 融合排序后的候选数量 |
-| `RERANK_MODEL` | `gte-rerank` | 精排模型（依赖 DashScope，如 `qwen3-rerank`、`gte-rerank`） |
+| `RERANK_MODEL` | `qwen3-rerank` | 精排模型（依赖 DashScope，如 `qwen3-rerank`、`gte-rerank`） |
 | `CHUNK_SIZE` | `500` | 索引切分块大小 |
 | `MAX_CONTENT_LENGTH` | `20000` | 单文件最大索引字符数 |
 | `NL_INTENT_MODEL` | `qwen-turbo` | `POST /api/search/nl` 使用的意图模型 |

@@ -240,7 +240,7 @@ Local settings are concentrated here. Load order: environment variables > reposi
 | `DENSE_TOP_K`                  | `120`                                          | Vector dense retrieval candidate count                                                             |
 | `FUSION_TOP_K`                 | `200`                                          | Candidates after RRF fusion                                                                        |
 | `RRF_K`                        | `60`                                           | RRF fusion smoothing constant                                                                      |
-| `RERANK_MODEL`                 | `gte-rerank`                                   | Remote rerank model name (e.g. `qwen3-rerank`, `gte-rerank`)                                       |
+| `RERANK_MODEL`                 | `qwen3-rerank`                                 | Remote rerank model name (e.g. `qwen3-rerank`, `gte-rerank`)                                       |
 | `RERANK_TOP_N`                 | `50`                                           | Candidates sent to rerank                                                                          |
 | `RERANK_MAX_DOC_CHARS`         | `2000`                                         | Max chars per doc during rerank                                                                    |
 | `AGG_BEST_WEIGHT`              | `0.70`                                         | File aggregation: best chunk weight                                                                |

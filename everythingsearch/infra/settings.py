@@ -273,7 +273,7 @@ def _load_settings() -> Settings:
         embedding_text_type_enabled=_load_bool("EMBEDDING_TEXT_TYPE_ENABLED", legacy_config, "EMBEDDING_TEXT_TYPE_ENABLED", default=False),
         fusion_top_k=_load_int("FUSION_TOP_K", legacy_config, "FUSION_TOP_K", default=200),
         rrf_k=_load_int("RRF_K", legacy_config, "RRF_K", default=60),
-        rerank_model=_load_str("RERANK_MODEL", legacy_config, "RERANK_MODEL", default="gte-rerank"),
+        rerank_model=_load_str("RERANK_MODEL", legacy_config, "RERANK_MODEL", default="qwen3-rerank"),
         rerank_top_n=_load_int("RERANK_TOP_N", legacy_config, "RERANK_TOP_N", default=50),
         rerank_max_doc_chars=_load_int("RERANK_MAX_DOC_CHARS", legacy_config, "RERANK_MAX_DOC_CHARS", default=2000),
         indexer_batch_size=_load_int("INDEXER_BATCH_SIZE", legacy_config, "INDEXER_BATCH_SIZE", default=5000),

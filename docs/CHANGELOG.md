@@ -2,6 +2,14 @@
 
 [English](CHANGELOG.en.md) | [中文](CHANGELOG.md)
 
+## [2.3.3] - 2026-05-07
+
+### 修复与改进
+
+- **Rerank 模型切换**：默认 `RERANK_MODEL` 从 `gte-rerank` 切换为 `qwen3-rerank`，以适配上游模型下线计划。
+- **文档对齐**：同步更新 `INSTALL` 与 `PROJECT_MANUAL`（中英文）中的默认精排模型说明，避免文档与运行时默认值不一致。
+- **测试校准**：更新 `test_retrieval_reranking` 的测试配置默认模型，确保测试语义与生产默认配置一致。
+
 ## [2.3.2] - 2026-05-01
 
 ### 单机多实例与运维
