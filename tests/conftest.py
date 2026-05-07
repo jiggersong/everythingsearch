@@ -1,4 +1,20 @@
 import os
+import sys
+from pathlib import Path
+
+_PROJECT_ROOT = Path(__file__).resolve().parents[1]
+_EXPECTED_VENV_DIR = (_PROJECT_ROOT / "venv").resolve()
+_ACTUAL_PREFIX = Path(sys.prefix).resolve()
+_ACTUAL_PYTHON = Path(sys.executable).resolve()
+
+if _ACTUAL_PREFIX != _EXPECTED_VENV_DIR:
+    raise RuntimeError(
+        "测试必须使用项目虚拟环境解释器运行。"
+        f"当前 sys.prefix: {_ACTUAL_PREFIX}；"
+        f"当前解释器: {_ACTUAL_PYTHON}；"
+        f"期望 venv: {_EXPECTED_VENV_DIR}。"
+        "请改用 ./venv/bin/pytest。"
+    )
 
 os.environ["DASHSCOPE_API_KEY"] = "dummy-key-for-tests"
 os.environ["API_INDEX_DIR"] = "/tmp/dummy-index"
