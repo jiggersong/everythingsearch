@@ -94,24 +94,18 @@ _restart() {
         done
     fi
     echo "等待 launchd 重启服务..."
-    sleep 3
-    local new_pid
-    new_pid=$(_get_service_pid)
-    if [ -n "$new_pid" ] && [ "$new_pid" != "$old_pid" ]; then
-        echo "✅ 服务已重启 (PID $new_pid)"
-        echo "   访问: http://127.0.0.1:$PORT"
-    else
-        echo "⚠️ 等待 launchd 拉起新进程..."
-        sleep 3
+    local new_pid=""
+    for _ in $(seq 1 40); do
         new_pid=$(_get_service_pid)
-        if [ -n "$new_pid" ]; then
+        if [ -n "$new_pid" ] && { [ -z "$old_pid" ] || [ "$new_pid" != "$old_pid" ]; }; then
             echo "✅ 服务已重启 (PID $new_pid)"
             echo "   访问: http://127.0.0.1:$PORT"
-        else
-            echo "❌ 重启失败，请查看 logs/ 下 app_err.log（及按日归档）与 launchd_app_*.log"
-            return 1
+            return 0
         fi
-    fi
+        sleep 0.5
+    done
+    echo "❌ 重启失败，请查看 logs/ 下 app_err.log（及按日归档）与 launchd_app_*.log"
+    return 1
 }
 
 _status() {
