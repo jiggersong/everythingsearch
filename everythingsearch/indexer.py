@@ -107,6 +107,25 @@ def normalize_path(path_str):
     return unicodedata.normalize('NFC', path_str)
 
 
+_LONE_SURROGATE_RE = re.compile(r'[\ud800-\udfff]')
+
+
+def _strip_lone_surrogates(text: str) -> str:
+    """剥离孤立的 UTF-16 代理项字符，避免 UTF-8 编码崩溃。
+
+    pypdf/python-docx 等库在提取数学字母数字符号（如 𝐀、𝟙，码位 > U+FFFF）时，
+    偶尔会输出未配对的高/低代理项（U+D800–U+DFFF）。Python ``str`` 容忍这种
+    "半合法"字符，但一旦下游需要 UTF-8 编码（SQLite 写入 JSON 缓存、JSON 序列化、
+    Chroma/Embedding HTTP 请求体），就会抛出 ``UnicodeEncodeError``，
+    在串行写索引阶段会直接中断整个 ``make index`` 流程。
+
+    本函数在文件读取出口一次性剥离，下游所有路径无需重复防御。
+    """
+    if not text:
+        return text
+    return _LONE_SURROGATE_RE.sub('', text)
+
+
 def _init_scan_cache(conn: sqlite3.Connection):
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
@@ -313,13 +332,15 @@ def _read_file_worker(
             e,
         )
 
-    q.put((text.strip(), headings))
+    cleaned_text = _strip_lone_surrogates(text.strip())
+    cleaned_headings = [_strip_lone_surrogates(h) for h in headings]
+    q.put((cleaned_text, cleaned_headings))
 
 
 def _read_text_direct(filepath: str) -> str:
     """直接读取文本文件（不会挂起，无需子进程）"""
     with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
-        return f.read()
+        return _strip_lone_surrogates(f.read())
 
 
 def _read_via_subprocess(filepath: str, ext: str) -> tuple[str, list[str]]:
@@ -369,6 +390,30 @@ def _read_via_subprocess(filepath: str, ext: str) -> tuple[str, list[str]]:
 def _extract_md_headings(content: str) -> list[str]:
     """从 Markdown 内容中提取标题行"""
     return re.findall(r'^#{1,6}\s+(.+)$', content, re.MULTILINE)
+
+
+def _title_path_for_chunk_metadata(raw: list[str], display_name: str) -> list[str]:
+    """将章节路径转为可写入 Chroma 的 ``title_path`` 列表。
+
+    ChromaDB 在 upsert 时要求列表型 metadata 不得为空；PDF/纯文本等无目录信息时，
+    使用 ``display_name``（通常为文件名去扩展名或笔记标题）作为单元素回退。
+
+    Args:
+        raw: 从文档解析出的标题路径（可能为空）。
+        display_name: 无标题时的展示名回退。
+
+    Returns:
+        非空的标题路径列表。
+    """
+    cleaned: list[str] = []
+    for s in raw:
+        if isinstance(s, str) and s.strip():
+            cleaned.append(s.strip())
+    if cleaned:
+        return cleaned
+    fb = (display_name or "").strip()
+    return [fb] if fb else ["_"]
+
 
 def _split_markdown_structurally(content: str, max_content_length: int) -> list[tuple[str, list[str]]]:
     """
@@ -517,13 +562,21 @@ def build_documents_for_file(filepath: str, filename: str, ext: str, source_type
         heading_content = _truncate_for_embed(f"[{filename_norm}]\n{headings_text}")
         documents.append(Document(
             page_content=heading_content,
-            metadata={**base_meta, "chunk_type": "heading", "title_path": unique_headings},
+            metadata={
+                **base_meta,
+                "chunk_type": "heading",
+                "title_path": _title_path_for_chunk_metadata(
+                    unique_headings,
+                    os.path.splitext(filename_norm)[0].strip() or filename_norm,
+                ),
+            },
         ))
 
     if not content:
         return documents
 
     if ext == ".md":
+        md_title_fallback = os.path.splitext(filename_norm)[0].strip() or filename_norm
         structured_chunks = _split_markdown_structurally(content, settings.max_content_length)
         for idx, (chunk_text, title_path) in enumerate(structured_chunks):
             formatted_text = _truncate_for_embed(f"[{filename_norm}]\n{chunk_text}")
@@ -533,7 +586,7 @@ def build_documents_for_file(filepath: str, filename: str, ext: str, source_type
                     **base_meta, 
                     "chunk_type": "content", 
                     "chunk_idx": idx,
-                    "title_path": title_path
+                    "title_path": _title_path_for_chunk_metadata(list(title_path), md_title_fallback),
                 },
             ))
     else:
@@ -541,6 +594,7 @@ def build_documents_for_file(filepath: str, filename: str, ext: str, source_type
             content = content[:settings.max_content_length]
 
         chunks = _get_splitter().split_text(content)
+        plain_title_fallback = os.path.splitext(filename_norm)[0].strip() or filename_norm
 
         for idx, chunk in enumerate(chunks):
             chunk_text = _truncate_for_embed(f"[{filename_norm}]\n{chunk}")
@@ -550,7 +604,9 @@ def build_documents_for_file(filepath: str, filename: str, ext: str, source_type
                     **base_meta, 
                     "chunk_type": "content", 
                     "chunk_idx": idx,
-                    "title_path": list(dict.fromkeys(headings)) if headings else []
+                    "title_path": _title_path_for_chunk_metadata(
+                        list(dict.fromkeys(headings)), plain_title_fallback
+                    ),
                 },
             ))
 
@@ -773,13 +829,21 @@ def build_documents_for_mweb(filepath: str, content: str) -> list[Document]:
         heading_text = _truncate_for_embed(f"[{title}]\n" + "\n".join(unique_headings))
         documents.append(Document(
             page_content=heading_text, 
-            metadata={**base_meta, "chunk_type": "heading", "title_path": unique_headings}
+            metadata={
+                **base_meta,
+                "chunk_type": "heading",
+                "title_path": _title_path_for_chunk_metadata(
+                    unique_headings,
+                    (title or "").strip() or os.path.splitext(os.path.basename(filepath_norm))[0],
+                ),
+            }
         ))
 
     if not body:
         return documents
 
     structured_chunks = _split_markdown_structurally(body, settings.max_content_length)
+    mweb_title_fallback = (title or "").strip() or os.path.splitext(os.path.basename(filepath_norm))[0]
     for idx, (chunk_text, title_path) in enumerate(structured_chunks):
         formatted_text = _truncate_for_embed(f"[{title}]\n{chunk_text}")
         documents.append(Document(
@@ -788,7 +852,7 @@ def build_documents_for_mweb(filepath: str, content: str) -> list[Document]:
                 **base_meta, 
                 "chunk_type": "content", 
                 "chunk_idx": idx,
-                "title_path": title_path
+                "title_path": _title_path_for_chunk_metadata(list(title_path), mweb_title_fallback),
             },
         ))
 

@@ -179,6 +179,27 @@ class TestTruncateForEmbed:
         assert result == text
 
 
+class TestTitlePathForChunkMetadata:
+    """Chroma 要求 title_path 列表非空时的回退逻辑。"""
+
+    def test_non_empty_when_raw_empty_uses_display_name(self):
+        from everythingsearch.indexer import _title_path_for_chunk_metadata
+
+        assert _title_path_for_chunk_metadata([], "book") == ["book"]
+        assert _title_path_for_chunk_metadata([], "几何变换") == ["几何变换"]
+
+    def test_preserves_nonempty_path(self):
+        from everythingsearch.indexer import _title_path_for_chunk_metadata
+
+        assert _title_path_for_chunk_metadata(["第一章", "  "], "x") == ["第一章"]
+
+    def test_underscore_when_both_empty(self):
+        from everythingsearch.indexer import _title_path_for_chunk_metadata
+
+        assert _title_path_for_chunk_metadata([], "") == ["_"]
+        assert _title_path_for_chunk_metadata(["", "  "], "") == ["_"]
+
+
 class TestBuildDocuments:
     """测试文档构建（需要配置）"""
     
