@@ -2,6 +2,19 @@
 
 [English](CHANGELOG.en.md) | [中文](CHANGELOG.md)
 
+## [2.3.4] - 2026-05-11
+
+跑 `make index` 偶尔会被一两个 PDF 卡死在七成进度——pypdf 从带数学符号的页面里抽出孤立的 UTF-16 代理项，写扫描缓存那一步 UTF-8 顶回来一个 `UnicodeEncodeError`，整条索引就这么停了。这版把这种"半合法"字符在读完文件那一刻就剥掉，下游再也碰不到；顺手补了另一类被 Chroma 默默跳过的 heading 块兜底。
+
+### 索引稳定性
+
+- **孤立 UTF-16 代理项**：PDF/Office 文本提取偶尔会输出未配对的 surrogate（U+D800–U+DFFF），后续无论是写 SQLite 还是发 Embedding HTTP 请求，都会因 UTF-8 编码失败而中断整条索引。读完文件第一时间剥掉，正常字符（含数学字母、emoji 等 SMP 平面字符）保持原样。
+- **heading 块的 `title_path` 兜底**：当文档提取出的标题列表全空白或只含空字符串时，Chroma 会拒收并跳过整块；现在走与 content 块同一条兜底链，自动用文件名（笔记则取笔记标题）填上。
+
+### 服务管理
+
+- **应用重启等待**：`make app-restart` 改用至多 20s 的短间隔轮询新 PID，告别两段固定 `sleep` 在快机上多等、在慢机上误判失败的体验。
+
 ## [2.3.3] - 2026-05-07
 
 ### 修复与改进

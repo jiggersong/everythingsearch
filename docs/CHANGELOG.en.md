@@ -2,6 +2,19 @@
 
 [English](CHANGELOG.en.md) | [中文](CHANGELOG.md)
 
+## [2.3.4] - 2026-05-11
+
+A handful of PDFs with embedded math symbols had been stalling `make index` around the 70% mark: pypdf would emit unpaired UTF-16 surrogates, the SQLite scan-cache write then died with `UnicodeEncodeError`, and the whole run aborted. This release strips those half-legal characters the moment a file is read, so nothing downstream ever sees them — and adds a fallback for a separate case where Chroma was silently dropping heading chunks.
+
+### Indexing stability
+
+- **Lone UTF-16 surrogates**: PDF/Office text extraction occasionally produces unpaired surrogates (U+D800–U+DFFF); downstream SQLite cache writes and embedding HTTP calls then fail with UTF-8 encoding errors and abort the run. They're now stripped right after a file is read. Normal characters (math letters, emoji, other SMP-plane glyphs) pass through unchanged.
+- **`title_path` fallback for heading chunks**: When a document's heading list is empty or whitespace-only, Chroma rejects the upsert and the heading chunk is dropped. Heading chunks now use the same fallback chain as content chunks, falling back to the file's display name (or the note's title).
+
+### Service management
+
+- **App restart wait**: `make app-restart` now polls for the new PID at short intervals (up to 20s), replacing the two fixed `sleep` blocks that over-waited on fast machines and falsely flagged success as failure on slow ones.
+
 ## [2.3.3] - 2026-05-07
 
 ### Fixes & Improvements
