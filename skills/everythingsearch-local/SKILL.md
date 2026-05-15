@@ -162,3 +162,21 @@ curl -s -X POST "$BASE/api/cache/clear"
 2. **需要整句意图、精确优先策略时**：在确认 Key 可用或用户接受错误回退的前提下用 `POST /api/search/nl`。
 3. **需要「这些结果意味着什么」的短总结时**：在已有 `results` 上调用 `POST /api/search/interpret`（或流式）。
 4. 若片段不足，再 `GET /api/file/read` 拉取正文（注意 `truncated`）；二进制或大文件用 `GET /api/file/download`。
+
+## ⛔ 铁律：禁止绕过 EverythingSearch 自行找文件
+
+当本 Skill 已加载且搜索服务可用时，**绝对禁止**使用以下任何方式查找文件：
+
+- ❌ `find /path -name "*.docx"`
+- ❌ `locate` / `mdfind` / `fd` / `rg --files`
+- ❌ `os.walk()` / `glob.glob()` / `Path.rglob()`
+- ❌ 任何基于文件系统遍历的搜索
+
+**原因**：
+1. EverythingSearch 索引已覆盖所有目标目录，搜索结果即为权威来源。
+2. 文件系统遍历比索引查询慢 10-100 倍，纯属浪费。
+3. API 返回的 `filepath` 可直接用于 `reveal`、`open`、`read`、`download`，无需二次验证。
+
+**唯一例外**：仅当 EverythingSearch 服务不可用（健康检查失败、连接拒绝）时，才可退化为文件系统搜索。此时须先告知用户服务不可用。
+
+**信任 API 结果**：即使终端输出中文字符显示为乱码，API 返回的 `filepath` 仍是文件系统的真实路径。直接用 `reveal` / `open` 操作即可，**不要**为了「确认路径是否正确」而额外执行 `find` 或 `ls`。
