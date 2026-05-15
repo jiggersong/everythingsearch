@@ -204,7 +204,7 @@ python -m everythingsearch search "<query>" --json
 
 - This interface shares the exact same intent recognition and hybrid retrieval pipeline as the Web frontend's natural language search.
 - It internally suppresses redundant terminal outputs from third-party libraries (like `jieba` dictionary loading) to ensure the Agent can successfully parse the JSON content from `stdout`.
-- For complete integration guides and system prompt examples, please see `docs/OPENCLAW_INTEGRATION.md`.
+- For complete integration guides and system prompt examples, see `docs/OPENCLAW_INTEGRATION.md` (Chinese: `docs/OPENCLAW_INTEGRATION.zh-CN.md`). The CLI JSON field `snippet` is populated from pipeline `preview`/`content` excerpts.
 
 ---
 

@@ -370,7 +370,10 @@ cd ~/Documents/code/EverythingSearch   # or your project path
 ./venv/bin/python -m everythingsearch.incremental
 
 # 2. Perform a search — should return results
-./venv/bin/python -m everythingsearch search "test" --json
+# CLI requires DashScope key; avoid lone words — use a full sentence:
+./venv/bin/python -m everythingsearch search "find documents about architecture" --json
+# Or verify HTTP search only (no NL intent):
+curl -sG "http://127.0.0.1:8000/api/search" --data-urlencode "q=architecture" --data-urlencode "limit=3"
 
 # 3. Ensure the web service is running
 ./scripts/run_app.sh restart

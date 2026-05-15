@@ -199,7 +199,7 @@ python -m everythingsearch search "<查询词>" --json
 
 - 该接口与 Web 前端的自然语言搜索共享同一套意图识别与混合检索管道。
 - 内部强制抑制了第三方库的冗余终端输出 (如 jieba 词典加载)，以确保 Agent 能够成功解析 `stdout` 中的 JSON 内容。
-- 完整的接入指南与系统提示词示例，请查阅 `docs/OPENCLAW_INTEGRATION.md`。
+- 完整的接入指南与系统提示词示例，请查阅 `docs/OPENCLAW_INTEGRATION.zh-CN.md`（英文：`docs/OPENCLAW_INTEGRATION.md`）。CLI JSON 的 `snippet` 字段对应检索结果中的 `preview`/`content` 摘要。
 
 ---
 

@@ -373,7 +373,10 @@ cd ~/Documents/code/EverythingSearch   # 或你的项目路径
 ./venv/bin/python -m everythingsearch.incremental
 
 # 2. 执行一次搜索，看能否返回结果
-./venv/bin/python -m everythingsearch search "测试" --json
+# CLI 需 DashScope Key；短词可能被意图层拒绝，请用完整问句自检：
+./venv/bin/python -m everythingsearch search "帮我找一下架构相关的文档" --json
+# 或仅验证 HTTP 检索（无需 NL）：
+curl -sG "http://127.0.0.1:8000/api/search" --data-urlencode "q=架构" --data-urlencode "limit=3"
 
 # 3. 确保 Web 服务正常运行
 ./scripts/run_app.sh restart

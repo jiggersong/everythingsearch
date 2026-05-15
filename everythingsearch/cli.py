@@ -10,6 +10,18 @@ from everythingsearch.services.health_service import HealthService
 from everythingsearch.services.search_service import SearchService
 from everythingsearch.services.nl_search_service import NLSearchService
 
+
+def _extract_snippet(doc_dict: dict, doc: object) -> str:
+    """从检索结果中提取 Agent 可读的片段（pipeline 使用 preview/content，非 snippet）。"""
+    for key in ("snippet", "preview", "content"):
+        value = doc_dict.get(key) if isinstance(doc_dict, dict) else None
+        if not value and doc is not None:
+            value = getattr(doc, key, "")
+        if value and str(value).strip():
+            return str(value).strip()
+    return ""
+
+
 def setup_search_cli_logging():
     """配置搜索 CLI 模式下的日志，只输出 ERROR 级别，防止干扰标准输出 JSON。"""
     # 禁用各类库的冗余日志
@@ -109,8 +121,8 @@ def run_search(query: str, limit: int, source: str, json_output: bool):
             item = {
                 "filepath": doc_dict.get("filepath") or getattr(doc, "filepath", ""),
                 "score": doc_dict.get("score") or getattr(doc, "score", 0.0),
-                "snippet": doc_dict.get("snippet") or getattr(doc, "snippet", ""),
-                "mtime": doc_dict.get("mtime") or getattr(doc, "mtime", 0.0)
+                "snippet": _extract_snippet(doc_dict, doc),
+                "mtime": doc_dict.get("mtime") or getattr(doc, "mtime", 0.0),
             }
             results_list.append(item)
             
