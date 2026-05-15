@@ -63,10 +63,33 @@ path.write_text(text, encoding="utf-8")
 print("config.py updated")
 PY
 
-# 4) 构建索引并启动服务
+# 4) 首次构建索引
 make index
-./scripts/run_app.sh start
+
+# 5) 注册后台 Web 服务 + 定时增量索引（约每 30 分钟，无需交互确认）
+./scripts/install_launchd_wrappers.sh
+
+# 6) 验证（install_launchd_wrappers 会通过 launchctl bootstrap 自动拉起任务）
+./scripts/run_app.sh status
+make index-svc-status
 curl -s http://127.0.0.1:8000/api/health
+```
+
+### 后台服务与定时索引（推荐）
+
+`./scripts/install_launchd_wrappers.sh` 会**无交互**完成：
+
+- 按当前安装目录生成唯一 launchd Label（多实例互不冲突）
+- 写入 `~/Library/LaunchAgents/` 并 `launchctl bootstrap` 注册两项任务：
+  - **搜索 Web 服务**：登录后常驻（`RunAtLoad` + `KeepAlive`）
+  - **定时增量索引**：默认每 **30 分钟** 执行一次 `everythingsearch.incremental`（`StartInterval=1800`）
+
+这与 `install.sh` 里可选的 launchd 步骤等价，但**不需要**终端问答；也**不需要**用户在「系统设置」里为定时任务单独点授权（launchd 注册本身可脚本完成）。
+
+调整索引间隔（可选，默认 30 分钟）：
+
+```bash
+make index-svc-interval MIN=30
 ```
 
 ### 给 Agent 的执行约束
@@ -75,6 +98,8 @@ curl -s http://127.0.0.1:8000/api/health
 - 统一使用 `./venv/bin/python` 与 `./venv/bin/pip`，避免系统 Python 歧义。
 - Agent 命令中的路径尽量使用绝对路径。
 - `TARGET_DIR` 配错会导致索引看似成功但无有效数据，写入前先确认目录存在。
+- **不要跳过** `./scripts/install_launchd_wrappers.sh`；否则 `./scripts/run_app.sh start` 会因未注册 launchd 而失败，且磁盘变更不会自动增量索引。
+- **`TARGET_DIR` 为 `~/Documents` 等常规目录时**，一般**不必**配置「完全磁盘访问」；仅在启用 MWeb（`ENABLE_MWEB`）或索引 `~/Library` 等受保护路径时，才需按 [INSTALL.md](docs/INSTALL.md) 引导用户到系统设置中手动授权（Agent 无法代点）。
 - 如果 Agent 能访问本机 HTTP，请优先按 [`skills/everythingsearch-local/SKILL.md`](skills/everythingsearch-local/SKILL.md) 接入，并优先使用 `GET /api/search` 做稳定检索。
 
 ## 版本升级

@@ -2,13 +2,13 @@
 
 本指南帮助你在 **OpenClaw**（或其他只能执行 Shell、或能访问本机 HTTP 的 Agent）中接入 EverythingSearch 本地检索。
 
-更完整的 HTTP API 说明见仓库内 [`skills/everythingsearch-local/SKILL.md`](../skills/everythingsearch-local/SKILL.md)；安装与「搜不到文件」排查见 [安装指南](INSTALL.md) 第七节。
+更完整的 HTTP API 说明见仓库内 [`skills/everythingsearch-local/SKILL.md`](../skills/everythingsearch-local/SKILL.md)；**OpenClaw 无交互安装（含定时增量索引）**见 [README.zh-CN.md](../README.zh-CN.md) 的「Agent / OpenClaw 非交互安装」；「搜不到文件」排查见 [安装指南](INSTALL.md) 第七节。
 
 ---
 
 ## 第一步：确认基础环境
 
-1. 已完成 [安装指南](INSTALL.md) 中的安装，且至少跑过一次索引（`make index` 或增量索引）。
+1. 已完成安装且至少跑过一次索引。若由 OpenClaw 自动安装，请按 [README.zh-CN.md](../README.zh-CN.md) 执行（含 `./scripts/install_launchd_wrappers.sh`，约每 30 分钟自动增量索引）；人类用户也可走 [安装指南](INSTALL.md) 交互式 `install.sh`。
 2. 在项目目录使用**虚拟环境 Python**（不要直接用系统 `python`）：
 
 ```bash
@@ -19,10 +19,14 @@ PY=./venv/bin/python
 3. **DashScope API Key**（CLI 与 NL 搜索必需）  
    CLI 命令 `search` 会先调用意图识别（与 Web「智能搜索」相同），需在 `config.py` 或环境变量中配置 `DASHSCOPE_API_KEY` / `MY_API_KEY`。未配置时 CLI 会返回 `MISSING_API_KEY` 类错误。
 
-4. **可选：启动 HTTP 服务**（若 Agent 能用 `curl` 访问本机，推荐此路径，见下文「方式 B」）：
+4. **HTTP 服务与定时索引**（若 Agent 能用 `curl`，推荐此路径，见下文「方式 B」）：
 
 ```bash
-./scripts/run_app.sh start
+# 若尚未注册 launchd，先执行（无交互，同时注册 Web 服务与约 30 分钟定时增量索引）：
+./scripts/install_launchd_wrappers.sh
+
+./scripts/run_app.sh status
+make index-svc-status
 curl -s http://127.0.0.1:8000/api/health
 ```
 

@@ -63,10 +63,33 @@ path.write_text(text, encoding="utf-8")
 print("config.py updated")
 PY
 
-# 4) Build index and run app
+# 4) First index build
 make index
-./scripts/run_app.sh start
+
+# 5) Register background web service + scheduled incremental indexing (~every 30 min, no prompts)
+./scripts/install_launchd_wrappers.sh
+
+# 6) Verify (install_launchd_wrappers bootstraps jobs via launchctl)
+./scripts/run_app.sh status
+make index-svc-status
 curl -s http://127.0.0.1:8000/api/health
+```
+
+### Background service and scheduled indexing (recommended)
+
+`./scripts/install_launchd_wrappers.sh` performs these steps **non-interactively**:
+
+- Derives a unique launchd Label from the install directory (safe for multiple clones)
+- Writes plists under `~/Library/LaunchAgents/` and registers two jobs with `launchctl bootstrap`:
+  - **Search web service**: runs at login and stays alive (`RunAtLoad` + `KeepAlive`)
+  - **Scheduled incremental index**: runs `everythingsearch.incremental` every **30 minutes** by default (`StartInterval=1800`)
+
+This matches the optional launchd steps in `install.sh` but requires **no** terminal Q&A. Scheduling does **not** need a separate permission toggle in System Settings (unlike Full Disk Access).
+
+Optional: change the index interval (default 30 minutes):
+
+```bash
+make index-svc-interval MIN=30
 ```
 
 ### Agent guardrails
@@ -75,6 +98,8 @@ curl -s http://127.0.0.1:8000/api/health
 - Always use `./venv/bin/python` and `./venv/bin/pip` (avoid system Python ambiguity).
 - Keep all paths absolute in Agent commands.
 - If `TARGET_DIR` is empty or wrong, indexing will succeed with little/no useful data. Validate it first.
+- **Do not skip** `./scripts/install_launchd_wrappers.sh`; otherwise `./scripts/run_app.sh start` fails (launchd not registered) and file changes will not be indexed automatically.
+- For a typical `TARGET_DIR` under `~/Documents`, **Full Disk Access is usually not required**; only enable MWeb (`ENABLE_MWEB`) or index paths under `~/Library` should you follow [INSTALL.en.md](docs/INSTALL.en.md) and have the **user** grant Full Disk Access manually (Agents cannot click System Settings).
 - If your Agent can call localhost HTTP, integrate via [`skills/everythingsearch-local/SKILL.md`](skills/everythingsearch-local/SKILL.md) and prefer `GET /api/search` for deterministic retrieval.
 
 ## Version Upgrade

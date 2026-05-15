@@ -2,6 +2,13 @@
 
 [English](CHANGELOG.en.md) | [中文](CHANGELOG.md)
 
+## [2.3.7] - 2026-05-15
+
+### 文档
+
+- **OpenClaw 安装补全 launchd 定时索引**：README Agent 非交互流程增加 `./scripts/install_launchd_wrappers.sh`，自动注册 Web 常驻服务与约每 30 分钟增量索引，并说明与「完全磁盘访问」的区别（常规 `TARGET_DIR` 一般无需手动授权）。
+- **OpenClaw 接入指南对齐**：`OPENCLAW_INTEGRATION` 链至 README 无交互安装，环境自检改为先注册 launchd 再 `status` / `index-svc-status` 验证。
+
 ## [2.3.6] - 2026-05-15
 
 ### 文档

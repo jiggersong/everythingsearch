@@ -2,13 +2,13 @@
 
 This guide helps you connect **OpenClaw** (or any Agent that can run shell commands or call localhost HTTP) to EverythingSearch local search.
 
-For the full HTTP API reference, see [`skills/everythingsearch-local/SKILL.md`](../skills/everythingsearch-local/SKILL.md). For install steps and “file not found” troubleshooting, see [INSTALL.md](INSTALL.md) §7.
+For the full HTTP API reference, see [`skills/everythingsearch-local/SKILL.md`](../skills/everythingsearch-local/SKILL.md). For **non-interactive OpenClaw install (including scheduled incremental indexing)**, see [README.md](../README.md) § “Agent / OpenClaw Installation”. For “file not found” troubleshooting, see [INSTALL.md](INSTALL.md) §7.
 
 ---
 
 ## Step 1: Verify your environment
 
-1. Complete the [Installation Guide](INSTALL.md) and run at least one index build (`make index` or incremental indexing).
+1. Installation complete and at least one index build done. If OpenClaw installed the project, follow [README.md](../README.md) (includes `./scripts/install_launchd_wrappers.sh` for ~30-minute incremental indexing); humans may use interactive [INSTALL.md](INSTALL.md) / `install.sh` instead.
 2. Use the **project virtualenv Python** from the install directory:
 
 ```bash
@@ -19,10 +19,14 @@ PY=./venv/bin/python
 3. **DashScope API key** (required for CLI search)  
    The `search` CLI runs intent recognition first (same as the web “smart search”). Set `DASHSCOPE_API_KEY` or `MY_API_KEY` in `config.py` or the environment. Without a key, the CLI returns a `MISSING_API_KEY`-style error.
 
-4. **Optional: start the HTTP service** (recommended if your Agent can use `curl` — see “Option B” below):
+4. **HTTP service and scheduled indexing** (recommended if your Agent can use `curl` — see “Option B” below):
 
 ```bash
-./scripts/run_app.sh start
+# If launchd is not registered yet (non-interactive; web service + ~30 min incremental index):
+./scripts/install_launchd_wrappers.sh
+
+./scripts/run_app.sh status
+make index-svc-status
 curl -s http://127.0.0.1:8000/api/health
 ```
 

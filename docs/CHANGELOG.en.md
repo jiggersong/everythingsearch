@@ -2,6 +2,13 @@
 
 [English](CHANGELOG.en.md) | [中文](CHANGELOG.md)
 
+## [2.3.7] - 2026-05-15
+
+### Documentation
+
+- **OpenClaw install now includes launchd scheduled indexing**: README Agent flow adds `./scripts/install_launchd_wrappers.sh` to register the background web service and ~30-minute incremental indexing without prompts, and clarifies when Full Disk Access is actually needed.
+- **OpenClaw integration guide aligned**: `OPENCLAW_INTEGRATION` links to the README non-interactive path; environment checks bootstrap launchd before `status` / `index-svc-status`.
+
 ## [2.3.6] - 2026-05-15
 
 ### Documentation
