@@ -306,12 +306,12 @@ SearchRequest
 
 **核心环节拆解**：
 
-1. **Query Planner**：根据前端请求（包含可选的 `path_filter`, `date_field` 等）生成结构化的 `QueryPlan`。如果请求指定了 `exact_focus`，将直接退化为专注关键词的混合模式。
+1. **Query Planner**：根据前端请求（包含可选的 `path_filter`, `date_field` 等）生成结构化的 `QueryPlan`。如果请求指定了 `exact_focus`，将直接退化为专注关键词的混合模式。稀疏查询会把 jieba 分词结果转为 FTS5 子句，并**跳过纯标点 token**（避免 `报告.pdf` 类完整文件名因必命中 `.` 而 0 结果）。
 2. **Sparse Retriever (稀疏检索)**：利用新建的 `data/sparse_index.db` (SQLite FTS5) 进行快速的倒排索引查询，字段权重分配由 `SPARSE_FILENAME_WEIGHT`、`SPARSE_PATH_WEIGHT` 等配置项决定。
 3. **Dense Retriever (稠密检索)**：利用现有的 ChromaDB 与 Embedding 层计算语义相似度，提取候选块。
 4. **Candidate Fusion (RRF)**：通过 Reciprocal Rank Fusion 对稀疏和稠密的返回结果进行无监督融合。
 5. **Reranker (二阶段精排)**：若配置了 `RERANK_MODEL`（如 DashScope 的 qwen3-rerank），将 RRF 产生的 Top N 候选发送给重排模型做深度语义打分。当重排模型超时或降级时，默认回退使用 RRF 分数。
-6. **File Aggregator**：替代以往「单文件取最高分 chunk」的粗暴做法，基于所有候选 chunk 按文件粒度重新累加打分，提供更准确的排序。
+6. **File Aggregator**：替代以往「单文件取最高分 chunk」的粗暴做法，基于所有候选 chunk 按文件粒度重新累加打分，提供更准确的排序。归并键优先使用物理路径 `filepath`，兼容旧版 Chroma 中 `file_id` 不一致的数据，避免同一文件重复出现在结果列表。
 
 ### 4.4 embedding_cache.py — 向量缓存
 

@@ -251,7 +251,21 @@ caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full
 
 ## 7. FAQ
 
-- **Search cannot find a file that exists**: verify the extension is supported, the file is under `TARGET_DIR`, then rerun incremental indexing.
+- **Search cannot find a specific file**: work through these checks — most misses are “not in the index”, not a ranking bug.
+  1. **Still on disk**: confirm the path in Finder or the terminal; moved, renamed, or deleted files will not match.
+  2. **Under `TARGET_DIR`**: only configured roots (and MWeb export when enabled) are scanned; with multiple installs, verify the Web port maps to the right `config.py`.
+  3. **Indexed by this instance**: in the **running instance’s** data directory:
+     ```bash
+     sqlite3 data/sparse_index.db \
+       "SELECT filepath, filename FROM sparse_chunks WHERE filename LIKE '%keyword%' LIMIT 20;"
+
+     sqlite3 index_state.db \
+       "SELECT filepath, mtime FROM file_index WHERE filepath LIKE '%keyword%' LIMIT 20;"
+     ```
+     Zero rows in both → the file was never indexed here; place it under `TARGET_DIR` and run `make index` or incremental indexing.
+  4. **Extension and filters**: check supported types; path/date/filename-only filters on the Web UI narrow results.
+  5. **Full filename with extension fails (v2.3.4 and earlier)**: older builds required a literal `.` FTS token, so `report.pdf` could return nothing; upgrade to v2.3.5+ or search without the extension.
+  6. **Same file listed twice (v2.3.4 and earlier)**: common with legacy Chroma `file_id`s after upgrading from v1.x; v2.3.5+ dedupes by physical path; a full reindex aligns `file_id`s.
 - **`error: externally-managed-environment` during install**: use the project virtualenv pip instead of the system pip.
 - **launchd startup keeps failing**: rerun `./scripts/install_launchd_wrappers.sh` and verify the generated wrapper paths.
 - **No DashScope key on this machine**: indexing cannot generate vectors, and browser smart search is disabled; the UI falls back to `GET /api/search` only.

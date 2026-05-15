@@ -123,10 +123,13 @@ class DefaultQueryPlanner:
         
         safe_tokens = []
         # BUG-008: 包含特殊字符的加引号，纯字母数字汉字的加星号前缀匹配
+        searchable_chars_pattern = re.compile(r'[a-zA-Z0-9一-鿿㐀-䶿\U00020000-\U0002a6df]')
         special_chars_pattern = re.compile(r'[^a-zA-Z0-9一-鿿㐀-䶿\U00020000-\U0002a6df]')
         for t in tokens:
             t = t.strip()
             if not t:
+                continue
+            if not searchable_chars_pattern.search(t):
                 continue
             if special_chars_pattern.search(t):
                 # 包含特殊字符，使用引号精确匹配

@@ -2,6 +2,17 @@
 
 [English](CHANGELOG.en.md) | [中文](CHANGELOG.md)
 
+## [2.3.5] - 2026-05-15
+
+### Retrieval fixes
+
+- **Full-filename search**: Fixed a bug where queries like `茶饮行业解决方案.pptx` produced FTS clauses requiring a literal `.` token (from jieba), while the `unicode61` tokenizer never indexes punctuation — so exact filenames failed to match. `QueryPlanner` now skips tokens with no searchable characters.
+- **Duplicate results**: Fixed duplicate CLI/Web entries when legacy Chroma rows lacked a stable `file_id` and the same physical file was grouped under different IDs. `FileAggregator` now groups by `filepath` first.
+
+### Documentation
+
+- **“File not found” troubleshooting**: Expanded the INSTALL FAQ with step-by-step checks for “not in index” vs “not on disk”.
+
 ## [2.3.4] - 2026-05-11
 
 A handful of PDFs with embedded math symbols had been stalling `make index` around the 70% mark: pypdf would emit unpaired UTF-16 surrogates, the SQLite scan-cache write then died with `UnicodeEncodeError`, and the whole run aborted. This release strips those half-legal characters the moment a file is read, so nothing downstream ever sees them — and adds a fallback for a separate case where Chroma was silently dropping heading chunks.

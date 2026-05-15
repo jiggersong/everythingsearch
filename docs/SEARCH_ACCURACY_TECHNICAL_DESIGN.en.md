@@ -215,6 +215,13 @@ heading_text: 4.0
 content_text: 1.0
 ```
 
+**Query construction (`QueryPlanner._build_sparse_query`)**:
+
+- User input is segmented with jieba `cut_for_search`; each token becomes an FTS5 clause joined with `AND`.
+- Alphanumeric/CJK-only tokens use prefix match (`token*`); tokens with special characters use quoted exact match.
+- **Skip punctuation-only tokens**: `unicode61` does not index `.`, `-`, etc. For `report.pdf`, jieba may emit `report`, `.`, `pdf`; requiring `"."` used to yield zero hits. Tokens with no searchable character (`[a-zA-Z0-9` + CJK]) are dropped.
+- When `filename_only=true`, the query is wrapped as `{filename} : …` to search the filename field only.
+
 If benchmark results show that `unicode61` is insufficient for Chinese short terms, people names, or filename fragments, add a trigram auxiliary index.
 
 ## 9. Dense Retrieval Design
@@ -322,6 +329,8 @@ file_score =
   + multi_hit_bonus
   - large_file_penalty
 ```
+
+**Grouping key**: Chunks are merged by **physical `filepath`** before scoring (`file_id` is used only when `filepath` is empty). Legacy Chroma rows without a stable `file_id` could split one file across multiple IDs; grouping by `file_id` alone caused duplicate CLI/Web entries and skewed ranking. Path is the most stable join key across sparse and dense indexes.
 
 All weights should be exposed as configuration first, then tuned by benchmark results.
 

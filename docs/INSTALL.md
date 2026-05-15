@@ -252,7 +252,23 @@ caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full
 
 ## 七、常见问题
 
-- **搜索不到明明存在的文件**：先确认后缀受支持、文件位于 `TARGET_DIR` 下，再重新执行增量索引。
+- **搜索不到某个文件**：按下面顺序排查，多数情况是「索引里根本没有这条记录」，而不是检索算法漏掉。
+  1. **磁盘上是否还存在**：在 Finder 或终端确认文件路径；若目录已移动、重命名或删除，搜索不会命中。
+  2. **是否在 `TARGET_DIR` 范围内**：只有配置目录（及已开启的 MWeb 导出目录）内的文件会被扫描；多实例部署时确认你访问的 Web 端口对应那份安装的 `config.py`。
+  3. **索引是否收录**：在**当前运行实例**的数据目录检查：
+     ```bash
+     # 稀疏索引（文件名 / 正文关键字）
+     sqlite3 data/sparse_index.db \
+       "SELECT filepath, filename FROM sparse_chunks WHERE filename LIKE '%关键词%' LIMIT 20;"
+
+     # 增量状态表
+     sqlite3 index_state.db \
+       "SELECT filepath, mtime FROM file_index WHERE filepath LIKE '%关键词%' LIMIT 20;"
+     ```
+     两条查询均为 0 行 → 该文件从未被当前实例索引，需把文件放回 `TARGET_DIR` 后执行 `make index` 或增量索引。
+  4. **后缀与过滤条件**：确认扩展名在支持列表内；Web 若勾选了路径过滤、日期范围或「仅文件名」，会缩小命中范围。
+  5. **完整文件名带扩展名仍搜不到（v2.3.4 及更早）**：旧版会把 `.` 当作 FTS 必命中 token，输入 `报告.pdf` 这类完整文件名可能 0 结果；升级到 v2.3.5+ 或改用不含扩展名的关键词搜索。
+  6. **同一文件在结果里出现两次（v2.3.4 及更早）**：多见于自 v1.x 升级、Chroma 中 `file_id` 不稳定的旧数据；v2.3.5+ 已按物理路径去重，全量重建索引可彻底对齐 `file_id`。
 - **安装时报 `error: externally-managed-environment`**：请使用项目虚拟环境中的 pip，而不是系统 pip。
 - **launchd 启动持续失败**：重新执行 `./scripts/install_launchd_wrappers.sh`，并确认生成的 wrapper 路径存在。
 - **这台机器没有 DashScope Key**：索引无法生成向量，浏览器智能搜索会关闭；首页会退回到仅调用 `GET /api/search` 的模式。

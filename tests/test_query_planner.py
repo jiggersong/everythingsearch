@@ -86,6 +86,13 @@ class TestBuildSparseQuery:
         assert result.startswith("{filename}")
         assert "readme" in result
 
+    def test_filename_query_skips_punctuation_only_tokens(self):
+        """完整文件名里的扩展名分隔点不应成为必须命中的 FTS token。"""
+        planner = DefaultQueryPlanner()
+        result = planner._build_sparse_query("2024喜茶品牌数字化运营白皮书.pdf", filename_only=True)
+        assert '"."' not in result
+        assert "pdf*" in result
+
 
 class TestTopKMultipliers:
     """验证不同 query_type 下的 top_k 倍率逻辑。"""

@@ -88,6 +88,28 @@ def test_sparse_retriever_basic_search(populated_db):
     # neural_network 命中 filename, weight 8.0, 应该分数大于仅仅命中内容的 c1
     assert c2_score > c1_score
 
+
+def test_sparse_retriever_complete_filename_with_extension(populated_db):
+    """完整文件名带扩展名时，应忽略分隔点并命中文件名。"""
+    retriever = SQLiteSparseRetriever(populated_db)
+    planner = DefaultQueryPlanner()
+
+    req = SearchRequest(
+        query="architecture.md",
+        source="all",
+        date_field="mtime",
+        date_from=None,
+        date_to=None,
+        limit=10,
+        exact_focus=True,
+        filename_only=True,
+    )
+    plan = planner.plan(req)
+
+    results = retriever.retrieve(plan)
+    matched_ids = {r.chunk_id for r in results}
+    assert "c1" in matched_ids
+
 def test_sparse_retriever_source_filter(populated_db):
     retriever = SQLiteSparseRetriever(populated_db)
     planner = DefaultQueryPlanner()

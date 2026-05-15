@@ -31,10 +31,10 @@ class DefaultFileAggregator:
         settings = get_settings()
         query_lower = query.lower().strip() if query else ""
 
-        # 按 file_id 分组
+        # 按物理文件路径分组，兼容旧 Chroma 数据缺少稳定 file_id 的情况。
         grouped: dict[str, list[SearchCandidate]] = defaultdict(list)
         for cand in candidates:
-            key = cand.file_id or cand.filepath
+            key = cand.filepath or cand.file_id
             grouped[key].append(cand)
 
         aggregated = []

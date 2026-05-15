@@ -311,12 +311,12 @@ Search execution is protected at the business layer via concurrency control and 
 
 **Core Pipeline Stages**:
 
-1. **Query Planner**: Generates a structured `QueryPlan` from the frontend request (including optional `path_filter`, `date_field`, etc.). If `exact_focus` is specified, it gracefully degrades to a keyword-focused hybrid mode.
+1. **Query Planner**: Generates a structured `QueryPlan` from the frontend request (including optional `path_filter`, `date_field`, etc.). If `exact_focus` is specified, it gracefully degrades to a keyword-focused hybrid mode. Sparse queries convert jieba tokens into FTS5 clauses and **skip punctuation-only tokens** (so full filenames like `report.pdf` are not blocked by a required `.` match).
 2. **Sparse Retriever**: Performs rapid inverted index queries using the newly added `data/sparse_index.db` (SQLite FTS5). Field weighting is governed by configuration keys like `SPARSE_FILENAME_WEIGHT` and `SPARSE_PATH_WEIGHT`.
 3. **Dense Retriever**: Computes semantic similarity to extract candidate chunks using the existing ChromaDB and Embedding layer.
 4. **Candidate Fusion (RRF)**: Applies Reciprocal Rank Fusion to combine sparse and dense results without supervision.
 5. **Reranker (Second-stage Ranking)**: If `RERANK_MODEL` (e.g., DashScope's qwen3-rerank) is configured, the Top N candidates from RRF are sent to the reranking model for deep semantic scoring. Defaults to RRF scores if the reranker times out or degrades.
-6. **File Aggregator**: Replaces the previous "highest-scoring chunk per file" approach with a file-level score aggregation across all candidate chunks, yielding a much more accurate final ranking.
+6. **File Aggregator**: Replaces the previous "highest-scoring chunk per file" approach with a file-level score aggregation across all candidate chunks, yielding a much more accurate final ranking. Groups by physical `filepath` first to dedupe legacy Chroma rows with inconsistent `file_id`s.
 
 ### 4.4 `embedding_cache.py` — Embedding cache
 

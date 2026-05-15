@@ -215,6 +215,13 @@ heading_text: 4.0
 content_text: 1.0
 ```
 
+**查询构造（`QueryPlanner._build_sparse_query`）**：
+
+- 用户输入经 jieba `cut_for_search` 分词后，每个 token 转为 FTS5 子句并用 `AND` 连接。
+- 纯字母/数字/CJK 的 token 使用前缀匹配（`token*`）；含特殊字符的 token 使用引号精确匹配。
+- **跳过纯标点 token**：`unicode61` 不会把 `.`、`-` 等标点编入倒排表。若 jieba 将 `报告.pdf` 切成 `报告`、`.`、`pdf`，旧逻辑会把 `"."` 当作必命中项，导致完整文件名反而 0 命中；现丢弃不含任何可检索字符（`[a-zA-Z0-9` + CJK]）的 token。
+- `filename_only=true` 时，整体查询包装为 `{filename} : …`，仅在文件名字段检索。
+
 如果 benchmark 证明 `unicode61` 对中文短词、人名或文件名片段效果不足，再新增 trigram 辅助索引。
 
 ## 9. 稠密检索设计
@@ -322,6 +329,8 @@ file_score =
   + multi_hit_bonus
   - large_file_penalty
 ```
+
+**分组键**：聚合前按**物理文件路径** `filepath` 归并 chunk（`filepath` 为空时回退 `file_id`）。旧版 Chroma 在缺少稳定 `file_id` 时，同一文件的不同 chunk 可能携带不同 ID；若仅按 `file_id` 分组会在 CLI/Web 结果中重复展示并干扰排序。路径是跨稀疏/稠密双写索引的最稳定关联键。
 
 所有权重先暴露为配置，最终由 benchmark 调整。
 

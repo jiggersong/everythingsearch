@@ -16,6 +16,7 @@ def create_candidate(
     *,
     chunk_type: str = "content",
     metadata: dict | None = None,
+    filepath: str | None = None,
 ) -> SearchCandidate:
     base_meta = {"author": "AI"}
     if metadata:
@@ -23,7 +24,7 @@ def create_candidate(
     return SearchCandidate(
         chunk_id=cid,
         file_id=fid,
-        filepath=f"/test/{fid}.txt",
+        filepath=filepath or f"/test/{fid}.txt",
         filename=f"{fid}.txt",
         chunk_type=chunk_type,
         content=content,
@@ -73,6 +74,22 @@ def test_file_aggregator_basic():
     
     # 检查 metadata 传递
     assert results[0].metadata["author"] == "AI"
+
+
+def test_file_aggregator_groups_by_filepath_when_file_ids_differ():
+    """同一物理文件的旧/新索引 file_id 不一致时，不应重复展示。"""
+    aggregator = DefaultFileAggregator()
+    filepath = "/test/shared.txt"
+    candidates = [
+        create_candidate("c1", "stable-file-id", 0.9, "shared content 1", filepath=filepath),
+        create_candidate("c2", "legacy-dense-id", 0.8, "shared content 2", filepath=filepath),
+    ]
+
+    results = aggregator.aggregate(candidates, max_highlights=3)
+
+    assert len(results) == 1
+    assert results[0].filepath == filepath
+    assert results[0].highlights == ["shared content 1", "shared content 2"]
 
 
 def test_exact_phrase_bonus():
