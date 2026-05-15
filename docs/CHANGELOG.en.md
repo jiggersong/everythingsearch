@@ -2,6 +2,14 @@
 
 [English](CHANGELOG.en.md) | [中文](CHANGELOG.md)
 
+## [2.3.6] - 2026-05-15
+
+### Documentation
+
+- **README now includes an Agent non-interactive install path**: Added a copy-paste flow for OpenClaw/Agent usage that avoids `./scripts/install.sh` prompts and uses explicit venv setup, dependency install, non-interactive `config.py` updates, and health checks.
+- **Fewer agent-side installation pitfalls**: Documented guardrails (always use `./venv/bin/python` and `./venv/bin/pip`, prefer absolute paths, validate `TARGET_DIR` first) to reduce path ambiguity and “installed but no indexed data” failures.
+- **Integration preference guidance**: README now explicitly recommends that Agents with localhost HTTP support use `skills/everythingsearch-local/SKILL.md` and prefer `GET /api/search` for deterministic retrieval.
+
 ## [2.3.5] - 2026-05-15
 
 ### Retrieval fixes

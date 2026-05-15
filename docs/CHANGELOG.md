@@ -2,6 +2,14 @@
 
 [English](CHANGELOG.en.md) | [中文](CHANGELOG.md)
 
+## [2.3.6] - 2026-05-15
+
+### 文档
+
+- **README 增加 Agent 非交互安装指南**：新增面向 OpenClaw/Agent 的无交互安装流程，明确不要依赖 `./scripts/install.sh` 的终端交互，改为虚拟环境创建、依赖安装、`config.py` 无交互写入与健康检查的可复制命令链。
+- **降低 Agent 安装误判**：补充 Agent 执行约束（固定使用 `./venv/bin/python` 与 `./venv/bin/pip`、尽量使用绝对路径、预校验 `TARGET_DIR`），减少自动化安装时的路径歧义与“安装成功但索引无数据”问题。
+- **接入路径建议**：在 README 中显式提示，具备 localhost HTTP 能力的 Agent 可优先参考 `skills/everythingsearch-local/SKILL.md` 并使用 `GET /api/search` 做稳定检索。
+
 ## [2.3.5] - 2026-05-15
 
 ### 检索修复

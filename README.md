@@ -25,6 +25,58 @@ cd everythingsearch
 ./scripts/install.sh
 ```
 
+## Agent / OpenClaw Installation (Non-interactive)
+
+`./scripts/install.sh` is designed for humans and is intentionally interactive.  
+If OpenClaw (or any Agent) installs this project, **do not rely on the interactive prompts**. Use this non-interactive flow instead:
+
+```bash
+git clone https://github.com/jiggersong/everythingsearch.git
+cd everythingsearch
+
+# 1) Create venv and install dependencies
+python3.11 -m venv venv || python3 -m venv venv
+./venv/bin/pip install --upgrade pip
+./venv/bin/pip install -r requirements/base.txt
+
+# 2) Prepare config.py
+cp -n etc/config.example.py config.py
+
+# 3) Fill required config fields NON-interactively
+# Replace placeholders before running:
+export ES_API_KEY="sk-xxxx"
+export ES_TARGET_DIR="/Users/you/Documents"
+./venv/bin/python - <<'PY'
+from pathlib import Path
+import os
+import re
+
+path = Path("config.py")
+text = path.read_text(encoding="utf-8")
+
+def set_line(src: str, key: str, value: str) -> str:
+    return re.sub(rf'^{key}\s*=.*$', f'{key} = "{value}"', src, flags=re.MULTILINE)
+
+text = set_line(text, "MY_API_KEY", os.environ["ES_API_KEY"])
+text = set_line(text, "TARGET_DIR", os.environ["ES_TARGET_DIR"].rstrip("/"))
+path.write_text(text, encoding="utf-8")
+print("config.py updated")
+PY
+
+# 4) Build index and run app
+make index
+./scripts/run_app.sh start
+curl -s http://127.0.0.1:8000/api/health
+```
+
+### Agent guardrails
+
+- **Never** call `./scripts/install.sh` unless the Agent can handle terminal interaction reliably.
+- Always use `./venv/bin/python` and `./venv/bin/pip` (avoid system Python ambiguity).
+- Keep all paths absolute in Agent commands.
+- If `TARGET_DIR` is empty or wrong, indexing will succeed with little/no useful data. Validate it first.
+- If your Agent can call localhost HTTP, integrate via [`skills/everythingsearch-local/SKILL.md`](skills/everythingsearch-local/SKILL.md) and prefer `GET /api/search` for deterministic retrieval.
+
 ## Version Upgrade
 
 If you already have an older version (v1.0.0 or later) installed, follow these steps to upgrade.

@@ -25,6 +25,58 @@ cd everythingsearch
 ./scripts/install.sh
 ```
 
+## Agent / OpenClaw 非交互安装
+
+`./scripts/install.sh` 是给人类用户设计的交互式安装脚本。  
+如果由 OpenClaw 或其他 Agent 安装，请**不要依赖交互输入**，改用下面这套无交互流程：
+
+```bash
+git clone https://github.com/jiggersong/everythingsearch.git
+cd everythingsearch
+
+# 1) 创建虚拟环境并安装依赖
+python3.11 -m venv venv || python3 -m venv venv
+./venv/bin/pip install --upgrade pip
+./venv/bin/pip install -r requirements/base.txt
+
+# 2) 准备 config.py
+cp -n etc/config.example.py config.py
+
+# 3) 无交互写入必填配置
+# 运行前请先替换占位值：
+export ES_API_KEY="sk-xxxx"
+export ES_TARGET_DIR="/Users/你/Documents"
+./venv/bin/python - <<'PY'
+from pathlib import Path
+import os
+import re
+
+path = Path("config.py")
+text = path.read_text(encoding="utf-8")
+
+def set_line(src: str, key: str, value: str) -> str:
+    return re.sub(rf'^{key}\s*=.*$', f'{key} = "{value}"', src, flags=re.MULTILINE)
+
+text = set_line(text, "MY_API_KEY", os.environ["ES_API_KEY"])
+text = set_line(text, "TARGET_DIR", os.environ["ES_TARGET_DIR"].rstrip("/"))
+path.write_text(text, encoding="utf-8")
+print("config.py updated")
+PY
+
+# 4) 构建索引并启动服务
+make index
+./scripts/run_app.sh start
+curl -s http://127.0.0.1:8000/api/health
+```
+
+### 给 Agent 的执行约束
+
+- 除非 Agent 具备稳定的交互终端能力，否则不要调用 `./scripts/install.sh`。
+- 统一使用 `./venv/bin/python` 与 `./venv/bin/pip`，避免系统 Python 歧义。
+- Agent 命令中的路径尽量使用绝对路径。
+- `TARGET_DIR` 配错会导致索引看似成功但无有效数据，写入前先确认目录存在。
+- 如果 Agent 能访问本机 HTTP，请优先按 [`skills/everythingsearch-local/SKILL.md`](skills/everythingsearch-local/SKILL.md) 接入，并优先使用 `GET /api/search` 做稳定检索。
+
 ## 版本升级
 
 如果电脑上已经安装过 v1.0.0 之后任一旧版本，按以下步骤升级到最新版。
