@@ -41,10 +41,13 @@ BASE="${EVERYTHINGSEARCH_BASE:-http://127.0.0.1:8000}"
 语义与关键词混合检索；结果中 **`preview`** 为围绕命中的短片段。
 
 ```bash
+RESULT_JSON="$(mktemp /tmp/essearch.XXXXXX.json)"
+printf '%s\n' "$RESULT_JSON"
 curl -sG "$BASE/api/search" \
   --data-urlencode "q=你的关键词或短句" \
   --data-urlencode "source=all" \
-  --data-urlencode "limit=30"
+  --data-urlencode "limit=30" \
+  -o "$RESULT_JSON"
 ```
 
 可选查询参数（与校验逻辑一致时）：`date_field`（`mtime`|`ctime`）、`date_from`、`date_to`、`limit`（1～200）。
@@ -59,6 +62,8 @@ curl -sG "$BASE/api/search" \
 将用户整句自然语言交给模型解析为结构化检索参数（核心检索词 `slots.q`、来源、时间、`match_mode` 等），再执行与 Web 相同的搜索管线。
 
 ```bash
+RESULT_JSON="$(mktemp /tmp/essearch-nl.XXXXXX.json)"
+printf '%s\n' "$RESULT_JSON"
 curl -s -X POST "$BASE/api/search/nl" \
   -H "Content-Type: application/json" \
   -d '{
@@ -68,7 +73,8 @@ curl -s -X POST "$BASE/api/search/nl" \
     "date_from": null,
     "date_to": null,
     "limit": 30
-  }'
+  }' \
+  -o "$RESULT_JSON"
 ```
 
 - **请求体**：`message`（必填字符串）；可选 `sidebar_source`、`date_field`、`date_from`、`date_to`、`limit` —— 与 UI 侧一致，用于与模型输出合并、约束检索。
@@ -158,12 +164,13 @@ curl -s -X POST "$BASE/api/cache/clear"
 
 ## Agent 工作流建议
 
-1. **默认**：`GET /api/search` 拿 `filepath` 与 `preview`（无 Key、或只需简单查询时）。
+1. **默认**：`GET /api/search`，curl 用 `mktemp` 生成临时 JSON 文件并 `-o` 落盘，Python 从该文件解析展示（无 Key、或只需简单查询时）。
 2. **需要整句意图、精确优先策略时**：在确认 Key 可用或用户接受错误回退的前提下用 `POST /api/search/nl`。
 3. **需要「这些结果意味着什么」的短总结时**：在已有 `results` 上调用 `POST /api/search/interpret`（或流式）。
 4. 若片段不足，再 `GET /api/file/read` 拉取正文（注意 `truncated`）；二进制或大文件用 `GET /api/file/download`。
+5. **打开文件**：默认用系统 `open` / `open -R` 操作 Python 已解析出的 `filepath`；不要从终端乱码里手工复制路径。
 
-## ⛔ 铁律：禁止绕过 EverythingSearch 自行找文件
+## ⛔ 铁律一：禁止绕过 EverythingSearch 自行找文件
 
 当本 Skill 已加载且搜索服务可用时，**绝对禁止**使用以下任何方式查找文件：
 
@@ -179,4 +186,59 @@ curl -s -X POST "$BASE/api/cache/clear"
 
 **唯一例外**：仅当 EverythingSearch 服务不可用（健康检查失败、连接拒绝）时，才可退化为文件系统搜索。此时须先告知用户服务不可用。
 
-**信任 API 结果**：即使终端输出中文字符显示为乱码，API 返回的 `filepath` 仍是文件系统的真实路径。直接用 `reveal` / `open` 操作即可，**不要**为了「确认路径是否正确」而额外执行 `find` 或 `ls`。
+**信任 API 结果**：即使终端输出中文字符显示为乱码，API 返回的 `filepath` 仍是文件系统的真实路径。直接用 Python 解析后的 `filepath` 继续读取、下载、打开或揭示，**不要**为了「确认路径是否正确」而额外执行 `find` 或 `ls`。
+
+## ⛔ 铁律二：一次检索，落盘解析，禁止因乱码重搜
+
+同一查询只允许发起一次搜索请求。终端把中文显示成乱码或 `?` 是显示层问题，不是 API 数据损坏；如果展示脚本写错或输出不理想，只能重跑解析逻辑，不能重跑 `curl`。
+
+执行约束：
+
+1. 搜索响应必须先用 `-o "$RESULT_JSON"` 落盘，`RESULT_JSON` 必须由 `mktemp` 生成，避免并发任务互相覆盖；若命令执行器不保留 shell 变量，后续命令必须显式使用 `mktemp` 打印出的字面路径。
+2. 用 Python `json.load()` 从落盘文件读取 `results`；展示字段优先使用 `preview`，无 `preview` 时再退回 `content`。
+3. 后续打开/揭示/读取文件时，从已解析 JSON 中按结果序号取 `filepath`，不要从终端输出里复制中文路径。
+4. 若确需调用 `/api/open` 或 `/api/reveal`，请求体也必须由 Python 读取同一份 JSON 后生成；OpenClaw 本机打开文件时优先用系统 `open`，失败再明确报告错误。
+
+解析展示示例：
+
+```bash
+python3 - "$RESULT_JSON" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as file_obj:
+    payload = json.load(file_obj)
+
+results = payload.get("results", [])
+print(f"共 {len(results)} 条结果")
+for index, result in enumerate(results, 1):
+    filename = result.get("filename", "")
+    filepath = result.get("filepath", "")
+    relevance = result.get("relevance", "N/A")
+    tag = result.get("tag", "N/A")
+    preview = (result.get("preview") or result.get("content") or "").replace("\n", " ")[:180]
+    print(f"{index}. {filename} | 相关度: {relevance} | 标签: {tag}")
+    print(f"   路径: {filepath}")
+    print(f"   预览: {preview}")
+PY
+```
+
+按结果序号打开文件示例：
+
+```bash
+python3 - "$RESULT_JSON" 1 <<'PY'
+import json
+import subprocess
+import sys
+
+result_index = int(sys.argv[2]) - 1
+with open(sys.argv[1], encoding="utf-8") as file_obj:
+    results = json.load(file_obj).get("results", [])
+
+if result_index < 0 or result_index >= len(results):
+    raise SystemExit("结果序号越界")
+
+filepath = results[result_index]["filepath"]
+subprocess.run(["open", filepath], check=True)
+PY
+```

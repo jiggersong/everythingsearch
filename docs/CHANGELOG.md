@@ -2,6 +2,13 @@
 
 [English](CHANGELOG.en.md) | [中文](CHANGELOG.md)
 
+## [2.3.8] - 2026-05-22
+
+### 文档
+
+- **OpenClaw Skill 避免 Unicode 显示误判**：更新 `everythingsearch-local`，要求 Agent 将搜索响应写入 `mktemp` 生成的 JSON 文件并用 Python 解析，避免把终端中文显示异常误判为数据损坏后重复搜索。
+- **文件打开流程更稳**：明确后续文件操作必须复用已保存 API 响应中解析出的 `filepath`；OpenClaw 本机操作优先使用系统 `open`，EverythingSearch 可用时不得回退到文件系统搜索。
+
 ## [2.3.7] - 2026-05-15
 
 ### 文档

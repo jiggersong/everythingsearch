@@ -2,6 +2,13 @@
 
 [English](CHANGELOG.en.md) | [中文](CHANGELOG.md)
 
+## [2.3.8] - 2026-05-22
+
+### Documentation
+
+- **OpenClaw skill avoids Unicode display traps**: Updated `everythingsearch-local` so agents save search responses to a `mktemp` JSON file and parse them with Python, instead of treating terminal Chinese display glitches as corrupted data and repeating the same search.
+- **Safer file-opening workflow**: Clarified that follow-up file operations must reuse the parsed `filepath` from the saved API response, with system `open` preferred for local OpenClaw actions and no filesystem search fallback while EverythingSearch is available.
+
 ## [2.3.7] - 2026-05-15
 
 ### Documentation
