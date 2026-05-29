@@ -131,10 +131,14 @@ def _reload_app_service_after_indexing() -> None:
     """索引写入完成后重启搜索服务，加载最新 sparse / chroma 数据。"""
     settings = get_settings()
     try:
-        restart_search_service(settings.port)
+        started = restart_search_service(settings.port)
     except RuntimeError as exc:
         logger.error("索引已完成，但重启搜索服务失败: %s", exc)
         sys.exit(1)
+    if not started:
+        logger.warning(
+            "索引已完成。搜索服务未自动启动，请执行: ./scripts/run_app.sh start"
+        )
 
 
 def run_incremental():
@@ -491,6 +495,7 @@ def run_full(plan: FullRebuildPlan):
     try:
         with suspend_search_service_for_rebuild(settings.port):
             _run_full_rebuild_body(settings, plan)
+        _reload_app_service_after_indexing()
     except RuntimeError as exc:
         logger.error("%s", exc)
         sys.exit(1)

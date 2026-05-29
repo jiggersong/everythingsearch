@@ -62,10 +62,11 @@ def test_run_full_suspends_and_restarts_search_service(monkeypatch, tmp_path):
         events.append("resumed")
 
     monkeypatch.setattr(incremental, "suspend_search_service_for_rebuild", fake_suspend)
+    monkeypatch.setattr(incremental, "_reload_app_service_after_indexing", lambda: events.append("reload"))
 
     incremental.run_full(FullRebuildPlan())
 
-    assert events == ["suspend:8000", "resumed"]
+    assert events == ["suspend:8000", "resumed", "reload"]
 
 
 def test_run_full_exits_when_lock_busy(monkeypatch, tmp_path):
@@ -83,6 +84,19 @@ def test_run_full_exits_when_lock_busy(monkeypatch, tmp_path):
         incremental.run_full(FullRebuildPlan())
     assert exc.value.code == 1
     lock.release()
+
+
+def test_reload_app_service_after_indexing_warns_when_not_started(monkeypatch, caplog):
+    import logging
+
+    settings = SimpleNamespace(port=8000)
+    monkeypatch.setattr(incremental, "get_settings", lambda: settings)
+    monkeypatch.setattr(incremental, "restart_search_service", lambda port, snapshot=None: False)
+
+    with caplog.at_level(logging.WARNING):
+        incremental._reload_app_service_after_indexing()
+
+    assert "搜索服务未自动启动" in caplog.text
 
 
 def test_reload_app_service_after_indexing_exits_on_failure(monkeypatch):

@@ -214,9 +214,18 @@ def stop_search_service(port: int) -> SearchServiceSnapshot:
 
 
 def restart_search_service(port: int, snapshot: SearchServiceSnapshot | None = None) -> bool:
-    """重启搜索服务以加载新索引。返回是否已成功拉起服务。"""
+    """重启或启动搜索服务以加载新索引。返回是否已成功拉起服务。"""
     snapshot = snapshot or capture_search_service_snapshot(port)
-    if not snapshot.service_was_running and not snapshot.launchd_was_loaded:
+    service = resolve_launchd_app_service()
+    has_plist = service.plist_path.is_file()
+
+    should_manage = (
+        snapshot.service_was_running
+        or snapshot.launchd_was_loaded
+        or has_plist
+    )
+    if not should_manage:
+        logger.info("索引已更新。请重新启动搜索服务以加载新数据。")
         return False
 
     logger.info("正在重启搜索服务...")

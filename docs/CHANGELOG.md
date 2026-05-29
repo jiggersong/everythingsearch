@@ -2,6 +2,12 @@
 
 [English](CHANGELOG.en.md) | [中文](CHANGELOG.md)
 
+## [2.5.2] - 2026-05-29
+
+### 修复
+
+- **全量索引后自动启动搜索服务**：若本机已安装 launchd plist，索引完成（含重建前服务已停止）后也会 `bootstrap` + `kickstart` 拉起服务；全量成功路径补充 `_reload_app_service_after_indexing()` 兜底；无 plist 时输出明确的手动启动提示。
+
 ## [2.5.1] - 2026-05-29
 
 ### 索引与存储

@@ -2,6 +2,12 @@
 
 [English](CHANGELOG.en.md) | [中文](CHANGELOG.md)
 
+## [2.5.2] - 2026-05-29
+
+### Fixes
+
+- **Auto-start search service after full index**: when a launchd plist is installed, indexing completion now bootstraps and kickstarts the service even if it was stopped before rebuild; full rebuild also calls `_reload_app_service_after_indexing()` as a fallback; logs a clear manual start hint when no plist is present.
+
 ## [2.5.1] - 2026-05-29
 
 ### Indexing & storage

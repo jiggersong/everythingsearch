@@ -98,6 +98,41 @@ def test_restart_search_service_uses_launchd_when_plist_exists(monkeypatch, tmp_
     assert ["launchctl", "kickstart", "-k", service.job_target] in calls
 
 
+def test_restart_search_service_starts_when_plist_exists_even_if_stopped(monkeypatch, tmp_path):
+    service = asc.LaunchdAppService(
+        label="com.test.app",
+        plist_path=tmp_path / "com.test.app.plist",
+        bootstrap_domain="gui/501",
+    )
+    service.plist_path.write_text("plist", encoding="utf-8")
+    calls: list[list[str]] = []
+
+    monkeypatch.setattr(asc, "resolve_launchd_app_service", lambda: service)
+    monkeypatch.setattr(asc, "is_launchd_job_loaded", lambda _service: False)
+    listen_states = iter([[], [900]])
+
+    def fake_list(port):
+        try:
+            return next(listen_states)
+        except StopIteration:
+            return [900]
+
+    monkeypatch.setattr(asc, "list_search_service_pids", fake_list)
+    monkeypatch.setattr(asc, "_terminate_pids", lambda pids: None)
+    monkeypatch.setattr(asc, "_wait_port_listeners_gone", lambda *args, **kwargs: None)
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        return asc.subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(asc.subprocess, "run", fake_run)
+
+    snapshot = asc.SearchServiceSnapshot(launchd_was_loaded=False, service_was_running=False)
+    assert asc.restart_search_service(8000, snapshot) is True
+    assert ["launchctl", "bootstrap", service.bootstrap_domain, str(service.plist_path)] in calls
+    assert ["launchctl", "kickstart", "-k", service.job_target] in calls
+
+
 def test_restart_search_service_without_plist_prompts_manual_restart(monkeypatch):
     service = asc.LaunchdAppService(
         label="com.test.app",
