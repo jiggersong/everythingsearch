@@ -2,6 +2,39 @@
 
 [English](CHANGELOG.en.md) | [中文](CHANGELOG.md)
 
+## [2.5.0] - 2026-05-28
+
+> **Note**: From v2.5.0, `make index-full` performs a true full rebuild by default (wipes embedding and scan caches). Advanced flags `--keep-*`, `--resume`, and `--dry-run` ship with this release.
+
+### Indexing & storage
+
+- **Faster Sparse writes**: `SPARSE_INDEX_BATCH_SIZE` (default 5000), parallel jieba tokenization + single-connection bulk writes, less frequent checkpoints; `sparse_optimize` runs by default (`--skip-sparse-optimize` to skip).
+- **True full rebuild by default**: `incremental --full` wipes embedding / scan caches and derived indexes unless `--keep-*` is set; `--resume` always keeps both caches and continues from checkpoint.
+- **Environment prep**: `full_rebuild_environment` prints remove/keep summary before work; `--dry-run` previews only.
+
+### Documentation
+
+- **Full-rebuild semantics**: INSTALL / PROJECT_MANUAL / README (EN & ZH) now agree—`make index-full` **by default** wipes embedding cache, scan cache, and derived indexes (true full rebuild); advanced users opt in with `--keep-embedding-cache`, `--keep-scan-cache`, or `--keep-caches`; `--resume` continues after interruption and **always keeps** both caches.
+- **Technical manual**: pending settings such as `SPARSE_INDEX_BATCH_SIZE`; PROJECT_MANUAL §4.5 aligned with §6 CLI docs.
+- **Agent Skill**: `skills/everythingsearch-local/SKILL.md` §9—indexing is out of scope; agents must not wipe caches on their own.
+- **Makefile help**: `index-full` and `ARGS=` advanced usage notes.
+
+## [2.4.0] - 2026-05-28
+
+### Indexing & storage
+
+- **Embedding upgrade**: config template defaults to `text-embedding-v4` (1024-dim) with separate `document`/`query` `text_type`; `etc/config.example.py` adds rebuild, rate-limit, and checkpoint path samples.
+- **Sparse/dense split**: chunk body and `title_path` live in `sparse_index.db`; Chroma keeps minimal metadata; retrieval hydrates text via `chunk_store`.
+- **Shared chunking**: new `chunk_conversion` module; full and incremental indexing share `docs_to_indexed_chunks()`.
+- **Resumable full rebuild**: `rebuild_checkpoint` / `rebuild_staging` with phase resume; staging uses `sequence_no` for correct resume offsets.
+- **Embedding cache & limits**: cache keys include model/dimensions/text_type/storage format; vectors stored as `blob_float32`; `embed_rate_limiter` enforces RPS+TPM with 429 backoff.
+- **Failure semantics**: `build_pipeline_index()` failures make `incremental` exit with code 1 (including dense-missing full fallback), so half-finished runs are not treated as success.
+
+### Documentation
+
+- **README / PROJECT_MANUAL (EN & ZH)**: document v2.4.0 full-rebuild steps, `text-embedding-v4`, and new config keys.
+- **Internal dev docs**: index optimization plans and runbooks moved to `dev_docs/` (gitignored, not shipped with the open-source tree).
+
 ## [2.3.8] - 2026-05-22
 
 ### Documentation

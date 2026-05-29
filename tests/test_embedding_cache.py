@@ -104,9 +104,9 @@ class TestEmbeddingCache:
         vector = [0.1, 0.2, 0.3, 0.4]
         
         cache.put_many(model, [(text, vector)])
-        result = cache.get_many(model, [text])
+        result = cache.get_many(model, [text])  # cache_key
         
-        assert result[text] == vector
+        assert result[text] == pytest.approx(vector)
     
     def test_put_and_get_multiple(self, temp_db):
         """测试批量存储和读取"""
@@ -121,9 +121,9 @@ class TestEmbeddingCache:
         cache.put_many(model, items)
         result = cache.get_many(model, ["text1", "text2", "text3"])
         
-        assert result["text1"] == [0.1, 0.2]
-        assert result["text2"] == [0.3, 0.4]
-        assert result["text3"] == [0.5, 0.6]
+        assert result["text1"] == pytest.approx([0.1, 0.2])
+        assert result["text2"] == pytest.approx([0.3, 0.4])
+        assert result["text3"] == pytest.approx([0.5, 0.6])
     
     def test_get_missing_returns_none(self, temp_db):
         """测试获取不存在的键返回 None"""
@@ -144,7 +144,7 @@ class TestEmbeddingCache:
         # 查询包含已知和未知
         result = cache.get_many(model, ["known", "unknown"])
         
-        assert result["known"] == [1.0, 2.0]
+        assert result["known"] == pytest.approx([1.0, 2.0])
         assert result["unknown"] is None
     
     def test_model_isolation(self, temp_db):
@@ -157,8 +157,8 @@ class TestEmbeddingCache:
         result_a = cache.get_many("model-a", ["text"])
         result_b = cache.get_many("model-b", ["text"])
         
-        assert result_a["text"] == [1.0, 2.0]
-        assert result_b["text"] == [3.0, 4.0]
+        assert result_a["text"] == pytest.approx([1.0, 2.0])
+        assert result_b["text"] == pytest.approx([3.0, 4.0])
     
     def test_overwrite_existing(self, temp_db):
         """测试覆盖已存在的数据"""
@@ -169,10 +169,10 @@ class TestEmbeddingCache:
         cache.put_many(model, [("text", [3.0, 4.0])])  # 覆盖
         
         result = cache.get_many(model, ["text"])
-        assert result["text"] == [3.0, 4.0]
+        assert result["text"] == pytest.approx([3.0, 4.0])
     
     def test_legacy_table_adds_created_at(self, temp_db):
-        """旧库仅 text_hash/vector 两列时，初始化应迁移出 created_at"""
+        """旧库仅 text_hash/vector 两列时，初始化应迁移出新列。"""
         conn = sqlite3.connect(temp_db)
         conn.execute(
             "CREATE TABLE embeddings (text_hash TEXT PRIMARY KEY, vector TEXT)"
@@ -185,6 +185,23 @@ class TestEmbeddingCache:
         cols = [r[1] for r in conn.execute("PRAGMA table_info(embeddings)").fetchall()]
         conn.close()
         assert "created_at" in cols
+        assert "vector_blob" in cols
+
+    def test_put_many_prefers_blob_storage(self, temp_db):
+        """新写入应优先使用 vector_blob 列。"""
+        cache = EmbeddingCache(temp_db)
+        model = "test-model"
+        cache.put_many(model, [("blob-text", [0.1, 0.2, 0.3])])
+
+        conn = sqlite3.connect(temp_db)
+        row = conn.execute(
+            "SELECT vector, vector_blob FROM embeddings WHERE text_hash = ?",
+            (cache._hash(model, "blob-text"),),
+        ).fetchone()
+        conn.close()
+        assert row is not None
+        assert row[0] is None
+        assert isinstance(row[1], (bytes, bytearray))
 
     def test_thread_safety(self, temp_db):
         """测试线程安全"""
@@ -199,7 +216,7 @@ class TestEmbeddingCache:
                     vector = [float(thread_id), float(i)]
                     cache.put_many(model, [(text, vector)])
                     result = cache.get_many(model, [text])
-                    if result[text] != vector:
+                    if result[text] != pytest.approx(vector):
                         errors.append(f"数据不匹配: {text}")
             except Exception as e:
                 errors.append(str(e))
@@ -260,3 +277,43 @@ class TestCachedEmbeddingsStats:
         assert "远端文本: 6 / 10" in result
         assert "4 缓存命中" in result
         assert "2 批次" in result
+
+
+class TestCachedEmbeddingsTextTypeCache:
+    """document / query 向量缓存应隔离。"""
+
+    @pytest.fixture
+    def temp_db(self):
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        os.unlink(path)
+        yield path
+        for ext in ["", "-shm", "-wal"]:
+            try:
+                os.unlink(path + ext)
+            except OSError:
+                pass
+
+    def test_same_text_document_and_query_use_separate_cache(self, temp_db):
+        embeddings = CachedEmbeddings(
+            model="text-embedding-v4",
+            cache_path=temp_db,
+            document_text_type="document",
+            query_text_type="query",
+        )
+        calls: list[str] = []
+
+        def fake_remote(texts, text_type):
+            calls.append(text_type)
+            if text_type == "document":
+                return [[1.0, 0.0]]
+            return [[0.0, 1.0]]
+
+        object.__setattr__(embeddings, "_call_remote_embed", fake_remote)
+
+        doc_vec = embeddings.embed_documents(["same"])
+        query_vec = embeddings.embed_query("same")
+
+        assert doc_vec[0] == pytest.approx([1.0, 0.0])
+        assert query_vec == pytest.approx([0.0, 1.0])
+        assert calls == ["document", "query"]

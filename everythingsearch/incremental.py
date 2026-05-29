@@ -28,7 +28,6 @@ from everythingsearch.indexer import (
     _save_cached_docs,
     build_documents_for_path_cached,
 )
-from everythingsearch.embedding_cache import CachedEmbeddings
 from everythingsearch.infra.settings import (
     apply_sdk_environment,
     get_settings,
@@ -50,10 +49,15 @@ from everythingsearch.indexing.progress_reporter import (
     IndexProgressReporter,
     IndexProgressState,
 )
+from everythingsearch.indexing.chunk_conversion import docs_to_indexed_chunks, generate_file_id
+from everythingsearch.indexing.full_rebuild_plan import FullRebuildPlan, add_full_rebuild_arguments
+from everythingsearch.indexing.full_rebuild_environment import (
+    prepare_full_rebuild_environment,
+    print_full_rebuild_summary,
+)
 from everythingsearch.indexing.sparse_index_writer import SQLiteSparseIndexWriter
-from everythingsearch.indexing.pipeline_indexer import generate_file_id
-from everythingsearch.indexing.chunk_models import IndexedChunk
-from langchain_chroma import Chroma
+from everythingsearch.indexing.dense_index_writer import ChromaDenseIndexWriter
+from everythingsearch.retrieval.embedding import DashScopeEmbeddingProvider
 import chromadb
 
 logger = logging.getLogger(__name__)
@@ -91,16 +95,28 @@ def _load_db_state(conn: sqlite3.Connection) -> dict[str, tuple[float, str]]:
 
 def _delete_chunks(collection, filepath: str, sparse_writer: SQLiteSparseIndexWriter = None):
     """Delete all ChromaDB and FTS5 chunks belonging to a file."""
+    file_id = generate_file_id(filepath)
+    delete_errors: list[Exception] = []
     try:
-        collection.delete(where={"source": filepath})
-    except Exception:
-        pass
+        # 优先按 file_id 删除；兼容旧索引可能仅有 source 字段。
+        collection.delete(where={"file_id": file_id})
+    except Exception as exc:
+        delete_errors.append(exc)
+        logger.warning("按 file_id 删除 Dense 索引失败 %s: %s", filepath, exc)
+        try:
+            collection.delete(where={"source": filepath})
+            delete_errors.clear()
+        except Exception as fallback_exc:
+            delete_errors.append(fallback_exc)
+            logger.warning("按 source 删除 Dense 索引失败 %s: %s", filepath, fallback_exc)
+
+    if delete_errors:
+        raise RuntimeError(f"删除 Dense 索引失败: {filepath}") from delete_errors[-1]
     
     if sparse_writer:
         try:
             # Assuming sparse_writer has a delete_file_by_path or similar method
             # Since we only have file_id in pipeline_indexer, let's generate it
-            file_id = generate_file_id(filepath)
             sparse_writer.delete_file(file_id)
         except Exception as e:
             logger.warning(f"删除 Sparse 索引失败 {filepath}: {e}")
@@ -199,11 +215,18 @@ def _run_incremental_impl():
         logger.warning("现有 Dense collection 不存在，增量更新无法执行，将切换为全量索引构建。")
         conn.close()
         from everythingsearch.indexing.pipeline_indexer import build_pipeline_index
-        build_pipeline_index(
+
+        fallback_plan = FullRebuildPlan.keep_caches_for_fallback()
+        prepare_full_rebuild_environment(settings, fallback_plan)
+        if build_pipeline_index(
             initial_scale_snapshot=scale_snapshot,
             transition_reason="Dense collection 不存在",
-        )
-        _rebuild_state_db()
+            full_rebuild_plan=fallback_plan,
+        ):
+            _rebuild_state_db()
+        else:
+            logger.error("全量索引构建未完成，跳过状态库重建。")
+            sys.exit(1)
         return
 
     reporter = IndexProgressReporter("增量索引更新", logger)
@@ -220,15 +243,8 @@ def _run_incremental_impl():
 
     collection = client.get_collection("local_files")
 
-    embeddings = CachedEmbeddings(
-        model=settings.embedding_model,
-        cache_path=settings.embedding_cache_path,
-    )
-    vectordb = Chroma(
-        client=client,
-        embedding_function=embeddings,
-        collection_name="local_files",
-    )
+    dense_embedding_provider = DashScopeEmbeddingProvider(settings)
+    dense_writer = ChromaDenseIndexWriter(settings, dense_embedding_provider)
 
     sparse_writer = SQLiteSparseIndexWriter(settings)
 
@@ -312,12 +328,14 @@ def _run_incremental_impl():
 
             if docs:
                 file_estimated_tokens = estimate_tokens_from_texts([doc.page_content for doc in docs])
+                source_type = docs[0].metadata.get("source_type", stype)
+                chunks_to_write = docs_to_indexed_chunks(fp, source_type, docs)
                 ok = False
                 for attempt in range(3):
                     try:
-                        vectordb.add_documents(docs)
+                        dense_writer.upsert_chunks(chunks_to_write)
                         ok = True
-                        embedding_stats = embeddings.stats_snapshot()
+                        embedding_stats = dense_embedding_provider.stats_snapshot()
                         reporter.set_embedding_stats(
                             embedding_stats.cache_hit_text_count,
                             embedding_stats.uncached_text_count,
@@ -334,64 +352,27 @@ def _run_incremental_impl():
                     reporter.add_failed_file()
                     continue
 
-                # Write to FTS5 Sparse Index
-                file_id = generate_file_id(fp)
-                file_counters = {}
-                chunks_to_write = []
-                for doc in docs:
-                    meta = doc.metadata.copy()
-                    chunk_type = meta.get("chunk_type", "content")
-                    if chunk_type == "content":
-                        chunk_idx = meta.get("chunk_idx", 0)
-                        chunk_suffix = f"c{chunk_idx}"
-                    elif chunk_type == "filename":
-                        chunk_suffix = "fn"
-                    elif chunk_type == "heading":
-                        count = file_counters.get(f"{file_id}_heading", 0)
-                        chunk_suffix = f"h{count}"
-                        file_counters[f"{file_id}_heading"] = count + 1
-                    else:
-                        count = file_counters.get(f"{file_id}_{chunk_type}", 0)
-                        chunk_suffix = f"x{count}"
-                        file_counters[f"{file_id}_{chunk_type}"] = count + 1
-
-                    chunk_id = f"{file_id}_{chunk_suffix}"
-                    filename = meta.pop("filename", "")
-                    filetype = meta.pop("type", "")
-                    title_path_list = meta.pop("title_path", [])
-                    title_path = tuple(title_path_list) if title_path_list else ()
-                    meta.pop("chunk_type", None)
-                    doc_mtime = float(meta.pop("mtime", 0.0))
-                    ctime = float(meta.pop("ctime", 0.0))
-                    meta.pop("source", None)
-                    meta.pop("source_type", None)
-
-                    indexed_chunk = IndexedChunk(
-                        chunk_id=chunk_id,
-                        file_id=file_id,
-                        filepath=fp,
-                        filename=filename,
-                        source_type=stype,
-                        filetype=filetype,
-                        chunk_type=chunk_type,
-                        title_path=title_path,
-                        content=doc.page_content,
-                        embedding_text=doc.page_content,
-                        sparse_text=doc.page_content,
-                        chunk_index=meta.get("chunk_idx", 0),
-                        mtime=doc_mtime,
-                        ctime=ctime,
-                        metadata=meta
-                    )
-                    chunks_to_write.append(indexed_chunk)
-
+                sparse_ok = True
                 if chunks_to_write:
                     try:
                         sparse_writer.upsert_chunks(chunks_to_write)
                         reporter.add_sparse_chunks(len(chunks_to_write))
                     except Exception as e:
                         logger.error("写入 Sparse 索引失败 %s: %s", os.path.basename(fp), e)
-                        reporter.add_failed_file()
+                        sparse_ok = False
+                        try:
+                            dense_writer.delete_file(chunks_to_write[0].file_id)
+                        except Exception as rollback_exc:
+                            logger.error(
+                                "Sparse 失败，回滚 Dense 索引失败 %s: %s",
+                                os.path.basename(fp),
+                                rollback_exc,
+                            )
+
+                if not sparse_ok:
+                    reporter.add_failed_file()
+                    continue
+
                 reporter.add_processed_file(len(docs), file_estimated_tokens)
             else:
                 reporter.add_skipped_file()
@@ -414,7 +395,19 @@ def _run_incremental_impl():
     elapsed = time.time() - total_start
 
     logger.info("增量索引完成。新增=%s, 修改=%s, 删除=%s", len(new_paths), len(modified_paths), len(deleted_paths))
-    logger.info("嵌入缓存: %s", embeddings.stats_str())
+    # 统计字符串保持与旧日志兼容
+    embed_snapshot = dense_embedding_provider.stats_snapshot()
+    total_embed = embed_snapshot.cache_hit_text_count + embed_snapshot.uncached_text_count
+    if total_embed == 0:
+        logger.info("嵌入缓存: 无嵌入调用")
+    else:
+        logger.info(
+            "嵌入缓存: 远端文本: %s / %s (%s 缓存命中, %s 批次)",
+            embed_snapshot.uncached_text_count,
+            total_embed,
+            embed_snapshot.cache_hit_text_count,
+            embed_snapshot.remote_batch_count,
+        )
     logger.info("总耗时: %.1fs", elapsed)
     reporter.finish()
 
@@ -438,12 +431,28 @@ def _rebuild_state_db():
     logger.info("状态数据库已重建: %s 文件 + %s 笔记", len(disk_files), len(disk_mweb))
 
 
-def run_full():
+def run_full(plan: FullRebuildPlan):
     """Full rebuild: use pipeline_indexer then rebuild state DB."""
+    settings = get_settings()
+    require_target_dirs(settings)
+    require_dashscope_api_key(settings)
+    apply_sdk_environment(settings)
+
+    if plan.dry_run:
+        print_full_rebuild_summary(settings, plan)
+        return
+
+    if not plan.resume:
+        prepare_full_rebuild_environment(settings, plan)
+
     try:
         from everythingsearch.indexing.pipeline_indexer import build_pipeline_index
-        build_pipeline_index()
-        _rebuild_state_db()
+
+        if build_pipeline_index(full_rebuild_plan=plan):
+            _rebuild_state_db()
+        else:
+            logger.error("全量索引构建未完成，跳过状态库重建。")
+            sys.exit(1)
     except KeyboardInterrupt:
         logger.warning("用户中断，索引已停止。")
         sys.exit(1)
@@ -457,10 +466,11 @@ if __name__ == "__main__":
         )
         parser = argparse.ArgumentParser(description="增量/全量索引")
         parser.add_argument("--full", action="store_true", help="执行完整重建（而非增量更新）")
+        add_full_rebuild_arguments(parser)
         args = parser.parse_args()
 
         if args.full:
-            run_full()
+            run_full(FullRebuildPlan.from_namespace(args))
         else:
             run_incremental()
     except KeyboardInterrupt:

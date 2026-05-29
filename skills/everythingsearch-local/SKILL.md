@@ -156,6 +156,14 @@ curl -s "$BASE/api/health"
 curl -s -X POST "$BASE/api/cache/clear"
 ```
 
+## 9. 索引构建（不在本 Skill 范围内）
+
+本 Skill 仅覆盖 **HTTP 检索与读文件**；**不**指导 Agent 执行 `make index-full`、`incremental --full` 或删除 `data/` 下文件。
+
+- 用户需要**全量重建**或**增量索引**时：提示其参阅 [INSTALL.md](../../docs/INSTALL.md) §6，或自行在终端执行；Agent **不要**擅自 wipe 缓存或索引目录。
+- **v2.5.0 目标行为**（代码落地前以 INSTALL 为准）：`index-full` 默认真·全量（含删除 embedding / scan 缓存）；省 Token 或续跑需用户显式加 `--keep-caches` 等参数，Agent 不得默认替用户选择保留缓存。
+- 索引完成后若搜索仍异常，可建议 `POST /api/cache/clear` 并 `./scripts/run_app.sh restart`；仍不行再指向全量重建文档，而非文件系统遍历找文件。
+
 ## 安全说明
 
 - `/api/file/read` 与 `/api/file/download` **仅允许** `config.TARGET_DIR`（及 `ENABLE_MWeb` 时 `MWEB_DIR`）下的真实文件路径；其他路径返回 404。

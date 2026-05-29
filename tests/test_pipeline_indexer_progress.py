@@ -28,11 +28,27 @@ def test_build_pipeline_index_reuses_initial_scale_snapshot(monkeypatch, tmp_pat
     settings = SimpleNamespace(
         sparse_index_path=str(tmp_path / "sparse.db"),
         indexer_batch_size=10,
+        sparse_index_batch_size=10,
+        sparse_checkpoint_interval=10,
+        sparse_tokenize_workers=1,
+        sparse_bulk_pragma_fast=False,
+        sparse_skip_fts_delete_on_fresh=True,
         persist_directory=str(tmp_path / "chroma"),
         embedding_model="text-embedding-v2",
         embedding_cache_path=str(tmp_path / "embedding.db"),
         dashscope_api_key="fake-key",
-        embedding_text_type_enabled=False,
+        embedding_dimensions=None,
+        embedding_document_text_type="document",
+        embedding_query_text_type="query",
+        embed_vector_storage_format="blob_float32",
+        embed_rate_rps_limit=20.0,
+        embed_rate_tpm_limit=900000.0,
+        embed_max_inflight=6,
+        embed_retry_max=5,
+        embed_backoff_base_ms=500,
+        embed_backoff_max_ms=15000,
+        rebuild_checkpoint_path=str(tmp_path / "rebuild_checkpoint.db"),
+        rebuild_staging_path=str(tmp_path / "rebuild_staging.db"),
     )
     called = {"disk": 0, "mweb": 0}
 

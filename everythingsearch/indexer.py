@@ -610,6 +610,11 @@ def build_documents_for_file(filepath: str, filename: str, ext: str, source_type
                 },
             ))
 
+    if settings.skip_aux_chunks_for_short_files:
+        content_docs = [doc for doc in documents if doc.metadata.get("chunk_type") == "content"]
+        if len(content_docs) <= 2:
+            documents = content_docs
+
     return documents
 
 
@@ -855,6 +860,11 @@ def build_documents_for_mweb(filepath: str, content: str) -> list[Document]:
                 "title_path": _title_path_for_chunk_metadata(list(title_path), mweb_title_fallback),
             },
         ))
+
+    if settings.skip_aux_chunks_for_short_files:
+        content_docs = [doc for doc in documents if doc.metadata.get("chunk_type") == "content"]
+        if len(content_docs) <= 2:
+            documents = content_docs
 
     return documents
 

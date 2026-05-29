@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Protocol
 
 import chromadb
 from langchain_chroma import Chroma
 
+from everythingsearch.indexing.chunk_store import fetch_chunks_by_ids
+from everythingsearch.indexing.dense_lifecycle import COLLECTION_NAME
 from everythingsearch.infra.settings import Settings
 from everythingsearch.retrieval.embedding import EmbeddingProvider
 from everythingsearch.retrieval.models import QueryPlan, SearchCandidate
@@ -38,7 +41,8 @@ class ChromaDenseRetriever:
     def __init__(self, settings: Settings, embedding: EmbeddingProvider) -> None:
         self._persist_directory = settings.persist_directory
         self._embedding = embedding
-        self._collection_name = "local_files"
+        self._collection_name = COLLECTION_NAME
+        self._sparse_index_path = settings.sparse_index_path
         self._client = _get_chroma_client(self._persist_directory)
 
         # 封装的 Langchain Chroma 实例
@@ -100,21 +104,26 @@ class ChromaDenseRetriever:
                 filter=filter_arg,
             )
 
-            candidates = []
+            chunk_ids: list[str] = []
+            parsed_rows: list[tuple] = []
             for rank, (doc, distance) in enumerate(results, start=1):
                 meta = doc.metadata.copy()
-
-                # 提取基础字段
                 chunk_id = meta.pop("chunk_id", "")
-                # 如果没有 chunk_id（旧版本直接用 Chroma 写可能没有），暂时造一个
                 if not chunk_id:
-                    # 兼容：旧数据没有写入 chunk_id 到 metadata，Langchain 有底层 id 但不在 metadata 里
-                    # 我们暂不处理旧格式兼容，在后续全量索引重建时会带上 chunk_id。
-                    # 或者用 file_id + chunk_idx 组合。
                     file_id = meta.get("file_id", str(hash(doc.page_content)))
                     chunk_idx = meta.get("chunk_idx", 0)
                     chunk_id = f"{file_id}_{chunk_idx}"
+                chunk_ids.append(chunk_id)
+                parsed_rows.append((rank, doc, distance, meta, chunk_id))
 
+            chunk_records = fetch_chunks_by_ids(self._sparse_index_path, chunk_ids)
+
+            candidates = []
+            for rank, doc, distance, meta, chunk_id in parsed_rows:
+                meta = meta.copy()
+
+                # 提取基础字段
+                chunk_id = meta.pop("chunk_id", chunk_id) or chunk_id
                 file_id = meta.pop("file_id", "")
                 filepath = meta.pop("filepath", meta.pop("source", ""))
                 filename = meta.pop("filename", "")
@@ -124,10 +133,17 @@ class ChromaDenseRetriever:
                 
                 title_path_str = meta.pop("title_path", "[]")
                 try:
-                    import json
                     title_path = tuple(json.loads(title_path_str))
                 except (TypeError, ValueError):
                     title_path = ()
+
+                stored = chunk_records.get(chunk_id)
+                if stored is not None:
+                    content = stored.content
+                    if stored.title_path:
+                        title_path = stored.title_path
+                else:
+                    content = doc.page_content if doc.page_content.strip() else ""
 
                 # 分数转换: 余弦距离转化为相似度 (1 - distance)
                 # 这样就保证了值越大越相似（在 0~1 的范围内）
@@ -139,7 +155,7 @@ class ChromaDenseRetriever:
                     filepath=filepath,
                     filename=filename,
                     chunk_type=chunk_type,
-                    content=doc.page_content, # dense retriever 通常召回的就是 embedding_text 或者原始内容
+                    content=content,
                     title_path=title_path,
                     source_type=source_type,
                     filetype=filetype,

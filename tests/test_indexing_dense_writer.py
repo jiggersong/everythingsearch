@@ -5,7 +5,10 @@ import pytest
 
 from everythingsearch.infra.settings import Settings
 from everythingsearch.indexing.chunk_models import IndexedChunk
-from everythingsearch.indexing.dense_index_writer import ChromaDenseIndexWriter
+from everythingsearch.indexing.dense_index_writer import (
+    DENSE_DOCUMENT_PLACEHOLDER,
+    ChromaDenseIndexWriter,
+)
 
 class DummyEmbedding:
     def embed_documents(self, texts):
@@ -56,14 +59,15 @@ def test_dense_index_writer_upsert(mock_settings, sample_chunks):
     col = writer._client.get_collection("local_files")
     assert col.count() == 1
     
-    data = col.get()
+    data = col.get(include=["embeddings", "documents", "metadatas"])
     assert "c1" in data["ids"]
-    
+
     idx = data["ids"].index("c1")
-    assert data["documents"][idx] == "Embedding content"
+    assert data["documents"][idx] == DENSE_DOCUMENT_PLACEHOLDER
+    assert len(data["embeddings"][idx]) > 0
     meta = data["metadatas"][idx]
     assert meta["file_id"] == "f1"
-    assert meta["author"] == "AI"
+    assert meta["chunk_id"] == "c1"
 
 def test_dense_index_writer_delete(mock_settings, sample_chunks):
     writer = ChromaDenseIndexWriter(mock_settings, DummyEmbedding())

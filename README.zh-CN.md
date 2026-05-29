@@ -158,6 +158,11 @@ make help          # 列出全部 make 目标及一行说明
 make index         # 增量索引（含规模/Token 预估与 30 秒进度）
 make index-full    # 全量重建索引（含规模/Token 预估与 30 秒进度）
 make app           # 前台运行应用
+```
+
+**全量重建（v2.5.0 目标行为）**：`make index-full` 默认**真·全量**——重建 sparse/chroma 并**删除** embedding 与 scan 缓存，保证与当前配置一致；启动前会打印将删除/保留的文件摘要。需省 Token 或解析时间时使用 `--keep-embedding-cache`、`--keep-scan-cache` 或 `--keep-caches`；中断续跑用 `--resume --keep-caches`（续跑强制保留两类缓存）。详见 [INSTALL.md](docs/INSTALL.md) 第六节。
+
+```bash
 make search q="关键词"  # CLI 搜索 (JSON 输出)
 make app-status    # 查看 launchd 托管服务状态
 make app-restart   # 重启常驻服务

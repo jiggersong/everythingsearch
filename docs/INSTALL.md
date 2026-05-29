@@ -245,10 +245,47 @@ make app-stop
 
 ### 全量重建
 
+`make index-full`（或 `incremental --full`）用于**从零重建索引**，与当前 `config.py` 及磁盘内容对齐。
+
+> **v2.5.0 起的目标行为**（文档已更新，代码落地前当前进程仍为 v2.4.0 实现）：默认执行**真·全量**——除重建 sparse / chroma / index_state 外，还会**删除** `embedding_cache.db` 与 `scan_cache.db`，避免旧缓存与新版配置不一致导致检索异常。耗时与 Embedding Token 可能高于保留缓存，但结果最可靠。
+
+**推荐流程（普通用户）**
+
+1. 停止干扰：`make app-stop`、`make index-svc-disable`（可选但建议）
+2. 执行全量（默认干净重建）：
+
 ```bash
 caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full
 ./scripts/run_app.sh restart
 ```
+
+启动时会打印**将删除/将保留**的数据文件摘要；Token 为本地估算，账单以 DashScope 为准。
+
+**高阶参数**（需省时间或 Token 时显式指定）：
+
+| 参数 | 作用 |
+|------|------|
+| `--keep-embedding-cache` | 保留向量缓存，Dense 阶段少调 API |
+| `--keep-scan-cache` | 保留解析缓存，未变文件跳过重解析 |
+| `--keep-caches` | 同时保留上述两项 |
+| `--resume` | 中断后续跑（**强制保留**两类 cache 与 checkpoint；不可与「从零 wipe」混用） |
+| `--dry-run` | 仅预览将触及的文件，不删除、不写入 |
+
+示例：
+
+```bash
+# 中断后续跑（省解析 + 省 Embedding）
+caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full --resume --keep-caches
+
+# 只保留向量缓存，文件仍全量重解析
+caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full --keep-embedding-cache
+```
+
+**注意**
+
+- 修改 `EMBEDDING_MODEL`、`EMBEDDING_DIMENSIONS`、`CHUNK_SIZE` 等后，应使用**默认**全量（不 `--keep-*`），或确认你清楚旧 cache 可能部分失效。  
+- `--resume` 在 checkpoint 与当前配置指纹不匹配时会失败，需去掉 `--resume` 重新做干净全量。  
+- 详见 [PROJECT_MANUAL.md](PROJECT_MANUAL.md) §6 与 §4.4。
 
 ## 七、常见问题
 
@@ -361,6 +398,8 @@ cd ~/Downloads/EverythingSearch-new
 **⑥ 更新依赖与后台服务** — 自动运行 `venv/bin/python -m pip install -r requirements/base.txt`（如果现有虚拟环境是 `.venv`，则使用 `.venv/bin/python`），随后运行 `install_launchd_wrappers.sh` 重新生成 launchd 的 wrapper 脚本和 plist 文件，指向当前项目路径。如果之前注册了开机自启和定时索引，无需重新配置。
 
 **⑦ 重建索引** — 场景 A / B 会提示「是否现在开始重建索引」。**推荐选 Y**，脚本会用 `caffeinate -i` 防止系统休眠，在前台跑完全量重建。根据文件数量，可能需要 10 分钟到数小时。场景 C 则只需运行增量索引验证即可。
+
+> **与 §6 全量重建的区别**：升级脚本在场景 B 等路径下会**保留** `embedding_cache.db` 以节省迁移成本；日常执行 `make index-full` 在 **v2.5.0 目标行为**下**默认删除** embedding 与 scan 缓存（真·全量）。升级后若需最干净索引，请用默认 `index-full`；若需省 Token，显式加 `--keep-caches`。
 
 ### 9.4 升级后验证
 

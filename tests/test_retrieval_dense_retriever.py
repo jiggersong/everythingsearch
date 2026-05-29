@@ -29,6 +29,8 @@ def temp_chroma_dir():
 def mock_settings(temp_chroma_dir):
     class MockSettings:
         persist_directory = temp_chroma_dir
+        sparse_index_path = temp_chroma_dir + "/sparse.db"
+
     return MockSettings()
 
 @pytest.fixture

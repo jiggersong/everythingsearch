@@ -244,10 +244,47 @@ Incremental indexing first reports added, modified, and deleted file counts plus
 
 ### Full Rebuild
 
+`make index-full` (or `incremental --full`) rebuilds the index from scratch so it matches your current `config.py` and on-disk files.
+
+> **Target behavior from v2.5.0** (docs updated; running processes may still use the v2.4.0 implementation until the code ships): the default is a **true full rebuild**—in addition to sparse / chroma / index_state, it **deletes** `embedding_cache.db` and `scan_cache.db` so stale caches cannot cause search inconsistencies. This may cost more time and Embedding tokens, but the outcome is the most reliable.
+
+**Recommended flow (typical users)**
+
+1. Reduce interference: `make app-stop`, `make index-svc-disable` (optional but recommended)
+2. Run a clean rebuild (default):
+
 ```bash
 caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full
 ./scripts/run_app.sh restart
 ```
+
+A summary of files to be removed or kept is printed before work starts. Token figures are local estimates; billing is per DashScope.
+
+**Advanced flags** (opt in when you want to save time or tokens):
+
+| Flag | Effect |
+|------|--------|
+| `--keep-embedding-cache` | Keep vector cache; fewer Embedding API calls |
+| `--keep-scan-cache` | Keep parse cache; unchanged files skip heavy re-parsing |
+| `--keep-caches` | Keep both caches |
+| `--resume` | Continue after interruption (**always keeps** both caches and checkpoint; incompatible with a from-scratch wipe) |
+| `--dry-run` | Preview touched files only; no deletes or writes |
+
+Examples:
+
+```bash
+# Resume after crash (save parse + Embedding cost)
+caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full --resume --keep-caches
+
+# Keep vectors only; files are still fully re-parsed
+caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full --keep-embedding-cache
+```
+
+**Notes**
+
+- After changing `EMBEDDING_MODEL`, `EMBEDDING_DIMENSIONS`, `CHUNK_SIZE`, etc., use the **default** full rebuild (no `--keep-*`), unless you understand partial cache invalidation.  
+- `--resume` fails if the checkpoint does not match the current config fingerprint; drop `--resume` for a clean rebuild.  
+- See [PROJECT_MANUAL.en.md](PROJECT_MANUAL.en.md) §6 and §4.4 for details.
 
 ## 7. FAQ
 
@@ -358,6 +395,8 @@ The integrity check stage ensures `data/` exists before the script continues. If
 **⑥ Dependency and Launchd Update** — Runs `venv/bin/python -m pip install -r requirements/base.txt` (or `.venv/bin/python` if that is the existing virtual environment), then runs `install_launchd_wrappers.sh` to regenerate wrapper scripts and plist files pointing to the current project path. Your existing auto-start and scheduled indexing setup is preserved.
 
 **⑦ Index Rebuild** — For scenarios A/B, you'll be asked "Rebuild index now?" **Recommended: choose Y**. The script uses `caffeinate -i` to prevent sleep and runs the full rebuild in the foreground. Depending on file count, this may take 10 minutes to several hours. Scenario C only needs a quick incremental index verification.
+
+> **vs §6 Full Rebuild**: the upgrade script may **keep** `embedding_cache.db` in scenario B to save migration cost; day-to-day `make index-full` under **v2.5.0 target behavior** **wipes** embedding and scan caches by default. After upgrading, use default `index-full` for the cleanest index, or `--keep-caches` to save tokens.
 
 ### 9.4 Post-Upgrade Verification
 

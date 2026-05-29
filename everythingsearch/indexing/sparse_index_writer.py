@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import sqlite3
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
@@ -13,6 +15,7 @@ import jieba
 
 from everythingsearch.infra.settings import Settings
 from everythingsearch.indexing.chunk_models import IndexedChunk
+from everythingsearch.indexing.chunk_conversion import compact_title_path
 
 logger = logging.getLogger(__name__)
 
@@ -30,15 +33,87 @@ class SparseIndexWriter(Protocol):
         """优化稀疏索引库（例如 FTS5 的 optimize 指令）。"""
 
 
+@dataclass(frozen=True)
+class PreparedSparseRecords:
+    """已分词、待写入 SQLite 的记录批次。"""
+
+    chunk_records: tuple[tuple, ...]
+    fts_records: tuple[tuple, ...]
+    chunk_ids: tuple[str, ...]
+
+    @classmethod
+    def merge(cls, parts: list[PreparedSparseRecords]) -> PreparedSparseRecords:
+        chunk_records: list[tuple] = []
+        fts_records: list[tuple] = []
+        chunk_ids: list[str] = []
+        for part in parts:
+            chunk_records.extend(part.chunk_records)
+            fts_records.extend(part.fts_records)
+            chunk_ids.extend(part.chunk_ids)
+        return cls(
+            chunk_records=tuple(chunk_records),
+            fts_records=tuple(fts_records),
+            chunk_ids=tuple(chunk_ids),
+        )
+
+
+class SparseBulkSession:
+    """Sparse 批量写入会话：长连接 + 可选 fast PRAGMA。"""
+
+    def __init__(
+        self,
+        writer: SQLiteSparseIndexWriter,
+        *,
+        skip_fts_delete: bool = False,
+        use_fast_pragma: bool = True,
+    ) -> None:
+        self._writer = writer
+        self._skip_fts_delete = skip_fts_delete
+        self._use_fast_pragma = use_fast_pragma
+        self._conn: sqlite3.Connection | None = None
+        self._prev_sync: str | None = None
+
+    def __enter__(self) -> SparseBulkSession:
+        self._conn = self._writer._get_connection()
+        if self._use_fast_pragma and self._writer._settings.sparse_bulk_pragma_fast:
+            row = self._conn.execute("PRAGMA synchronous").fetchone()
+            self._prev_sync = row[0] if row else "FULL"
+            self._conn.execute("PRAGMA journal_mode=WAL")
+            self._conn.execute("PRAGMA synchronous=NORMAL")
+            self._conn.execute("PRAGMA cache_size=-64000")
+            self._conn.execute("PRAGMA temp_store=MEMORY")
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        if self._conn is None:
+            return
+        try:
+            if exc_type is None:
+                self._conn.commit()
+            else:
+                self._conn.rollback()
+            if self._prev_sync is not None:
+                self._conn.execute(f"PRAGMA synchronous={self._prev_sync}")
+        finally:
+            self._conn.close()
+            self._conn = None
+
+    def write_prepared(self, prepared: PreparedSparseRecords) -> None:
+        if self._conn is None:
+            raise RuntimeError("SparseBulkSession 未进入上下文")
+        self._writer.write_prepared(
+            self._conn,
+            prepared,
+            skip_fts_delete=self._skip_fts_delete,
+        )
+        self._conn.commit()
+
+
 class SQLiteSparseIndexWriter:
     """基于 SQLite FTS5 的稀疏索引写入器。"""
 
     def __init__(self, settings: Settings) -> None:
-        """初始化。
-
-        Args:
-            settings: 包含 sparse_index_path 等配置的 Settings 实例。
-        """
+        self._settings = settings
         self._db_path = settings.sparse_index_path
         self._ensure_db_and_tables()
 
@@ -50,12 +125,8 @@ class SQLiteSparseIndexWriter:
         import contextlib
         with contextlib.closing(self._get_connection()) as conn:
             with conn:
-                # 开启 WAL 模式提高并发性能
                 conn.execute("PRAGMA journal_mode=WAL")
-                # 开启外键支持
                 conn.execute("PRAGMA foreign_keys=ON")
-
-                # 原文与元数据表
                 conn.execute(
                     """
                     CREATE TABLE IF NOT EXISTS sparse_chunks (
@@ -74,14 +145,9 @@ class SQLiteSparseIndexWriter:
                     )
                     """
                 )
-
-                # 为了能通过 file_id 快速删除记录，建立索引
                 conn.execute(
                     "CREATE INDEX IF NOT EXISTS idx_sparse_chunks_file_id ON sparse_chunks(file_id)"
                 )
-
-                # FTS5 虚拟表，使用 unicode61 tokenizer
-                # 实际写入的数据将使用 jieba 进行预分词，以空格连接
                 conn.execute(
                     """
                     CREATE VIRTUAL TABLE IF NOT EXISTS sparse_chunks_fts USING fts5(
@@ -95,27 +161,15 @@ class SQLiteSparseIndexWriter:
                     )
                     """
                 )
-
-                # FTS5 的外部内容同步触发器 (可选，但为了解耦我们在这里在代码里手动双写，不用 trigger)
-                # 因为我们在向 FTS 写入时需要进行 jieba 分词，不能直接使用 trigger 复制原始列。
                 conn.commit()
 
     def _get_connection(self) -> sqlite3.Connection:
-        """获取数据库连接。"""
-        # 使用超时并允许在多线程中共享连接（仅做读写操作时通过上下文管理控制事务）
         return sqlite3.connect(self._db_path, timeout=30.0, check_same_thread=False)
 
-    # CJK 字符范围（含扩展区），用于补充 n-gram 索引
     _CJK_RE = re.compile(r'[一-鿿㐀-䶿\U00020000-\U0002a6df]+')
 
     @classmethod
     def _extract_cjk_bigrams(cls, text: str) -> list[str]:
-        """提取文本中所有 CJK 字符二元组，作为 jieba 分词遗漏人名/专有词的兜底。
-
-        jieba.cut_for_search 仅输出 FREQ 字典中存在的二元组，导致“跟罗毅”中的
-        “罗毅”被丢弃——索引中存在“跟罗毅”但不存在“罗毅”，用户搜索“罗毅”时命中不了。
-        此方法对每个 CJK 连续片段独立提取二元组，补齐被 jieba 遗漏的子串。
-        """
         bigrams: list[str] = []
         for match in cls._CJK_RE.finditer(text):
             segment = match.group()
@@ -125,109 +179,116 @@ class SQLiteSparseIndexWriter:
         return bigrams
 
     def _tokenize_text(self, text: str) -> str:
-        """使用 jieba 对文本进行分词处理，以便存入 FTS5。"""
         if not text:
             return ""
-        # 使用 cut_for_search 以提高长难句中短词的召回率
         tokens = list(jieba.cut_for_search(text))
-        # 补充 CJK 二元组，兜底 jieba FREQ 字典中不存在的人名/专有词
         tokens.extend(self._extract_cjk_bigrams(text))
-        # 用空格连接，以便 unicode61 分词器能将它们切分为独立的 token
         return " ".join(tokens)
+
+    def prepare_batch(self, chunks: list[IndexedChunk]) -> PreparedSparseRecords:
+        """CPU 阶段：jieba 分词与行组装（可在线程池调用）。"""
+        if not chunks:
+            return PreparedSparseRecords((), (), ())
+
+        chunk_records: list[tuple] = []
+        fts_records: list[tuple] = []
+        chunk_ids: list[str] = []
+
+        for chunk in chunks:
+            compacted_title_path = compact_title_path(chunk.title_path)
+            try:
+                title_path_json = json.dumps(compacted_title_path, ensure_ascii=False)
+                metadata_json = json.dumps(chunk.metadata, ensure_ascii=False)
+            except (TypeError, ValueError) as exc:
+                logger.warning("无法序列化 chunk %s 的数据: %s", chunk.chunk_id, exc)
+                title_path_json = "[]"
+                metadata_json = "{}"
+
+            chunk_ids.append(chunk.chunk_id)
+            chunk_records.append((
+                chunk.chunk_id,
+                chunk.file_id,
+                chunk.filepath,
+                chunk.filename,
+                chunk.source_type,
+                chunk.filetype,
+                chunk.chunk_type,
+                title_path_json,
+                chunk.content,
+                chunk.mtime,
+                chunk.ctime,
+                metadata_json,
+            ))
+            fts_records.append((
+                self._tokenize_text(chunk.filename),
+                self._tokenize_text(chunk.filepath[-180:]),
+                self._tokenize_text(" ".join(compacted_title_path)),
+                self._tokenize_text(chunk.sparse_text),
+                chunk.chunk_id,
+                chunk.file_id,
+            ))
+
+        return PreparedSparseRecords(
+            chunk_records=tuple(chunk_records),
+            fts_records=tuple(fts_records),
+            chunk_ids=tuple(chunk_ids),
+        )
+
+    def write_prepared(
+        self,
+        conn: sqlite3.Connection,
+        prepared: PreparedSparseRecords,
+        *,
+        skip_fts_delete: bool = False,
+    ) -> None:
+        """在已有连接上写入 prepared 记录（单写者）。"""
+        if not prepared.chunk_records:
+            return
+
+        cursor = conn.cursor()
+        insert_chunks_sql = """
+            REPLACE INTO sparse_chunks (
+                chunk_id, file_id, filepath, filename, source_type, filetype,
+                chunk_type, title_path, content, mtime, ctime, metadata_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """
+        if not skip_fts_delete:
+            delete_fts_sql = "DELETE FROM sparse_chunks_fts WHERE chunk_id = ?"
+            cursor.executemany(delete_fts_sql, [(cid,) for cid in prepared.chunk_ids])
+
+        insert_fts_sql = """
+            INSERT INTO sparse_chunks_fts (
+                filename, path_text, heading_text, content_text, chunk_id, file_id
+            ) VALUES (?, ?, ?, ?, ?, ?)
+        """
+        cursor.executemany(insert_chunks_sql, prepared.chunk_records)
+        cursor.executemany(insert_fts_sql, prepared.fts_records)
+
+    def open_bulk_session(self, *, skip_fts_delete: bool = False) -> SparseBulkSession:
+        return SparseBulkSession(
+            self,
+            skip_fts_delete=skip_fts_delete,
+            use_fast_pragma=True,
+        )
 
     def upsert_chunks(self, chunks: list[IndexedChunk]) -> None:
         if not chunks:
             return
-
+        prepared = self.prepare_batch(chunks)
         import contextlib
         with contextlib.closing(self._get_connection()) as conn:
             with conn:
-                cursor = conn.cursor()
-                
-                # 首先，处理所有的 chunk_id，可能存在替换
-                chunk_ids = [chunk.chunk_id for chunk in chunks]
-                
-                # 由于可能存在相同 chunk_id 的更新，我们使用 REPLACE INTO
-                
-                insert_chunks_sql = """
-                    REPLACE INTO sparse_chunks (
-                        chunk_id, file_id, filepath, filename, source_type, filetype,
-                        chunk_type, title_path, content, mtime, ctime, metadata_json
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """
-                
-                # 更新 FTS 表比较麻烦，如果存在旧记录需要先删除。
-                # 为了简单起见，我们先删掉这些 chunk_id 在 FTS 表中的旧记录。
-                # FIXME: delete in FTS5 without rowid is O(N) and slow. Disabled for pipeline indexing.
-                # delete_fts_sql = "DELETE FROM sparse_chunks_fts WHERE chunk_id = ?"
-                # cursor.executemany(delete_fts_sql, [(cid,) for cid in chunk_ids])
-
-                insert_fts_sql = """
-                    INSERT INTO sparse_chunks_fts (
-                        filename, path_text, heading_text, content_text, chunk_id, file_id
-                    ) VALUES (?, ?, ?, ?, ?, ?)
-                """
-
-                chunk_records = []
-                fts_records = []
-
-                for chunk in chunks:
-                    try:
-                        title_path_json = json.dumps(chunk.title_path, ensure_ascii=False)
-                        metadata_json = json.dumps(chunk.metadata, ensure_ascii=False)
-                    except (TypeError, ValueError) as exc:
-                        logger.warning("无法序列化 chunk %s 的数据: %s", chunk.chunk_id, exc)
-                        title_path_json = "[]"
-                        metadata_json = "{}"
-
-                    chunk_records.append((
-                        chunk.chunk_id,
-                        chunk.file_id,
-                        chunk.filepath,
-                        chunk.filename,
-                        chunk.source_type,
-                        chunk.filetype,
-                        chunk.chunk_type,
-                        title_path_json,
-                        chunk.content,
-                        chunk.mtime,
-                        chunk.ctime,
-                        metadata_json
-                    ))
-
-                    # 为 FTS 表准备预分词文本
-                    # 结合设计：filename 权重最高，heading 次之。
-                    # path_text 可用于路径搜索。
-                    fts_filename = self._tokenize_text(chunk.filename)
-                    fts_path_text = self._tokenize_text(chunk.filepath)
-                    fts_heading_text = self._tokenize_text(" ".join(chunk.title_path))
-                    fts_content_text = self._tokenize_text(chunk.sparse_text)
-
-                    fts_records.append((
-                        fts_filename,
-                        fts_path_text,
-                        fts_heading_text,
-                        fts_content_text,
-                        chunk.chunk_id,
-                        chunk.file_id
-                    ))
-
-                cursor.executemany(insert_chunks_sql, chunk_records)
-                cursor.executemany(insert_fts_sql, fts_records)
-                
-            logger.debug("成功 upsert %d 个稀疏索引块", len(chunks))
+                self.write_prepared(conn, prepared, skip_fts_delete=False)
+        logger.debug("成功 upsert %d 个稀疏索引块", len(chunks))
 
     def delete_file(self, file_id: str) -> None:
         if not file_id:
             return
-
         import contextlib
         with contextlib.closing(self._get_connection()) as conn:
             with conn:
                 cursor = conn.cursor()
-                # 从 FTS 表中删除
                 cursor.execute("DELETE FROM sparse_chunks_fts WHERE file_id = ?", (file_id,))
-                # 从原数据表中删除
                 cursor.execute("DELETE FROM sparse_chunks WHERE file_id = ?", (file_id,))
             logger.debug("已删除 file_id='%s' 的所有稀疏索引", file_id)
 
@@ -236,8 +297,16 @@ class SQLiteSparseIndexWriter:
             import contextlib
             with contextlib.closing(self._get_connection()) as conn:
                 with conn:
-                    # FTS5 的 optimize 指令会将内部的 b-tree 结构合并为一个大的 b-tree，提升查询速度。
                     conn.execute("INSERT INTO sparse_chunks_fts(sparse_chunks_fts) VALUES('optimize')")
                 logger.info("稀疏索引 FTS5 optimize 执行完成")
         except sqlite3.Error as exc:
             logger.error("稀疏索引优化失败: %s", exc)
+
+
+def resolve_sparse_tokenize_workers(settings: Settings) -> int:
+    """解析并行 jieba worker 数。"""
+    configured = settings.sparse_tokenize_workers
+    if configured > 0:
+        return configured
+    cpu = os.cpu_count() or 4
+    return min(8, max(4, cpu - 1))

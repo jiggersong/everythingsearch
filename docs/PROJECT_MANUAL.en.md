@@ -84,7 +84,7 @@ It lets users find local documents, code, and materials quickly using natural la
 | --------------- | -------------------------------------------- | ------------------------------------------------------------------------- |
 | Language        | Python 3.11                                  | Recommended 3.11 (or 3.10); install dependencies in a virtual environment |
 | Orchestration   | LangChain                                    | Document load, chunking, and vectorization pipeline                       |
-| Embedding model | Aliyun DashScope text-embedding-v2           | Strong Chinese understanding, low cost                                    |
+| Embedding model | Aliyun DashScope text-embedding-v4 (1024-dim) | Default in config template; index and query must use the same model/dims |
 | Vector database | ChromaDB                                     | Local file-based database; no Docker required             |
 | Sparse index    | SQLite FTS5                                  | Full-text search with BM25 weighted scoring              |
 | Web framework   | Flask + Gunicorn                             | Dev / production HTTP service             |
@@ -120,15 +120,19 @@ EverythingSearch/
 │   │   ├── reranking.py      # DashScope Rerank integration
 │   │   └── aggregation.py    # File-level score aggregation
 │   ├── indexing/             # Low-level indexing components
+│   │   ├── chunk_conversion.py   # Document→Chunk and title_path compaction
 │   │   ├── sparse_index_writer.py
 │   │   ├── dense_index_writer.py
-│   │   └── pipeline_indexer.py
+│   │   ├── pipeline_indexer.py   # sparse+dense writes, checkpoint resume
+│   │   ├── rebuild_checkpoint.py
+│   │   ├── rebuild_staging.py
+│   │   └── chunk_store.py        # fetch chunk body from sparse DB by chunk_id
 │   ├── evaluation/           # Search benchmark, dataset loading, and metrics
 │   │   ├── benchmark_runner.py
 │   │   ├── dataset.py
 │   │   ├── metrics.py
 │   │   └── datasets/
-│   ├── infra/                # Infrastructure layer (incl. strongly typed settings.py)
+│   ├── infra/                # Infrastructure layer (incl. settings.py, embed_rate_limiter)
 │   ├── request_validation.py # Input validation protocol (unified HTTP 400 contract)
 │   ├── file_access.py        # Strict file access boundary; anti path traversal
 │   ├── indexer.py            # Full index build entrypoint
@@ -146,6 +150,8 @@ EverythingSearch/
 │   ├── chroma_db/            # ChromaDB vector store
 │   ├── sparse_index.db       # FTS5 sparse index database
 │   ├── embedding_cache.db
+│   ├── rebuild_checkpoint.db   # full-rebuild phase checkpoint (optional)
+│   ├── rebuild_staging.db      # full-rebuild staging (optional)
 │   ├── scan_cache.db
 │   └── index_state.db
 ├── logs/                     # Runtime and scheduled job logs
@@ -224,7 +230,25 @@ Local settings are concentrated here. Load order: environment variables > reposi
 | `MWEB_DIR`                     | `data/mweb_export`                             | Managed export landing zone for MWeb notes                                                          |
 | `INDEX_STATE_DB`               | `./index_state.db`                             | Incremental indexing state database                                                                 |
 | `SCAN_CACHE_PATH`              | `./scan_cache.db`                              | Scan/parse cache (skip unchanged files)                                                             |
-| `EMBEDDING_MODEL`              | `text-embedding-v2`                            | Embedding model name                                                                                |
+| `EMBEDDING_MODEL`              | `text-embedding-v4`                            | Embedding model (must match query side)                                                             |
+| `EMBEDDING_DIMENSIONS`         | `1024`                                         | v4 vector dimensions                                                                                |
+| `EMBEDDING_DOCUMENT_TEXT_TYPE` | `document`                                     | Index-side text_type (DashScope v4)                                                                 |
+| `EMBEDDING_QUERY_TEXT_TYPE`    | `query`                                        | Query-side text_type                                                                                |
+| `EMBED_VECTOR_STORAGE_FORMAT`  | `blob_float32`                                 | Cached vector storage (float32 only today)                                                          |
+| `EMBED_RATE_RPS_LIMIT`         | `20`                                           | Embedding API requests per second cap                                                               |
+| `EMBED_RATE_TPM_LIMIT`         | `900000`                                       | Embedding API tokens per minute cap                                                                 |
+| `EMBED_MAX_INFLIGHT`           | `6`                                            | Max concurrent in-flight embedding requests                                                         |
+| `EMBED_RETRY_MAX`              | `5`                                            | Max retries on 429/5xx                                                                              |
+| `EMBED_BACKOFF_BASE_MS`        | `500`                                          | Exponential backoff start (ms)                                                                      |
+| `EMBED_BACKOFF_MAX_MS`         | `15000`                                        | Exponential backoff cap (ms)                                                                        |
+| `TITLE_PATH_MAX_DEPTH`         | `3`                                            | Max title_path depth                                                                                |
+| `TITLE_PATH_MAX_ITEM_CHARS`    | `120`                                          | Max chars per title_path segment                                                                    |
+| `TITLE_PATH_MAX_CHARS`         | `256`                                          | Max total title_path length                                                                         |
+| `SKIP_AUX_CHUNKS_FOR_SHORT_FILES` | `False`                                     | Skip filename/heading aux chunks for short files                                                    |
+| `REBUILD_CHECKPOINT_PATH`      | `data/rebuild_checkpoint.db`                   | Full-rebuild checkpoint DB path                                                                     |
+| `REBUILD_STAGING_PATH`         | `data/rebuild_staging.db`                      | Full-rebuild staging DB path                                                                        |
+| `SPARSE_INDEX_PATH`            | `data/sparse_index.db`                         | FTS5 sparse index (authoritative chunk text)                                                        |
+| `EMBEDDING_CACHE_PATH`         | `data/embedding_cache.db`                      | Embedding SQLite cache path                                                                         |
 | `CHUNK_SIZE`                   | `500`                                          | Text chunk size (characters)                                                                        |
 | `CHUNK_OVERLAP`                | `80`                                           | Chunk overlap (characters)                                                                          |
 | `MAX_CONTENT_LENGTH`           | `20000`                                        | Max characters indexed per file                                                                     |
@@ -251,7 +275,10 @@ Local settings are concentrated here. Load order: environment variables > reposi
 | `AGG_EXACT_BONUS`              | `0.10`                                         | File aggregation: exact match bonus                                                                |
 | `AGG_MULTI_HIT_BONUS`          | `0.05`                                         | File aggregation: multi-chunk hit bonus                                                            |
 | `AGG_LARGE_FILE_PENALTY`       | `0.05`                                         | File aggregation: large file penalty                                                               |
-| `INDEXER_BATCH_SIZE`           | `5000`                                         | Index rebuild batch size                                                                           |
+| `INDEXER_BATCH_SIZE`           | `5000`                                         | Dense full-rebuild outer batch cap reference (effective cap 50)                                    |
+| `SPARSE_INDEX_BATCH_SIZE`      | `5000`                                         | Sparse write batch size (**v2.5.0 code**; decoupled from Dense)                                      |
+| `SPARSE_CHECKPOINT_INTERVAL`   | `5000`                                         | Progress checkpoint interval in chunks (Sparse/Dense)                                              |
+| `SPARSE_TOKENIZE_WORKERS`      | `0`                                            | Parallel jieba workers; 0 = auto (**v2.5.0 code**)                                                 |
 | `EMBED_MAX_CHARS`              | `600`                                          | Max characters per embedding text                                                                  |
 | `TRUST_PROXY`                  | `False`                                        | Trust `X-Forwarded-For` from a reverse proxy (for per-IP rate limiting)                             |
 | `NL_INTENT_MODEL`              | `qwen-turbo`                                   | NL intent model (prefer JSON Mode–capable models)                                                   |
@@ -313,29 +340,52 @@ Search execution is protected at the business layer via concurrency control and 
 
 1. **Query Planner**: Generates a structured `QueryPlan` from the frontend request (including optional `path_filter`, `date_field`, etc.). If `exact_focus` is specified, it gracefully degrades to a keyword-focused hybrid mode. Sparse queries convert jieba tokens into FTS5 clauses and **skip punctuation-only tokens** (so full filenames like `report.pdf` are not blocked by a required `.` match).
 2. **Sparse Retriever**: Performs rapid inverted index queries using the newly added `data/sparse_index.db` (SQLite FTS5). Field weighting is governed by configuration keys like `SPARSE_FILENAME_WEIGHT` and `SPARSE_PATH_WEIGHT`.
-3. **Dense Retriever**: Computes semantic similarity to extract candidate chunks using the existing ChromaDB and Embedding layer.
+3. **Dense Retriever**: Nearest-neighbor search in ChromaDB (minimal metadata only); hydrates body text and `title_path` from `sparse_index.db` via `chunk_store`.
 4. **Candidate Fusion (RRF)**: Applies Reciprocal Rank Fusion to combine sparse and dense results without supervision.
 5. **Reranker (Second-stage Ranking)**: If `RERANK_MODEL` (e.g., DashScope's qwen3-rerank) is configured, the Top N candidates from RRF are sent to the reranking model for deep semantic scoring. Defaults to RRF scores if the reranker times out or degrades.
 6. **File Aggregator**: Replaces the previous "highest-scoring chunk per file" approach with a file-level score aggregation across all candidate chunks, yielding a much more accurate final ranking. Groups by physical `filepath` first to dedupe legacy Chroma rows with inconsistent `file_id`s.
 
-### 4.4 `embedding_cache.py` — Embedding cache
+### 4.4 `embedding_cache.py` — Embedding cache and rate limiting
 
 `CachedEmbeddings` subclasses `DashScopeEmbeddings` and checks SQLite before calling the API:
 
-- Key: `SHA256(model_name + "::" + text)`
-- Value: JSON-serialized vector; `created_at` (Unix timestamp) on write
-- **WAL** mode and a **connection pool** (fixed pool size); legacy two-column tables get `created_at` via `ALTER TABLE`
+- Key: includes `model`, `dimensions`, `text_type`, `EMBED_VECTOR_STORAGE_FORMAT`, and text hash (prevents v2/v4 or dimension mix-ups)
+- Value: vector stored as `blob_float32` BLOB; `created_at` (Unix timestamp) on write
+- **WAL** mode and a **connection pool**; legacy schemas are migrated on init
+- Calls go through `embed_rate_limiter` (**RPS + TPM** dual bucket, per SDK batch); 429/5xx use `EMBED_RETRY_*` exponential backoff
 - Hit/call counters use `PrivateAttr` + `threading.Lock` so Pydantic defaults do not deep-copy badly
-- After the first full index, later rebuilds rarely need API calls
+- After the first full index, later rebuilds rarely need API calls when text is unchanged
+
+### 4.4.1 `pipeline_indexer.py` — Sparse/dense write pipeline
+
+Full (`--full`) and incremental writes share `build_pipeline_index()` (**from v2.5.0**, orchestrated by `FullRebuildOrchestrator`; users still run a single `--full` command):
+
+1. `chunk_conversion.docs_to_indexed_chunks()` produces chunks with compact `title_path` (shared by full and incremental)
+2. **Sparse**: body and `title_path` go to `sparse_index.db`; **from v2.5.0**, parallel jieba + single-connection bulk writes (`SPARSE_INDEX_BATCH_SIZE`, default 5000)
+3. **Sparse optimize**: FTS5 `optimize` **runs by default** after sparse writes on full rebuild; advanced `--skip-sparse-optimize` planned
+4. **Dense**: vectors in Chroma (minimal metadata); outer batch `min(INDEXER_BATCH_SIZE, 50)`
+5. **Checkpoint / staging**: in-process resume only; not exposed as multi-step CLI
+
+**Full-rebuild data semantics (v2.5.0 target; see [INSTALL.en.md](INSTALL.en.md))**
+
+| Mode | Wipe embedding cache | Wipe scan cache | Wipe sparse/chroma |
+|------|---------------------|-----------------|-------------------|
+| Default `--full` | yes | yes | yes |
+| `--keep-embedding-cache` | no | yes | yes |
+| `--keep-scan-cache` | yes | no | yes |
+| `--keep-caches` | no | no | yes |
+| `--resume` | **no (forced)** | **no (forced)** | no (keep progress) |
+
+On failure, `build_pipeline_index()` returns `False` and `incremental` exits with code 1.
 
 ### 4.5 `everythingsearch.incremental` — Incremental indexing
 
 SQLite table `file_index` tracks `(filepath, mtime, source_type)`:
 
-- **New file**: embed and write to ChromaDB  
-- **Modified** (mtime changed): delete old chunks, reindex  
-- **Deleted** (missing on disk): remove from ChromaDB and state table  
-- **Unchanged**: skip
+- **New/modified files**: written via `build_pipeline_index()` to sparse DB and Chroma; modifications delete old chunks first  
+- **Deleted** (missing on disk): removed from sparse DB, Chroma, and state table  
+- **Unchanged**: skip  
+- **Dense-missing full fallback**: if full rebuild is triggered and `build_pipeline_index()` fails, the process **exits with code 1** (no silent success)
 
 **MWeb toggle**:
 
@@ -345,7 +395,13 @@ Run:
 
 ```bash
 python -m everythingsearch.incremental          # incremental
-python -m everythingsearch.incremental --full   # full rebuild
+python -m everythingsearch.incremental --full   # full rebuild (see below)
+make index-full                                 # same
+```
+
+**Full-rebuild CLI (v2.5.0 target; v2.4.0 supports `--full` only)**: by default wipes embedding / scan caches and derived indexes; advanced flags `--keep-embedding-cache`, `--keep-scan-cache`, `--keep-caches`, `--resume`, `--dry-run`. Semantics table in §4.4.1; operations in §6 “Full rebuild” and [INSTALL.en.md](INSTALL.en.md) §6.
+
+```bash
 # or from repo root:
 ./venv/bin/python everythingsearch/incremental.py
 ```
@@ -416,7 +472,7 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jigger.everythingsea
 ### External services
 
 - **Alibaba Cloud DashScope API**: requires a valid API key  
-  - **Embeddings**: `text-embedding-v2` by default, used during indexing  
+  - **Embeddings**: config template defaults to `text-embedding-v4` (1024-dim), used during indexing  
   - **Generative** (optional): web `POST /api/search/nl` and interpretation endpoints use `NL_INTENT_MODEL` / `SEARCH_INTERPRET_MODEL` (default `qwen-turbo`); those calls need outbound network  
   - Sign up → enable DashScope → create an API key  
   - Cost is very low for embeddings (about ¥0.0007 / 1000 tokens); intent/interpretation billed per model
@@ -473,16 +529,32 @@ cd /path/to/EverythingSearch
 ./scripts/run_app.sh restart
 ```
 
-### Full rebuild (first time or after large changes)
+### Full rebuild (`make index-full`)
+
+**Typical users**: one command, clean environment—no manual `data/` cleanup.
+
+1. Stop Web and scheduled indexing: `make app-stop`, `make index-svc-disable` (recommended)
+2. Sync the “index rebuild” block from `etc/config.example.py` into `config.py` (model, dimensions, rate limits, etc.)
+3. Run (**default wipes** embedding cache, scan cache, and all derived indexes):
 
 ```bash
 cd /path/to/EverythingSearch
 caffeinate -i nohup ./venv/bin/python -m everythingsearch.incremental --full >> "logs/full_rebuild_$(date +%Y-%m-%d).log" 2>&1 &
-# After indexing, restart the search service to load new data
-# ./scripts/run_app.sh restart
 ```
 
-`caffeinate -i` prevents sleep from killing the job.
+4. After indexing: `./scripts/run_app.sh restart`
+
+**Advanced** (save tokens / parse time / resume after crash):
+
+```bash
+./venv/bin/python -m everythingsearch.incremental --full --resume --keep-caches
+./venv/bin/python -m everythingsearch.incremental --full --keep-embedding-cache
+./venv/bin/python -m everythingsearch.incremental --full --dry-run
+```
+
+`--resume` is rejected when the checkpoint config fingerprint mismatches—drop `--resume` for a default clean rebuild. Use `caffeinate -i` to avoid sleep killing the job.
+
+> **Version note**: v2.5.0 docs describe this CLI; until that code ships, wipe behavior may still follow v2.4.0—check the startup log summary.
 
 ### Index Progress And Cost Hints
 
@@ -625,7 +697,7 @@ Change `TARGET_DIR`, then `python -m everythingsearch.incremental --full`.
 
 ### Different embedding model
 
-Set `EMBEDDING_MODEL` to a DashScope-supported name, then full rebuild; cache keys include the model name.
+Set `EMBEDDING_MODEL` to a DashScope-supported name, then run a **default** `make index-full` (from v2.5.0, wipes the old embedding cache; v2.4.0 still keys cache by model and re-calls the API on misses). After a model change, do **not** use `--keep-embedding-cache` unless you know why.
 
 ### Cron / plist schedule
 

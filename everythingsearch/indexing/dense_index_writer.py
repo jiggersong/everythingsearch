@@ -2,18 +2,21 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Protocol
 
 import chromadb
-from langchain_chroma import Chroma
-from langchain_core.documents import Document
 
 from everythingsearch.infra.settings import Settings
 from everythingsearch.indexing.chunk_models import IndexedChunk
+from everythingsearch.indexing.dense_lifecycle import COLLECTION_NAME
 from everythingsearch.retrieval.embedding import EmbeddingProvider
 
 logger = logging.getLogger(__name__)
+
+# Dense 仅存占位 document，正文由 ChunkStore（sparse_chunks）回表。
+DENSE_DOCUMENT_PLACEHOLDER = " "
 
 
 class DenseIndexWriter(Protocol):
@@ -26,50 +29,45 @@ class DenseIndexWriter(Protocol):
         """删除指定文件的所有稠密索引块。"""
 
 
-_chroma_client_cache = {}
+_chroma_client_cache: dict[str, chromadb.PersistentClient] = {}
 
-def _get_chroma_client(persist_directory: str):
-    """获取或初始化 ChromaDB Client（单例），避免重复实例化导致内存泄漏 (BUG-009)。"""
+
+def _get_chroma_client(persist_directory: str) -> chromadb.PersistentClient:
+    """获取或初始化 ChromaDB Client（单例），避免重复实例化导致内存泄漏。"""
     import os
+
     path = os.path.abspath(persist_directory)
     if path not in _chroma_client_cache:
         _chroma_client_cache[path] = chromadb.PersistentClient(path=path)
     return _chroma_client_cache[path]
 
+
 class ChromaDenseIndexWriter:
-    """基于 ChromaDB 的稠密索引写入器。"""
+    """基于 ChromaDB 的稠密索引写入器（预计算向量 + 最小 metadata）。"""
 
     def __init__(self, settings: Settings, embedding: EmbeddingProvider) -> None:
         self._persist_directory = settings.persist_directory
         self._embedding = embedding
-        self._collection_name = "local_files"
-
-        # 初始化 Chroma 客户端
+        self._collection_name = COLLECTION_NAME
         self._client = _get_chroma_client(self._persist_directory)
-        
-        # 为了复用 Langchain 的包装（处理批次等），我们可以创建包装器
-        # 但这会导致我们只能用 Document。我们自己来直接调用 self._db 会更好一点，
-        # 或者使用 langchain_chroma.Chroma。
-        self._db = Chroma(
-            client=self._client,
-            collection_name=self._collection_name,
-            embedding_function=self._embedding,
-            collection_metadata={"hnsw:space": "cosine"}
+
+    def _get_collection(self):
+        return self._client.get_or_create_collection(
+            name=self._collection_name,
+            metadata={"hnsw:space": "cosine"},
         )
 
     def upsert_chunks(self, chunks: list[IndexedChunk]) -> None:
         if not chunks:
             return
 
-        documents = []
-        ids = []
-
+        texts = [chunk.embedding_text for chunk in chunks]
+        vectors = self._embedding.embed_documents(texts)
+        ids = [chunk.chunk_id for chunk in chunks]
+        metadatas = []
         for chunk in chunks:
-            # Dense retriever 需要的是 chunk_id 和 embedding_text
-            # Langchain Chroma API 需要 Document 及其 metadata
-            doc = Document(
-                page_content=chunk.embedding_text,
-                metadata={
+            metadatas.append(
+                {
                     "chunk_id": chunk.chunk_id,
                     "file_id": chunk.file_id,
                     "filepath": chunk.filepath,
@@ -79,17 +77,19 @@ class ChromaDenseIndexWriter:
                     "chunk_type": chunk.chunk_type,
                     "mtime": chunk.mtime,
                     "ctime": chunk.ctime,
-                    # 将其他原始元数据合并
-                    **chunk.metadata
+                    "chunk_idx": chunk.chunk_index,
+                    "title_path": json.dumps(chunk.title_path, ensure_ascii=False),
                 }
             )
-            documents.append(doc)
-            ids.append(chunk.chunk_id)
 
         try:
-            # Langchain_Chroma 提供 add_documents，它会自动处理 id 如果不提供
-            # 但我们为了更新已有记录，必须显式提供 ids
-            self._db.add_documents(documents=documents, ids=ids)
+            collection = self._get_collection()
+            collection.upsert(
+                ids=ids,
+                embeddings=vectors,
+                metadatas=metadatas,
+                documents=[DENSE_DOCUMENT_PLACEHOLDER] * len(chunks),
+            )
             logger.debug("成功 upsert %d 个稠密索引块", len(chunks))
         except Exception as exc:
             logger.error("写入稠密索引失败: %s", exc)
@@ -100,13 +100,10 @@ class ChromaDenseIndexWriter:
             return
 
         try:
-            # ChromaDB 支持按 metadata where 进行删除
-            # _client.get_collection 直接执行删除最保险
             collection = self._client.get_collection(self._collection_name)
             collection.delete(where={"file_id": file_id})
             logger.debug("已删除 file_id='%s' 的稠密索引", file_id)
-        except ValueError:
-            # Collection 不存在时，不需要处理
+        except (ValueError, chromadb.errors.NotFoundError):
             pass
         except Exception as exc:
             logger.error("删除稠密索引 (file_id=%s) 失败: %s", file_id, exc)

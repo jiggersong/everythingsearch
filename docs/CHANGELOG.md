@@ -2,6 +2,39 @@
 
 [English](CHANGELOG.en.md) | [中文](CHANGELOG.md)
 
+## [2.5.0] - 2026-05-28
+
+> **说明**：v2.5.0 起 `make index-full` 默认真·全量（删除 embedding / scan 缓存）；高阶参数 `--keep-*` / `--resume` / `--dry-run` 已随代码发布。
+
+### 索引与存储
+
+- **Sparse 写入加速**：`SPARSE_INDEX_BATCH_SIZE`（默认 5000）、并行 jieba 分词 + 单连接 bulk 写入、checkpoint 降频、`sparse_optimize` 默认执行（`--skip-sparse-optimize` 可跳过）。
+- **真·全量默认**：`incremental --full` 默认删除 embedding / scan 缓存及派生索引；`--keep-embedding-cache`、`--keep-scan-cache`、`--keep-caches` 显式保留；`--resume` 强制保留两类缓存并续跑。
+- **环境清理**：`full_rebuild_environment` 在全量开始前打印将删除/保留路径摘要；`--dry-run` 仅预览。
+
+### 文档
+
+- **全量重建语义**：INSTALL / PROJECT_MANUAL / README（中英文）统一为——`make index-full` **默认**删除 embedding cache、scan cache 及派生索引（真·全量）；高阶用户通过 `--keep-embedding-cache`、`--keep-scan-cache`、`--keep-caches` 显式保留；`--resume` 中断续跑且**强制保留**两类缓存。
+- **技术手册**：补充 `SPARSE_INDEX_BATCH_SIZE`、`SPARSE_CHECKPOINT_INTERVAL` 等待生效配置项；PROJECT_MANUAL §4.5 与 §6 对齐 CLI 说明。
+- **Agent Skill**：`skills/everythingsearch-local/SKILL.md` 增加 §9，明确索引构建不在 Skill 范围内、不擅自 wipe 缓存。
+- **Makefile help**：`index-full` 与 `ARGS=` 高阶用法说明。
+
+## [2.4.0] - 2026-05-28
+
+### 索引与存储
+
+- **嵌入模型升级**：配置模板默认 `text-embedding-v4`（1024 维），支持 `document`/`query` 双 `text_type`；`etc/config.example.py` 增加索引重建、限速与 checkpoint 路径示例。
+- **稀疏/稠密分工**：正文与 `title_path` 以 `sparse_index.db` 为权威；Chroma 仅存最小 metadata，检索时经 `chunk_store` 回填正文。
+- **共享切分逻辑**：新增 `chunk_conversion`，全量与增量共用 `docs_to_indexed_chunks()`，避免行为漂移。
+- **全量重建可续跑**：`rebuild_checkpoint` / `rebuild_staging` 支持阶段断点；staging 使用 `sequence_no` 保证续跑偏移正确。
+- **Embedding 缓存与限速**：缓存键纳入模型/维度/text_type/存储格式；向量以 `blob_float32` 存储；`embed_rate_limiter` 提供 RPS+TPM 双桶与 429 退避。
+- **失败语义**：`build_pipeline_index()` 失败时 `incremental` 以退出码 1 终止（含 Dense 缺失触发全量重建失败），避免半完成状态被当作成功。
+
+### 文档
+
+- **README / PROJECT_MANUAL（中英文）**：补充 v2.4.0 全量重建流程、`text-embedding-v4` 与配置项说明。
+- **开发过程文档**：索引优化方案、runbook 等移至仓库内 `dev_docs/`（已 gitignore，不随开源发布）。
+
 ## [2.3.8] - 2026-05-22
 
 ### 文档

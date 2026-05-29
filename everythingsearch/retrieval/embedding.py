@@ -6,6 +6,7 @@ import logging
 from typing import Protocol
 
 from everythingsearch.embedding_cache import CachedEmbeddings, EmbeddingStatsSnapshot
+from everythingsearch.infra.embed_rate_limiter import DualTokenBucketRateLimiter
 from everythingsearch.infra.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -22,28 +23,35 @@ class EmbeddingProvider(Protocol):
 
 
 class DashScopeEmbeddingProvider:
-    """包装后的 DashScope/CachedEmbeddings 适配器。
-    
-    能够根据配置决定是否启用 text_type 参数（例如 text-embedding-v4 支持）。
-    由于 Langchain 的 DashScopeEmbeddings 目前可能未完全暴露 text_type，
-    我们可以在不修改底层库的情况下降级，或者直接使用底层的 kwargs 支持。
-    当前实现：直接包装现有的 CachedEmbeddings，并透传功能。
-    """
+    """包装 CachedEmbeddings，透传限流、维度与 text_type 配置。"""
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
-        self._enabled_text_type = settings.embedding_text_type_enabled
-        self._embeddings = None
+        self._embeddings: CachedEmbeddings | None = None
+        self._rate_limiter = DualTokenBucketRateLimiter(
+            rps_limit=settings.embed_rate_rps_limit,
+            tpm_limit=settings.embed_rate_tpm_limit,
+            max_inflight=settings.embed_max_inflight,
+        )
 
-    def _get_embeddings(self):
+    def _get_embeddings(self) -> CachedEmbeddings:
         if self._embeddings is None:
             from everythingsearch.infra.settings import require_dashscope_api_key
+
             require_dashscope_api_key(self._settings)
-            from everythingsearch.embedding_cache import CachedEmbeddings
             self._embeddings = CachedEmbeddings(
                 model=self._settings.embedding_model,
                 cache_path=self._settings.embedding_cache_path,
                 dashscope_api_key=self._settings.dashscope_api_key,
+                embed_max_chars=self._settings.embed_max_chars,
+                embedding_dimensions=self._settings.embedding_dimensions,
+                document_text_type=self._settings.embedding_document_text_type,
+                query_text_type=self._settings.embedding_query_text_type,
+                vector_storage_format=self._settings.embed_vector_storage_format,
+                rate_limiter=self._rate_limiter,
+                embed_retry_max=self._settings.embed_retry_max,
+                embed_backoff_base_ms=self._settings.embed_backoff_base_ms,
+                embed_backoff_max_ms=self._settings.embed_backoff_max_ms,
             )
         return self._embeddings
 
@@ -58,11 +66,10 @@ class DashScopeEmbeddingProvider:
         return self._get_embeddings().embed_query(text)
 
     def stats_snapshot(self) -> EmbeddingStatsSnapshot:
-        """返回底层 CachedEmbeddings 的统计快照。"""
         if self._embeddings is None:
             return EmbeddingStatsSnapshot(
                 cache_hit_text_count=0,
                 uncached_text_count=0,
                 remote_batch_count=0,
             )
-        return self._get_embeddings().stats_snapshot()
+        return self._embeddings.stats_snapshot()

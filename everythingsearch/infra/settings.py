@@ -45,6 +45,22 @@ class Settings:
     persist_directory: str
     embedding_cache_path: str
     embedding_model: str
+    embedding_dimensions: int | None
+    embedding_document_text_type: str
+    embedding_query_text_type: str
+    embed_vector_storage_format: str
+    embed_rate_rps_limit: float
+    embed_rate_tpm_limit: float
+    embed_max_inflight: int
+    embed_retry_max: int
+    embed_backoff_base_ms: int
+    embed_backoff_max_ms: int
+    title_path_max_depth: int
+    title_path_max_item_chars: int
+    title_path_max_chars: int
+    skip_aux_chunks_for_short_files: bool
+    rebuild_checkpoint_path: str
+    rebuild_staging_path: str
     chunk_size: int
     chunk_overlap: int
     max_content_length: int
@@ -81,6 +97,11 @@ class Settings:
 
     # 魔法数字及文件聚合评分权重
     indexer_batch_size: int
+    sparse_index_batch_size: int
+    sparse_checkpoint_interval: int
+    sparse_tokenize_workers: int
+    sparse_bulk_pragma_fast: bool
+    sparse_skip_fts_delete_on_fresh: bool
     embed_max_chars: int
     default_search_limit: int
     
@@ -219,6 +240,101 @@ def _load_settings() -> Settings:
             "EMBEDDING_MODEL",
             default="text-embedding-v2",
         ),
+        embedding_dimensions=_load_optional_int(
+            "EMBEDDING_DIMENSIONS",
+            legacy_config,
+            "EMBEDDING_DIMENSIONS",
+        ),
+        embedding_document_text_type=_load_str(
+            "EMBEDDING_DOCUMENT_TEXT_TYPE",
+            legacy_config,
+            "EMBEDDING_DOCUMENT_TEXT_TYPE",
+            default="document",
+        ),
+        embedding_query_text_type=_load_str(
+            "EMBEDDING_QUERY_TEXT_TYPE",
+            legacy_config,
+            "EMBEDDING_QUERY_TEXT_TYPE",
+            default="query",
+        ),
+        embed_vector_storage_format=_load_str(
+            "EMBED_VECTOR_STORAGE_FORMAT",
+            legacy_config,
+            "EMBED_VECTOR_STORAGE_FORMAT",
+            default="blob_float32",
+        ),
+        embed_rate_rps_limit=_load_float(
+            "EMBED_RATE_RPS_LIMIT",
+            legacy_config,
+            "EMBED_RATE_RPS_LIMIT",
+            default=20.0,
+        ),
+        embed_rate_tpm_limit=_load_float(
+            "EMBED_RATE_TPM_LIMIT",
+            legacy_config,
+            "EMBED_RATE_TPM_LIMIT",
+            default=900000.0,
+        ),
+        embed_max_inflight=_load_int(
+            "EMBED_MAX_INFLIGHT",
+            legacy_config,
+            "EMBED_MAX_INFLIGHT",
+            default=6,
+        ),
+        embed_retry_max=_load_int(
+            "EMBED_RETRY_MAX",
+            legacy_config,
+            "EMBED_RETRY_MAX",
+            default=5,
+        ),
+        embed_backoff_base_ms=_load_int(
+            "EMBED_BACKOFF_BASE_MS",
+            legacy_config,
+            "EMBED_BACKOFF_BASE_MS",
+            default=500,
+        ),
+        embed_backoff_max_ms=_load_int(
+            "EMBED_BACKOFF_MAX_MS",
+            legacy_config,
+            "EMBED_BACKOFF_MAX_MS",
+            default=15000,
+        ),
+        title_path_max_depth=_load_int(
+            "TITLE_PATH_MAX_DEPTH",
+            legacy_config,
+            "TITLE_PATH_MAX_DEPTH",
+            default=3,
+        ),
+        title_path_max_item_chars=_load_int(
+            "TITLE_PATH_MAX_ITEM_CHARS",
+            legacy_config,
+            "TITLE_PATH_MAX_ITEM_CHARS",
+            default=120,
+        ),
+        title_path_max_chars=_load_int(
+            "TITLE_PATH_MAX_CHARS",
+            legacy_config,
+            "TITLE_PATH_MAX_CHARS",
+            default=256,
+        ),
+        skip_aux_chunks_for_short_files=_load_bool(
+            "SKIP_AUX_CHUNKS_FOR_SHORT_FILES",
+            legacy_config,
+            "SKIP_AUX_CHUNKS_FOR_SHORT_FILES",
+            default=False,
+        ),
+        rebuild_checkpoint_path=_load_required_path(
+            "REBUILD_CHECKPOINT_PATH",
+            legacy_config,
+            "REBUILD_CHECKPOINT_PATH",
+            default=str(get_project_root() / "data" / "rebuild_checkpoint.db"),
+        ),
+        rebuild_staging_path=_load_required_path(
+            "REBUILD_STAGING_PATH",
+            legacy_config,
+            "REBUILD_STAGING_PATH",
+            default=str(get_project_root() / "data" / "rebuild_staging.db"),
+        ),
         chunk_size=_load_int("CHUNK_SIZE", legacy_config, "CHUNK_SIZE", default=500),
         chunk_overlap=_load_int("CHUNK_OVERLAP", legacy_config, "CHUNK_OVERLAP", default=80),
         max_content_length=_load_int(
@@ -277,6 +393,24 @@ def _load_settings() -> Settings:
         rerank_top_n=_load_int("RERANK_TOP_N", legacy_config, "RERANK_TOP_N", default=50),
         rerank_max_doc_chars=_load_int("RERANK_MAX_DOC_CHARS", legacy_config, "RERANK_MAX_DOC_CHARS", default=2000),
         indexer_batch_size=_load_int("INDEXER_BATCH_SIZE", legacy_config, "INDEXER_BATCH_SIZE", default=5000),
+        sparse_index_batch_size=_load_int(
+            "SPARSE_INDEX_BATCH_SIZE", legacy_config, "SPARSE_INDEX_BATCH_SIZE", default=5000
+        ),
+        sparse_checkpoint_interval=_load_int(
+            "SPARSE_CHECKPOINT_INTERVAL", legacy_config, "SPARSE_CHECKPOINT_INTERVAL", default=5000
+        ),
+        sparse_tokenize_workers=_load_int(
+            "SPARSE_TOKENIZE_WORKERS", legacy_config, "SPARSE_TOKENIZE_WORKERS", default=0
+        ),
+        sparse_bulk_pragma_fast=_load_bool(
+            "SPARSE_BULK_PRAGMA_FAST", legacy_config, "SPARSE_BULK_PRAGMA_FAST", default=True
+        ),
+        sparse_skip_fts_delete_on_fresh=_load_bool(
+            "SPARSE_SKIP_FTS_DELETE_ON_FRESH",
+            legacy_config,
+            "SPARSE_SKIP_FTS_DELETE_ON_FRESH",
+            default=True,
+        ),
         embed_max_chars=_load_int("EMBED_MAX_CHARS", legacy_config, "EMBED_MAX_CHARS", default=600),
         default_search_limit=_load_int("DEFAULT_SEARCH_LIMIT", legacy_config, "DEFAULT_SEARCH_LIMIT", default=50),
         agg_best_weight=_load_float("AGG_BEST_WEIGHT", legacy_config, "AGG_BEST_WEIGHT", default=0.70),
@@ -402,6 +536,22 @@ def _load_bool(env_name: str, legacy_config: ModuleType | None, legacy_name: str
     if legacy_config is not None and hasattr(legacy_config, legacy_name):
         return bool(getattr(legacy_config, legacy_name))
     return default
+
+
+def _load_optional_int(
+    env_name: str,
+    legacy_config: ModuleType | None,
+    legacy_name: str,
+) -> int | None:
+    raw_value = os.environ.get(env_name)
+    if raw_value is None and legacy_config is not None and hasattr(legacy_config, legacy_name):
+        raw_value = getattr(legacy_config, legacy_name)
+    if raw_value is None or str(raw_value).strip() == "":
+        return None
+    try:
+        return int(raw_value)
+    except (TypeError, ValueError) as exc:
+        raise InvalidSettingError(f"{env_name or legacy_name} 不是合法整数: {raw_value}") from exc
 
 
 def _load_int(env_name: str, legacy_config: ModuleType | None, legacy_name: str, *, default: int) -> int:
@@ -535,3 +685,33 @@ def _validate_settings(settings: Settings) -> None:
         raise InvalidSettingError("SCORE_THRESHOLD 必须位于 0 到 1 之间")
     if not 0 <= settings.keyword_freq_bonus <= 1:
         raise InvalidSettingError("KEYWORD_FREQ_BONUS 必须位于 0 到 1 之间")
+    if settings.embedding_dimensions is not None and settings.embedding_dimensions <= 0:
+        raise InvalidSettingError("EMBEDDING_DIMENSIONS 必须大于 0")
+    if settings.embed_vector_storage_format != "blob_float32":
+        raise InvalidSettingError(
+            "EMBED_VECTOR_STORAGE_FORMAT 当前仅支持 blob_float32（float16 尚未启用）"
+        )
+    if settings.embed_rate_rps_limit <= 0:
+        raise InvalidSettingError("EMBED_RATE_RPS_LIMIT 必须大于 0")
+    if settings.embed_rate_tpm_limit <= 0:
+        raise InvalidSettingError("EMBED_RATE_TPM_LIMIT 必须大于 0")
+    if settings.embed_max_inflight <= 0:
+        raise InvalidSettingError("EMBED_MAX_INFLIGHT 必须大于 0")
+    if settings.embed_retry_max < 0:
+        raise InvalidSettingError("EMBED_RETRY_MAX 必须大于等于 0")
+    if settings.embed_backoff_base_ms <= 0:
+        raise InvalidSettingError("EMBED_BACKOFF_BASE_MS 必须大于 0")
+    if settings.embed_backoff_max_ms < settings.embed_backoff_base_ms:
+        raise InvalidSettingError("EMBED_BACKOFF_MAX_MS 必须大于等于 EMBED_BACKOFF_BASE_MS")
+    if settings.title_path_max_depth <= 0:
+        raise InvalidSettingError("TITLE_PATH_MAX_DEPTH 必须大于 0")
+    if settings.title_path_max_item_chars <= 0:
+        raise InvalidSettingError("TITLE_PATH_MAX_ITEM_CHARS 必须大于 0")
+    if settings.title_path_max_chars <= 0:
+        raise InvalidSettingError("TITLE_PATH_MAX_CHARS 必须大于 0")
+    if settings.sparse_index_batch_size <= 0:
+        raise InvalidSettingError("SPARSE_INDEX_BATCH_SIZE 必须大于 0")
+    if settings.sparse_checkpoint_interval <= 0:
+        raise InvalidSettingError("SPARSE_CHECKPOINT_INTERVAL 必须大于 0")
+    if settings.sparse_tokenize_workers < 0:
+        raise InvalidSettingError("SPARSE_TOKENIZE_WORKERS 必须大于等于 0")

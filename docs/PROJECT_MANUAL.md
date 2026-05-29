@@ -79,7 +79,7 @@ EverythingSearch 是一个运行在 macOS 上的**本地文件语义搜索引擎
 | ------ | -------------------------------------------- | --------------------------- |
 | 开发语言   | Python 3.11                                  | 推荐 3.11（或 3.10）；请使用虚拟环境安装依赖 |
 | 编排框架   | LangChain                                    | 文档加载、切分和向量化流程编排             |
-| 向量模型   | Aliyun DashScope text-embedding-v2           | 中文理解好，成本低                   |
+| 向量模型   | Aliyun DashScope text-embedding-v4（1024 维） | 配置模板默认；检索与索引须同一模型/维度 |
 | 向量数据库  | ChromaDB                                     | 本地文件型数据库，无需 Docker          |
 | 稀疏索引   | SQLite FTS5                                  | 全文检索，支持 BM25 加权排序           |
 | Web 框架 | Flask + Gunicorn                             | 开发/生产 HTTP 服务               |
@@ -115,15 +115,19 @@ EverythingSearch/
 │   │   ├── reranking.py      # DashScope Rerank 接入
 │   │   └── aggregation.py    # 文件级算分聚合
 │   ├── indexing/             # 索引构建底层组件
+│   │   ├── chunk_conversion.py   # Document→Chunk 与 title_path 压缩
 │   │   ├── sparse_index_writer.py
 │   │   ├── dense_index_writer.py
-│   │   └── pipeline_indexer.py
+│   │   ├── pipeline_indexer.py   # 稀疏+稠密写入、checkpoint 续跑
+│   │   ├── rebuild_checkpoint.py
+│   │   ├── rebuild_staging.py
+│   │   └── chunk_store.py        # 从 sparse DB 按 chunk_id 取正文
 │   ├── evaluation/           # 检索 benchmark、评测数据加载与指标计算
 │   │   ├── benchmark_runner.py
 │   │   ├── dataset.py
 │   │   ├── metrics.py
 │   │   └── datasets/
-│   ├── infra/                # 基础设施层（含强类型配置 settings.py）
+│   ├── infra/                # 基础设施层（含强类型配置 settings.py、embed_rate_limiter）
 │   ├── request_validation.py # 入参验证协议 (提供统一400失败规范)
 │   ├── file_access.py        # 强一致文件存取控制边界与防路径穿越
 │   ├── indexer.py            # 全量索引构建入口
@@ -141,6 +145,8 @@ EverythingSearch/
 │   ├── chroma_db/            # ChromaDB 向量库
 │   ├── sparse_index.db       # FTS5 稀疏索引数据库
 │   ├── embedding_cache.db
+│   ├── rebuild_checkpoint.db   # 全量重建阶段 checkpoint（可选）
+│   ├── rebuild_staging.db      # 全量重建 staging（可选）
 │   ├── scan_cache.db
 │   └── index_state.db
 ├── logs/                     # 运行与定时任务日志
@@ -219,7 +225,25 @@ python -m everythingsearch search "<查询词>" --json
 | `MWEB_DIR`                     | `data/mweb_export`                            | 闭环自动管理的 MWeb 笔记存落地区                       |
 | `INDEX_STATE_DB`               | `./index_state.db`                            | 增量索引状态数据库                                 |
 | `SCAN_CACHE_PATH`              | `./scan_cache.db`                             | 扫描解析缓存（未变更文件跳过解析）                         |
-| `EMBEDDING_MODEL`              | `text-embedding-v2`                           | 向量模型名称                                    |
+| `EMBEDDING_MODEL`              | `text-embedding-v4`                           | 向量模型名称（与查询侧须一致）                         |
+| `EMBEDDING_DIMENSIONS`         | `1024`                                        | v4 向量维度                                     |
+| `EMBEDDING_DOCUMENT_TEXT_TYPE` | `document`                                    | 索引侧 text_type（DashScope v4）                 |
+| `EMBEDDING_QUERY_TEXT_TYPE`    | `query`                                       | 查询侧 text_type                                |
+| `EMBED_VECTOR_STORAGE_FORMAT`  | `blob_float32`                                | 缓存向量存储格式（当前仅支持 float32）                  |
+| `EMBED_RATE_RPS_LIMIT`         | `20`                                          | Embedding API 每秒请求上限                         |
+| `EMBED_RATE_TPM_LIMIT`         | `900000`                                      | Embedding API 每分钟 token 上限                    |
+| `EMBED_MAX_INFLIGHT`           | `6`                                           | 并发 in-flight 请求上限                            |
+| `EMBED_RETRY_MAX`              | `5`                                           | 429/5xx 最大重试次数                               |
+| `EMBED_BACKOFF_BASE_MS`        | `500`                                         | 指数退避起始毫秒                                   |
+| `EMBED_BACKOFF_MAX_MS`         | `15000`                                       | 指数退避上限毫秒                                   |
+| `TITLE_PATH_MAX_DEPTH`         | `3`                                           | title_path 最大层级                              |
+| `TITLE_PATH_MAX_ITEM_CHARS`    | `120`                                         | title_path 单段最大字符                            |
+| `TITLE_PATH_MAX_CHARS`         | `256`                                         | title_path 总长度上限                             |
+| `SKIP_AUX_CHUNKS_FOR_SHORT_FILES` | `False`                                    | 短文件是否跳过 filename/heading 辅助块               |
+| `REBUILD_CHECKPOINT_PATH`      | `data/rebuild_checkpoint.db`                  | 全量重建 checkpoint 库路径                         |
+| `REBUILD_STAGING_PATH`         | `data/rebuild_staging.db`                     | 全量重建 staging 库路径                            |
+| `SPARSE_INDEX_PATH`            | `data/sparse_index.db`                        | FTS5 稀疏索引（亦为 chunk 正文权威来源）                 |
+| `EMBEDDING_CACHE_PATH`         | `data/embedding_cache.db`                     | Embedding SQLite 缓存路径                       |
 | `CHUNK_SIZE`                   | `500`                                         | 文本切分块大小（字符）                               |
 | `CHUNK_OVERLAP`                | `80`                                          | 切分块重叠长度                                   |
 | `MAX_CONTENT_LENGTH`           | `20000`                                       | 单文件最大索引字符数                                |
@@ -246,7 +270,10 @@ python -m everythingsearch search "<查询词>" --json
 | `AGG_EXACT_BONUS`              | `0.10`                                        | 文件聚合：精确匹配额外加分                             |
 | `AGG_MULTI_HIT_BONUS`          | `0.05`                                        | 文件聚合：多 chunk 命中额外加分                        |
 | `AGG_LARGE_FILE_PENALTY`       | `0.05`                                        | 文件聚合：超大文件扣分系数                             |
-| `INDEXER_BATCH_SIZE`           | `5000`                                        | 索引重建批次大小                                   |
+| `INDEXER_BATCH_SIZE`           | `5000`                                        | Dense 全量外层批大小上限参考（实际 cap 为 50）              |
+| `SPARSE_INDEX_BATCH_SIZE`      | `5000`                                        | Sparse 写入批大小（**v2.5.0 代码**；与 Dense 解耦）         |
+| `SPARSE_CHECKPOINT_INTERVAL`   | `5000`                                        | Sparse/Dense 进度 checkpoint 落盘间隔（chunk 数）           |
+| `SPARSE_TOKENIZE_WORKERS`      | `0`                                           | 并行 jieba worker 数；0 表示自动（**v2.5.0 代码**）        |
 | `EMBED_MAX_CHARS`              | `600`                                         | 单条 Embedding 文本截断字符数                        |
 | `TRUST_PROXY`                  | `False`                                       | 是否信任反向代理传入的 `X-Forwarded-For`（限流取真实 IP）   |
 | `NL_INTENT_MODEL`              | `qwen-turbo`                                  | 自然语言意图识别模型（建议选用支持 JSON Mode 的模型）          |
@@ -308,29 +335,52 @@ SearchRequest
 
 1. **Query Planner**：根据前端请求（包含可选的 `path_filter`, `date_field` 等）生成结构化的 `QueryPlan`。如果请求指定了 `exact_focus`，将直接退化为专注关键词的混合模式。稀疏查询会把 jieba 分词结果转为 FTS5 子句，并**跳过纯标点 token**（避免 `报告.pdf` 类完整文件名因必命中 `.` 而 0 结果）。
 2. **Sparse Retriever (稀疏检索)**：利用新建的 `data/sparse_index.db` (SQLite FTS5) 进行快速的倒排索引查询，字段权重分配由 `SPARSE_FILENAME_WEIGHT`、`SPARSE_PATH_WEIGHT` 等配置项决定。
-3. **Dense Retriever (稠密检索)**：利用现有的 ChromaDB 与 Embedding 层计算语义相似度，提取候选块。
+3. **Dense Retriever (稠密检索)**：在 ChromaDB 中做向量近邻检索（仅存最小 metadata）；命中后通过 `chunk_store` 从 `sparse_index.db` 回填正文与 `title_path`。
 4. **Candidate Fusion (RRF)**：通过 Reciprocal Rank Fusion 对稀疏和稠密的返回结果进行无监督融合。
 5. **Reranker (二阶段精排)**：若配置了 `RERANK_MODEL`（如 DashScope 的 qwen3-rerank），将 RRF 产生的 Top N 候选发送给重排模型做深度语义打分。当重排模型超时或降级时，默认回退使用 RRF 分数。
 6. **File Aggregator**：替代以往「单文件取最高分 chunk」的粗暴做法，基于所有候选 chunk 按文件粒度重新累加打分，提供更准确的排序。归并键优先使用物理路径 `filepath`，兼容旧版 Chroma 中 `file_id` 不一致的数据，避免同一文件重复出现在结果列表。
 
-### 4.4 embedding_cache.py — 向量缓存
+### 4.4 embedding_cache.py — 向量缓存与限速
 
 `CachedEmbeddings` 继承自 `DashScopeEmbeddings`，在调用 API 前先查 SQLite 缓存：
 
-- 缓存 Key：`SHA256(model_name + "::" + text)`
-- 缓存 Value：向量的 JSON 序列化；写入时带 `created_at`（Unix 时间戳）
-- 连接使用 **WAL**、**连接池**（固定数量连接复用）；若磁盘上已有旧表仅有 `(text_hash, vector)` 两列，初始化时会 **ALTER TABLE** 增加 `created_at`
+- 缓存 Key：包含 `model`、`dimensions`、`text_type`、`EMBED_VECTOR_STORAGE_FORMAT` 与文本哈希，避免 v2/v4 或维度混用
+- 缓存 Value：按 `blob_float32` 存储向量 BLOB；写入时带 `created_at`（Unix 时间戳）
+- 连接使用 **WAL**、**连接池**；旧表结构会在初始化时迁移
+- 调用 DashScope 前经 `embed_rate_limiter` 做 **RPS + TPM** 双桶限速，并按 SDK 批次粒度占用配额；429/5xx 按 `EMBED_RETRY_*` 指数退避
 - 命中/调用计数使用 `PrivateAttr` + `threading.Lock`，避免 Pydantic 对模型默认值做 deepcopy 时失败
-- 首次全量索引后，后续重建几乎无需 API 调用
+- 首次全量索引后，后续重建在文本未变时几乎无需 API 调用
+
+### 4.4.1 pipeline_indexer.py — 稀疏/稠密写入管道
+
+全量（`--full`）与增量在写入阶段统一走 `build_pipeline_index()`（**v2.5.0** 起由 `FullRebuildOrchestrator` 编排，对外仍是一条 `--full` 命令）：
+
+1. `chunk_conversion.docs_to_indexed_chunks()` 将 `Document` 转为带 `title_path` 的索引块（全量/增量共用）
+2. **Sparse**：正文与 `title_path` 写入 `sparse_index.db`；**v2.5.0** 起采用并行 jieba + 单连接 bulk 写入（`SPARSE_INDEX_BATCH_SIZE`，默认 5000）
+3. **Sparse optimize**：FTS5 `optimize` **默认在全量 Sparse 写入结束后执行**；高阶可选 `--skip-sparse-optimize`（后续 CLI）
+4. **Dense**：向量写入 Chroma（最小 metadata）；外层批大小 `min(INDEXER_BATCH_SIZE, 50)`
+5. **Checkpoint / staging**：进程内断点续跑；对用户不暴露多步 CLI
+
+**全量重建数据语义（v2.5.0 目标，见 [INSTALL.md](INSTALL.md)）**
+
+| 模式 | 删除 embedding cache | 删除 scan cache | 删除 sparse/chroma |
+|------|---------------------|-----------------|-------------------|
+| 默认 `--full` | 是 | 是 | 是 |
+| `--keep-embedding-cache` | 否 | 是 | 是 |
+| `--keep-scan-cache` | 是 | 否 | 是 |
+| `--keep-caches` | 否 | 否 | 是 |
+| `--resume` | **否（强制）** | **否（强制）** | 否（保留进度） |
+
+失败时 `build_pipeline_index()` 返回 `False`，`incremental` 以退出码 1 终止。
 
 ### 4.5 `everythingsearch.incremental` — 增量索引
 
 使用 SQLite 表 `file_index` 追踪每个文件的 `(filepath, mtime, source_type)`：
 
-- **新增文件**：生成向量并写入 ChromaDB
-- **修改文件**（mtime 变化）：删除旧 chunk，重新索引
-- **删除文件**（磁盘上不存在）：从 ChromaDB 和状态表中移除
+- **新增/修改文件**：经 `build_pipeline_index()` 写入稀疏库与 Chroma；修改时先删除旧 chunk
+- **删除文件**（磁盘上不存在）：从稀疏库、Chroma 与状态表中移除
 - **未变文件**：跳过
+- **Dense 缺失回退全量**：若触发全量重建且 `build_pipeline_index()` 失败，进程 **exit(1)**，不静默继续
 
 **MWeb 可选开关**：
 
@@ -340,7 +390,13 @@ SearchRequest
 
 ```bash
 python -m everythingsearch.incremental          # 增量更新
-python -m everythingsearch.incremental --full   # 完整重建
+python -m everythingsearch.incremental --full   # 完整重建（见下）
+make index-full                                 # 同上
+```
+
+**全量 CLI（v2.5.0 目标；当前 v2.4.0 仅支持 `--full`）**：默认删除 embedding / scan 缓存及派生索引；高阶可选 `--keep-embedding-cache`、`--keep-scan-cache`、`--keep-caches`、`--resume`、`--dry-run`。语义表见 §4.4.1；操作说明见 §6「完整重建索引」与 [INSTALL.md](INSTALL.md) §6。
+
+```bash
 # 或（在仓库根目录）:
 ./venv/bin/python everythingsearch/incremental.py
 ```
@@ -415,7 +471,7 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jigger.everythingsea
 ### 外部服务
 
 - **阿里云 DashScope API**：需要有效的 API Key
-  - **嵌入**：生成文本向量（默认 `text-embedding-v2`），索引构建阶段调用
+  - **嵌入**：生成文本向量（配置模板默认 `text-embedding-v4`，1024 维），索引构建阶段调用
   - **生成式**（可选）：当 Web 使用 `POST /api/search/nl` 或解读接口时，调用配置的 `NL_INTENT_MODEL` / `SEARCH_INTERPRET_MODEL`（默认 `qwen-turbo`），此时**搜索会话需要外网**
   - 获取方式：注册阿里云账号 → 开通 DashScope 服务 → 创建 API Key
   - 费用：极低（嵌入约 ¥0.0007 / 1000 tokens；意图/解读按所选模型计费）
@@ -472,16 +528,37 @@ cd /path/to/EverythingSearch
 ./scripts/run_app.sh restart
 ```
 
-### 完整重建索引（首次或大规模变更后）
+### 完整重建索引（`make index-full`）
+
+**普通用户**：一条命令、干净环境，无需手动删 `data/` 下文件。
+
+1. 建议停止 Web 与定时索引：`make app-stop`、`make index-svc-disable`
+2. 将 `etc/config.example.py` 中「索引重建」相关项同步到 `config.py`（模型、维度、限速等）
+3. 执行（**默认删除** embedding cache、scan cache 及全部派生索引）：
 
 ```bash
 cd /path/to/EverythingSearch
 caffeinate -i nohup ./venv/bin/python -m everythingsearch.incremental --full >> "logs/full_rebuild_$(date +%Y-%m-%d).log" 2>&1 &
-# 索引完成后重启搜索服务以加载新数据
-# ./scripts/run_app.sh restart
 ```
 
-`caffeinate -i` 防止电脑睡眠中断进程。
+4. 索引完成后：`./scripts/run_app.sh restart`
+
+**高阶用户**（省 Token / 省解析 / 中断续跑）：
+
+```bash
+# 保留两类缓存（中断后常用）
+./venv/bin/python -m everythingsearch.incremental --full --resume --keep-caches
+
+# 仅保留向量缓存
+./venv/bin/python -m everythingsearch.incremental --full --keep-embedding-cache
+
+# 预览将删除的文件
+./venv/bin/python -m everythingsearch.incremental --full --dry-run
+```
+
+`--resume` 在配置指纹与 checkpoint 不一致时会拒绝续跑，应去掉 `--resume` 做默认全量。`caffeinate -i` 防止睡眠中断进程。
+
+> **版本说明**：v2.5.0 文档已描述上述 CLI；若当前安装尚未升级到实现该行为的版本，实际 wipe 范围可能仍为 v2.4.0 逻辑，以进程启动日志为准。
 
 ### 索引进度与成本提示
 
@@ -627,7 +704,7 @@ readlink -f ./venv/bin/python
 
 ### 更换 Embedding 模型
 
-修改 `config.py` 中的 `EMBEDDING_MODEL`（需为 DashScope 支持的模型名），然后全量重建。缓存会自动因模型名不同而失效。
+修改 `config.py` 中的 `EMBEDDING_MODEL`（需为 DashScope 支持的模型名），然后执行 **默认** `make index-full`（v2.5.0 起会删除旧 embedding 缓存；当前 v2.4.0 仍按 cache key 区分模型，未命中部分会重新调 API）。改模型后**不要**使用 `--keep-embedding-cache`，除非明确知道自己在做什么。
 
 ### 修改定时任务时间
 
