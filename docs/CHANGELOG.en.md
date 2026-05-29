@@ -2,6 +2,21 @@
 
 [English](CHANGELOG.en.md) | [中文](CHANGELOG.md)
 
+## [2.5.1] - 2026-05-29
+
+### Indexing & storage
+
+- **Index run lock**: `index_run_lock` (`data/index_run.lock`) blocks overlapping scheduled incremental and manual/full runs; incremental skips (exit 0), full rebuild refuses (exit 1).
+- **Search service lifecycle**: full rebuild auto-suspends/restores the search service; incremental auto-restarts after writes (`app_service_control`).
+- **Embedding API retry fix**: new `dashscope_embed_client` calls DashScope SDK directly, fixing 429/5xx hidden behind `KeyError: 'request'`; exponential backoff + jitter; `EmbeddingApiFatalError` when exhausted.
+- **Dense batch size**: default `INDEXER_BATCH_SIZE` is now **50** (Chroma upsert outer cap); Embedding API batch size remains SDK-driven (10 for v4).
+- **Rate-limit defaults**: `EMBED_RATE_RPS_LIMIT=28`, `EMBED_RATE_TPM_LIMIT=1_100_000`, `EMBED_BACKOFF_MAX_MS=60000`, aligned with official `text-embedding-v4` quota with headroom.
+
+### Documentation
+
+- **Technical design**: `SEARCH_ACCURACY_TECHNICAL_DESIGN` §9.1 documents DashScope official limits and client retry design.
+- **INSTALL / PROJECT_MANUAL (EN & ZH)**: auto service suspend/restart, embedding limit summary, resume and lock behavior.
+
 ## [2.5.0] - 2026-05-28
 
 > **Note**: From v2.5.0, `make index-full` performs a true full rebuild by default (wipes embedding and scan caches). Advanced flags `--keep-*`, `--resume`, and `--dry-run` ship with this release.
@@ -11,6 +26,7 @@
 - **Faster Sparse writes**: `SPARSE_INDEX_BATCH_SIZE` (default 5000), parallel jieba tokenization + single-connection bulk writes, less frequent checkpoints; `sparse_optimize` runs by default (`--skip-sparse-optimize` to skip).
 - **True full rebuild by default**: `incremental --full` wipes embedding / scan caches and derived indexes unless `--keep-*` is set; `--resume` always keeps both caches and continues from checkpoint.
 - **Environment prep**: `full_rebuild_environment` prints remove/keep summary before work; `--dry-run` previews only.
+- **Embedding cache & limits (from v2.4)**: `embed_rate_limiter` RPS+TPM dual bucket; from v2.5.1 remote calls use `dashscope_embed_client` (see [2.5.1]).
 
 ### Documentation
 

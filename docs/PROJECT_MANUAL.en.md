@@ -235,12 +235,13 @@ Local settings are concentrated here. Load order: environment variables > reposi
 | `EMBEDDING_DOCUMENT_TEXT_TYPE` | `document`                                     | Index-side text_type (DashScope v4)                                                                 |
 | `EMBEDDING_QUERY_TEXT_TYPE`    | `query`                                        | Query-side text_type                                                                                |
 | `EMBED_VECTOR_STORAGE_FORMAT`  | `blob_float32`                                 | Cached vector storage (float32 only today)                                                          |
-| `EMBED_RATE_RPS_LIMIT`         | `20`                                           | Embedding API requests per second cap                                                               |
-| `EMBED_RATE_TPM_LIMIT`         | `900000`                                       | Embedding API tokens per minute cap                                                                 |
+| `EMBED_RATE_RPS_LIMIT`         | `28`                                           | Embedding API requests per second cap (official 30, slight headroom)                                |
+| `EMBED_RATE_TPM_LIMIT`         | `1100000`                                      | Embedding API input tokens per minute cap (official 1,200,000)                                      |
 | `EMBED_MAX_INFLIGHT`           | `6`                                            | Max concurrent in-flight embedding requests                                                         |
-| `EMBED_RETRY_MAX`              | `5`                                            | Max retries on 429/5xx                                                                              |
+| `EMBED_RETRY_MAX`              | `5`                                            | Max retries on 429/5xx (six attempts total)                                                         |
 | `EMBED_BACKOFF_BASE_MS`        | `500`                                          | Exponential backoff start (ms)                                                                      |
-| `EMBED_BACKOFF_MAX_MS`         | `15000`                                        | Exponential backoff cap (ms)                                                                        |
+| `EMBED_BACKOFF_MAX_MS`         | `60000`                                        | Exponential backoff cap (ms); 429 waits at least 5s on first retry                                  |
+| `INDEX_RUN_LOCK_PATH`          | `data/index_run.lock`                          | Cross-process index lock (blocks overlapping scheduled/manual/full runs)                            |
 | `TITLE_PATH_MAX_DEPTH`         | `3`                                            | Max title_path depth                                                                                |
 | `TITLE_PATH_MAX_ITEM_CHARS`    | `120`                                          | Max chars per title_path segment                                                                    |
 | `TITLE_PATH_MAX_CHARS`         | `256`                                          | Max total title_path length                                                                         |
@@ -275,7 +276,7 @@ Local settings are concentrated here. Load order: environment variables > reposi
 | `AGG_EXACT_BONUS`              | `0.10`                                         | File aggregation: exact match bonus                                                                |
 | `AGG_MULTI_HIT_BONUS`          | `0.05`                                         | File aggregation: multi-chunk hit bonus                                                            |
 | `AGG_LARGE_FILE_PENALTY`       | `0.05`                                         | File aggregation: large file penalty                                                               |
-| `INDEXER_BATCH_SIZE`           | `5000`                                         | Dense full-rebuild outer batch cap reference (effective cap 50)                                    |
+| `INDEXER_BATCH_SIZE`           | `50`                                           | Dense full-rebuild Chroma upsert outer batch size (cap 50)                                         |
 | `SPARSE_INDEX_BATCH_SIZE`      | `5000`                                         | Sparse write batch size (**v2.5.0 code**; decoupled from Dense)                                      |
 | `SPARSE_CHECKPOINT_INTERVAL`   | `5000`                                         | Progress checkpoint interval in chunks (Sparse/Dense)                                              |
 | `SPARSE_TOKENIZE_WORKERS`      | `0`                                            | Parallel jieba workers; 0 = auto (**v2.5.0 code**)                                                 |
@@ -352,7 +353,11 @@ Search execution is protected at the business layer via concurrency control and 
 - Key: includes `model`, `dimensions`, `text_type`, `EMBED_VECTOR_STORAGE_FORMAT`, and text hash (prevents v2/v4 or dimension mix-ups)
 - Value: vector stored as `blob_float32` BLOB; `created_at` (Unix timestamp) on write
 - **WAL** mode and a **connection pool**; legacy schemas are migrated on init
-- Calls go through `embed_rate_limiter` (**RPS + TPM** dual bucket, per SDK batch); 429/5xx use `EMBED_RETRY_*` exponential backoff
+- Calls go through `embed_rate_limiter` (**RPS + TPM** dual bucket, per SDK batch—10 texts per call for v4)
+- Remote calls use `dashscope_embed_client` (direct SDK; **not** langchain `embed_with_retry`, which could raise `KeyError: 'request'` on non-200 responses and hide real 429/5xx)
+- **Official limits (Mainland China; shared by `text-embedding-v1`–`v4`)**: RPS **30**, TPM **1,200,000** (input tokens only); see [Alibaba rate-limit docs](https://help.aliyun.com/zh/model-studio/rate-limit) and `SEARCH_ACCURACY_TECHNICAL_DESIGN.en.md` §9.1
+- **Client defaults**: `EMBED_RATE_RPS_LIMIT=28`, `EMBED_RATE_TPM_LIMIT=1_100_000`; per-second caps still apply—bursts may 429
+- **Retries**: 429, 5xx, `Throttling.*`, etc. use `EMBED_RETRY_*` exponential backoff + jitter (429 waits ≥ 5s first, capped by `EMBED_BACKOFF_MAX_MS`); exhaustion raises `EmbeddingApiFatalError`, indexing exits 1—resume with `--resume --keep-caches`; non-retriable errors (e.g. 401) fail immediately
 - Hit/call counters use `PrivateAttr` + `threading.Lock` so Pydantic defaults do not deep-copy badly
 - After the first full index, later rebuilds rarely need API calls when text is unchanged
 
@@ -377,6 +382,22 @@ Full (`--full`) and incremental writes share `build_pipeline_index()` (**from v2
 | `--resume` | **no (forced)** | **no (forced)** | no (keep progress) |
 
 On failure, `build_pipeline_index()` returns `False` and `incremental` exits with code 1.
+
+### 4.4.2 Index concurrency and search service lifecycle
+
+**Run lock** (`everythingsearch/infra/index_run_lock.py`):
+
+- Default lock file `data/index_run.lock` (`INDEX_RUN_LOCK_PATH`); cross-process `flock`
+- **Incremental**: if another index run is active (scheduled launchd or manual full rebuild), log and **exit 0 skip** (scheduled jobs do not stack)
+- **Full rebuild**: if another run is active, **exit 1** (no concurrent sparse/chroma writes)
+
+**Search service** (`everythingsearch/infra/app_service_control.py`):
+
+- **Full rebuild**: auto-stops the local search service before `build_pipeline_index` (port + process name contains `everythingsearch`; launchd bootout/bootstrap when plist exists), auto-restores on exit
+- **Incremental**: calls `restart_search_service` after writes to load new sparse/chroma
+- If the service was not launchd-managed and cannot be restarted automatically, logs prompt manual `./scripts/run_app.sh start`
+
+> Full/incremental indexing now manages service stop/start automatically; optional `make app-stop` still reduces user traffic during long rebuilds (service is briefly unavailable while indexing runs).
 
 ### 4.5 `everythingsearch.incremental` — Incremental indexing
 
@@ -406,7 +427,7 @@ make index-full                                 # same
 ./venv/bin/python everythingsearch/incremental.py
 ```
 
-> After indexing, restart the search service to load new data: `./scripts/run_app.sh restart`
+> After indexing, the search service is restarted automatically when managed by launchd; otherwise follow log prompts to `./scripts/run_app.sh start`.
 
 ### 4.6 `everythingsearch.app` and service layer
 
@@ -428,7 +449,7 @@ Routes:
 - `POST /api/open` — open file with default app
 
 > For security, these are **not** exposed: `/api/config`, `/api/stats`, `/api/reload`.  
-> After rebuilding the index, restart the search service: `./scripts/run_app.sh restart`
+> After rebuilding the index, the search service is restarted automatically when launchd-managed; otherwise follow log prompts.
 
 **How to run**
 
@@ -525,24 +546,23 @@ Open [http://127.0.0.1:8000](http://127.0.0.1:8000) in a browser.
 ```bash
 cd /path/to/EverythingSearch
 ./venv/bin/python -m everythingsearch.incremental
-# After indexing, restart to load new data
-./scripts/run_app.sh restart
+# Search service restarts automatically after indexing; manual start if logs say so
 ```
 
 ### Full rebuild (`make index-full`)
 
 **Typical users**: one command, clean environment—no manual `data/` cleanup.
 
-1. Stop Web and scheduled indexing: `make app-stop`, `make index-svc-disable` (recommended)
+1. (Optional) disable scheduled incremental to avoid lock contention: `make index-svc-disable`
 2. Sync the “index rebuild” block from `etc/config.example.py` into `config.py` (model, dimensions, rate limits, etc.)
-3. Run (**default wipes** embedding cache, scan cache, and all derived indexes):
+3. Run (**default wipes** embedding cache, scan cache, and all derived indexes; **auto** suspends/restores the search service):
 
 ```bash
 cd /path/to/EverythingSearch
 caffeinate -i nohup ./venv/bin/python -m everythingsearch.incremental --full >> "logs/full_rebuild_$(date +%Y-%m-%d).log" 2>&1 &
 ```
 
-4. After indexing: `./scripts/run_app.sh restart`
+The search service is restored automatically when indexing succeeds; no manual `./scripts/run_app.sh restart`.
 
 **Advanced** (save tokens / parse time / resume after crash):
 

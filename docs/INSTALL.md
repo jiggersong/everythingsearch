@@ -238,10 +238,11 @@ make app-stop
 
 ```bash
 ./venv/bin/python -m everythingsearch.incremental
-./scripts/run_app.sh restart
 ```
 
-增量索引会先显示新增、修改、删除数量以及预计成本；如果当前向量 collection 缺失，会明确提示并切换到全量重建。
+增量索引完成后会**自动重启**搜索服务以加载新数据（若 launchd 未托管且无法自动拉起，按日志提示手动 `./scripts/run_app.sh start`）。
+
+增量索引会先显示新增、修改、删除数量以及预计成本；若当前向量 collection 缺失，会明确提示并切换到全量重建。
 
 ### 全量重建
 
@@ -251,15 +252,16 @@ make app-stop
 
 **推荐流程（普通用户）**
 
-1. 停止干扰：`make app-stop`、`make index-svc-disable`（可选但建议）
-2. 执行全量（默认干净重建）：
+1. （可选）禁用定时增量以免与全量抢锁：`make index-svc-disable`
+2. 执行全量（**默认**会自动暂停并在结束后恢复搜索服务；无需手动 `app-stop` / `restart`）：
 
 ```bash
 caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full
-./scripts/run_app.sh restart
 ```
 
 启动时会打印**将删除/将保留**的数据文件摘要；Token 为本地估算，账单以 DashScope 为准。
+
+**Embedding 限速**：`text-embedding-v4` 在中国内地与 v1～v3 **共用**配额（RPS 30、TPM 1,200,000 输入 Token、单批 10 条）。项目默认 `EMBED_RATE_RPS_LIMIT=28` 等略低于官方值；Dense 阶段若遇 429 会自动退避重试，多次失败后 exit 1，可用 `--resume --keep-caches` 续跑。详见 [SEARCH_ACCURACY_TECHNICAL_DESIGN.md](SEARCH_ACCURACY_TECHNICAL_DESIGN.md) §9.1。
 
 **高阶参数**（需省时间或 Token 时显式指定）：
 
@@ -285,7 +287,9 @@ caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full --keep-em
 
 - 修改 `EMBEDDING_MODEL`、`EMBEDDING_DIMENSIONS`、`CHUNK_SIZE` 等后，应使用**默认**全量（不 `--keep-*`），或确认你清楚旧 cache 可能部分失效。  
 - `--resume` 在 checkpoint 与当前配置指纹不匹配时会失败，需去掉 `--resume` 重新做干净全量。  
-- 详见 [PROJECT_MANUAL.md](PROJECT_MANUAL.md) §6 与 §4.4。
+- Dense 阶段因 Embedding API 多次重试仍失败时，进程 exit 1；checkpoint 保留，常用 `make index-full ARGS="--resume --keep-caches"` 续跑。  
+- 若已有索引任务在跑（含 launchd 定时增量），新的全量会拒绝启动；增量任务冲突时会跳过本次运行。  
+- 详见 [PROJECT_MANUAL.md](PROJECT_MANUAL.md) §4.4、§4.4.2 与 §6。
 
 ## 七、常见问题
 

@@ -2,6 +2,21 @@
 
 [English](CHANGELOG.en.md) | [中文](CHANGELOG.md)
 
+## [2.5.1] - 2026-05-29
+
+### 索引与存储
+
+- **索引互斥锁**：`index_run_lock`（`data/index_run.lock`）防止定时增量与手动/全量并发；增量冲突 skip（exit 0），全量冲突拒绝（exit 1）。
+- **搜索服务生命周期**：全量重建自动暂停/恢复搜索服务；增量完成后自动 restart（`app_service_control`）。
+- **Embedding API 重试修复**：新增 `dashscope_embed_client`，直连 DashScope SDK，修复 429/5xx 被 `KeyError: 'request'` 掩盖的问题；指数退避 + 抖动，耗尽后 `EmbeddingApiFatalError`。
+- **Dense 批大小**：`INDEXER_BATCH_SIZE` 默认改为 **50**（Chroma upsert 外层批大小上限）；Embedding API 单批仍由 SDK 决定（v4 为 10）。
+- **限速默认值**：`EMBED_RATE_RPS_LIMIT=28`、`EMBED_RATE_TPM_LIMIT=1_100_000`、`EMBED_BACKOFF_MAX_MS=60000`，对齐官方 `text-embedding-v4` 配额并留余量。
+
+### 文档
+
+- **技术方案**：`SEARCH_ACCURACY_TECHNICAL_DESIGN` §9.1 记录 DashScope 官方限速与客户端重试设计。
+- **INSTALL / PROJECT_MANUAL（中英文）**：索引服务自动停启、Embedding 限速摘要、续跑与互斥锁说明。
+
 ## [2.5.0] - 2026-05-28
 
 > **说明**：v2.5.0 起 `make index-full` 默认真·全量（删除 embedding / scan 缓存）；高阶参数 `--keep-*` / `--resume` / `--dry-run` 已随代码发布。
@@ -11,6 +26,7 @@
 - **Sparse 写入加速**：`SPARSE_INDEX_BATCH_SIZE`（默认 5000）、并行 jieba 分词 + 单连接 bulk 写入、checkpoint 降频、`sparse_optimize` 默认执行（`--skip-sparse-optimize` 可跳过）。
 - **真·全量默认**：`incremental --full` 默认删除 embedding / scan 缓存及派生索引；`--keep-embedding-cache`、`--keep-scan-cache`、`--keep-caches` 显式保留；`--resume` 强制保留两类缓存并续跑。
 - **环境清理**：`full_rebuild_environment` 在全量开始前打印将删除/保留路径摘要；`--dry-run` 仅预览。
+- **Embedding 缓存与限速（v2.4 延续）**：`embed_rate_limiter` RPS+TPM 双桶；v2.5.1 起远端调用改经 `dashscope_embed_client`（见 [2.5.1]）。
 
 ### 文档
 

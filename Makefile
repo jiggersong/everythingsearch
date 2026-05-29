@@ -24,8 +24,9 @@ help:
 	@echo "  make help              显示本说明"
 	@echo "  make test              运行全量测试（固定使用 venv）"
 	@echo "  make index             增量索引（everythingsearch.incremental）"
-	@echo "  make index-full        全量重建索引（--full；v2.5.0 起默认真·全量，见 INSTALL §6）"
-	@echo "                         高阶: make index-full ARGS=\"--keep-caches\" 等（代码落地后生效）"
+	@echo "  make index-full        全量重建索引（--full）"
+	@echo "                         高阶: make index-full ARGS=\"--keep-caches\""
+	@echo "                               make index-full ARGS=\"--resume --keep-caches\""
 	@echo "  make mweb-export       仅单独执行 MWeb 笔记强制全量扫描导出"
 	@echo "  make app               前台启动 Web 应用（开发模式）"
 	@echo "  make search            执行命令行检索 (例如: make search q='关键字')"
@@ -58,7 +59,7 @@ test:
 index:
 	$(PYTHON) -m everythingsearch.incremental
 
-# Run full reindex (optional: make index-full ARGS="--keep-caches")
+# Run full reindex (optional: make index-full ARGS="--keep-caches" or ARGS="--resume --keep-caches")
 index-full:
 	$(PYTHON) -m everythingsearch.incremental --full $(ARGS)
 

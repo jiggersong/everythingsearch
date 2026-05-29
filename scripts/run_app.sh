@@ -82,6 +82,31 @@ _stop() {
     # 如需完全停止常驻，请使用: launchctl unload \"$LAUNCHD_PLIST\"
 }
 
+_pause() {
+    if launchctl print "gui/$(id -u)/$LAUNCHD_LABEL" >/dev/null 2>&1; then
+        echo "暂停搜索服务 (bootout $LAUNCHD_LABEL)..."
+        launchctl bootout "gui/$(id -u)/$LAUNCHD_LABEL"
+        echo "✅ 服务已暂停（全量重建期间不会自动拉起）"
+        return 0
+    fi
+    echo "服务未加载，无需暂停"
+    return 0
+}
+
+_resume() {
+    if [ ! -f "$LAUNCHD_PLIST" ]; then
+        echo "❌ 未找到 plist: $LAUNCHD_PLIST"
+        return 1
+    fi
+    if launchctl print "gui/$(id -u)/$LAUNCHD_LABEL" >/dev/null 2>&1; then
+        echo "服务已在运行"
+        return 0
+    fi
+    echo "恢复搜索服务 (bootstrap)..."
+    launchctl bootstrap "gui/$(id -u)" "$LAUNCHD_PLIST"
+    echo "✅ 服务已恢复"
+}
+
 _restart() {
     local old_pid
     old_pid=$(_get_service_pid)
@@ -131,6 +156,12 @@ case "${1:-}" in
     restart)
         _restart
         ;;
+    pause)
+        _pause
+        ;;
+    resume)
+        _resume
+        ;;
     status)
         _status
         ;;
@@ -140,11 +171,13 @@ case "${1:-}" in
         FLASK_DEBUG=true "$PYTHON" -m everythingsearch.app
         ;;
     *)
-        echo "用法: $0 {start|stop|restart|status|dev}"
+        echo "用法: $0 {start|stop|restart|pause|resume|status|dev}"
         echo ""
         echo "  start   - 启动服务（通过 launchd）"
         echo "  stop    - 停止服务（launchd KeepAlive 会自动重启）"
         echo "  restart - 重启服务（杀旧进程，launchd 自动拉起新进程）"
+        echo "  pause   - 暂停服务（bootout，全量重建期间使用）"
+        echo "  resume  - 恢复服务（bootstrap）"
         echo "  status  - 查看状态"
         echo "  dev     - 开发模式（前台，支持热重载）"
         exit 1

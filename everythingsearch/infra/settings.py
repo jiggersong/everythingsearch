@@ -61,6 +61,7 @@ class Settings:
     skip_aux_chunks_for_short_files: bool
     rebuild_checkpoint_path: str
     rebuild_staging_path: str
+    index_run_lock_path: str
     chunk_size: int
     chunk_overlap: int
     max_content_length: int
@@ -267,13 +268,13 @@ def _load_settings() -> Settings:
             "EMBED_RATE_RPS_LIMIT",
             legacy_config,
             "EMBED_RATE_RPS_LIMIT",
-            default=20.0,
+            default=28.0,
         ),
         embed_rate_tpm_limit=_load_float(
             "EMBED_RATE_TPM_LIMIT",
             legacy_config,
             "EMBED_RATE_TPM_LIMIT",
-            default=900000.0,
+            default=1_100_000.0,
         ),
         embed_max_inflight=_load_int(
             "EMBED_MAX_INFLIGHT",
@@ -297,7 +298,7 @@ def _load_settings() -> Settings:
             "EMBED_BACKOFF_MAX_MS",
             legacy_config,
             "EMBED_BACKOFF_MAX_MS",
-            default=15000,
+            default=60000,
         ),
         title_path_max_depth=_load_int(
             "TITLE_PATH_MAX_DEPTH",
@@ -334,6 +335,12 @@ def _load_settings() -> Settings:
             legacy_config,
             "REBUILD_STAGING_PATH",
             default=str(get_project_root() / "data" / "rebuild_staging.db"),
+        ),
+        index_run_lock_path=_load_required_path(
+            "INDEX_RUN_LOCK_PATH",
+            legacy_config,
+            "INDEX_RUN_LOCK_PATH",
+            default=str(get_project_root() / "data" / "index_run.lock"),
         ),
         chunk_size=_load_int("CHUNK_SIZE", legacy_config, "CHUNK_SIZE", default=500),
         chunk_overlap=_load_int("CHUNK_OVERLAP", legacy_config, "CHUNK_OVERLAP", default=80),
@@ -392,7 +399,7 @@ def _load_settings() -> Settings:
         rerank_model=_load_str("RERANK_MODEL", legacy_config, "RERANK_MODEL", default="qwen3-rerank"),
         rerank_top_n=_load_int("RERANK_TOP_N", legacy_config, "RERANK_TOP_N", default=50),
         rerank_max_doc_chars=_load_int("RERANK_MAX_DOC_CHARS", legacy_config, "RERANK_MAX_DOC_CHARS", default=2000),
-        indexer_batch_size=_load_int("INDEXER_BATCH_SIZE", legacy_config, "INDEXER_BATCH_SIZE", default=5000),
+        indexer_batch_size=_load_int("INDEXER_BATCH_SIZE", legacy_config, "INDEXER_BATCH_SIZE", default=50),
         sparse_index_batch_size=_load_int(
             "SPARSE_INDEX_BATCH_SIZE", legacy_config, "SPARSE_INDEX_BATCH_SIZE", default=5000
         ),

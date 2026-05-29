@@ -35,9 +35,9 @@ def test_call_remote_embed_acquires_slot_per_api_batch(tmp_path):
   # 25 uncached texts -> v4 batch size 10 -> 3 API calls
     texts = [f"text-{i}" for i in range(25)]
     with patch(
-        "everythingsearch.embedding_cache.embed_with_retry",
-        side_effect=lambda _self, **kwargs: [
-            {"embedding": [0.1, 0.2]} for _ in kwargs["input"]
+        "everythingsearch.embedding_cache.call_with_retry",
+        side_effect=lambda client, **kwargs: [
+            [0.1, 0.2] for _ in kwargs["texts"]
         ],
     ):
         result = emb._call_remote_embed(texts, "document")

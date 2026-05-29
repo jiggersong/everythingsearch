@@ -230,12 +230,13 @@ python -m everythingsearch search "<查询词>" --json
 | `EMBEDDING_DOCUMENT_TEXT_TYPE` | `document`                                    | 索引侧 text_type（DashScope v4）                 |
 | `EMBEDDING_QUERY_TEXT_TYPE`    | `query`                                       | 查询侧 text_type                                |
 | `EMBED_VECTOR_STORAGE_FORMAT`  | `blob_float32`                                | 缓存向量存储格式（当前仅支持 float32）                  |
-| `EMBED_RATE_RPS_LIMIT`         | `20`                                          | Embedding API 每秒请求上限                         |
-| `EMBED_RATE_TPM_LIMIT`         | `900000`                                      | Embedding API 每分钟 token 上限                    |
+| `EMBED_RATE_RPS_LIMIT`         | `28`                                          | Embedding API 每秒请求上限（官方 30，略留余量）           |
+| `EMBED_RATE_TPM_LIMIT`         | `1100000`                                     | Embedding API 每分钟输入 Token 上限（官方 1,200,000）   |
 | `EMBED_MAX_INFLIGHT`           | `6`                                           | 并发 in-flight 请求上限                            |
-| `EMBED_RETRY_MAX`              | `5`                                           | 429/5xx 最大重试次数                               |
+| `EMBED_RETRY_MAX`              | `5`                                           | 429/5xx 最大重试次数（共 6 次尝试）                      |
 | `EMBED_BACKOFF_BASE_MS`        | `500`                                         | 指数退避起始毫秒                                   |
-| `EMBED_BACKOFF_MAX_MS`         | `15000`                                       | 指数退避上限毫秒                                   |
+| `EMBED_BACKOFF_MAX_MS`         | `60000`                                       | 指数退避上限毫秒（429 首次等待不低于 5s）                  |
+| `INDEX_RUN_LOCK_PATH`          | `data/index_run.lock`                         | 索引进程互斥锁文件（防定时任务与手动/全量并发）               |
 | `TITLE_PATH_MAX_DEPTH`         | `3`                                           | title_path 最大层级                              |
 | `TITLE_PATH_MAX_ITEM_CHARS`    | `120`                                         | title_path 单段最大字符                            |
 | `TITLE_PATH_MAX_CHARS`         | `256`                                         | title_path 总长度上限                             |
@@ -270,7 +271,7 @@ python -m everythingsearch search "<查询词>" --json
 | `AGG_EXACT_BONUS`              | `0.10`                                        | 文件聚合：精确匹配额外加分                             |
 | `AGG_MULTI_HIT_BONUS`          | `0.05`                                        | 文件聚合：多 chunk 命中额外加分                        |
 | `AGG_LARGE_FILE_PENALTY`       | `0.05`                                        | 文件聚合：超大文件扣分系数                             |
-| `INDEXER_BATCH_SIZE`           | `5000`                                        | Dense 全量外层批大小上限参考（实际 cap 为 50）              |
+| `INDEXER_BATCH_SIZE`           | `50`                                          | Dense 全量 Chroma upsert 外层批大小（实际上限 50）           |
 | `SPARSE_INDEX_BATCH_SIZE`      | `5000`                                        | Sparse 写入批大小（**v2.5.0 代码**；与 Dense 解耦）         |
 | `SPARSE_CHECKPOINT_INTERVAL`   | `5000`                                        | Sparse/Dense 进度 checkpoint 落盘间隔（chunk 数）           |
 | `SPARSE_TOKENIZE_WORKERS`      | `0`                                           | 并行 jieba worker 数；0 表示自动（**v2.5.0 代码**）        |
@@ -347,7 +348,11 @@ SearchRequest
 - 缓存 Key：包含 `model`、`dimensions`、`text_type`、`EMBED_VECTOR_STORAGE_FORMAT` 与文本哈希，避免 v2/v4 或维度混用
 - 缓存 Value：按 `blob_float32` 存储向量 BLOB；写入时带 `created_at`（Unix 时间戳）
 - 连接使用 **WAL**、**连接池**；旧表结构会在初始化时迁移
-- 调用 DashScope 前经 `embed_rate_limiter` 做 **RPS + TPM** 双桶限速，并按 SDK 批次粒度占用配额；429/5xx 按 `EMBED_RETRY_*` 指数退避
+- 调用 DashScope 前经 `embed_rate_limiter` 做 **RPS + TPM** 双桶限速，并按 SDK 批次粒度（v4 单批 10 条）占用配额
+- 远端调用经 `dashscope_embed_client` 直连 SDK（不再使用 langchain `embed_with_retry`，避免非 200 响应被 `HTTPError` 包装时触发 `KeyError: 'request'` 而掩盖 429/5xx）
+- **官方限速（中国内地，`text-embedding-v1`～`v4` 共用）**：RPS **30**、TPM **1,200,000**（仅输入 Token）；详见 [阿里云限流文档](https://help.aliyun.com/zh/model-studio/rate-limit) 与 `SEARCH_ACCURACY_TECHNICAL_DESIGN.md` §9.1
+- **客户端默认**：`EMBED_RATE_RPS_LIMIT=28`、`EMBED_RATE_TPM_LIMIT=1_100_000`，略低于官方上限；另有秒级 RPS/TPS 限制，突发仍可能 429
+- **重试**：429、5xx、`Throttling.*` 等可重试错误按 `EMBED_RETRY_*` 指数退避 + 抖动（429 首次等待 ≥ 5s，上限 `EMBED_BACKOFF_MAX_MS`）；耗尽后 `EmbeddingApiFatalError`，索引 exit 1，可用 `--resume --keep-caches` 续跑；401 等不可重试错误立即失败
 - 命中/调用计数使用 `PrivateAttr` + `threading.Lock`，避免 Pydantic 对模型默认值做 deepcopy 时失败
 - 首次全量索引后，后续重建在文本未变时几乎无需 API 调用
 
@@ -372,6 +377,22 @@ SearchRequest
 | `--resume` | **否（强制）** | **否（强制）** | 否（保留进度） |
 
 失败时 `build_pipeline_index()` 返回 `False`，`incremental` 以退出码 1 终止。
+
+### 4.4.2 索引并发与服务生命周期
+
+**互斥锁**（`everythingsearch/infra/index_run_lock.py`）：
+
+- 锁文件默认 `data/index_run.lock`（`INDEX_RUN_LOCK_PATH`），基于 `flock` 跨进程互斥
+- **增量**：若已有索引任务（定时 launchd 或手动全量），本次增量打日志并 **exit 0 跳过**（适合定时任务不堆叠）
+- **全量**：若已有任务，**exit 1** 拒绝启动，避免并发写 sparse/chroma
+
+**搜索服务**（`everythingsearch/infra/app_service_control.py`）：
+
+- **全量重建**：进入 `build_pipeline_index` 前自动停止本机搜索服务（识别端口 + 进程名含 `everythingsearch`；有 launchd plist 时 bootout/bootstrap），结束后自动恢复
+- **增量索引**：写入完成后调用 `restart_search_service` 加载新 sparse/chroma
+- 若服务未通过 launchd 管理且无法自动拉起，会提示手动 `./scripts/run_app.sh start`
+
+> 全量/增量现已自动处理搜索服务停启；手动 `make app-stop` 仍可选，用于避免重建期间用户访问（重建期间服务会短暂不可用）。
 
 ### 4.5 `everythingsearch.incremental` — 增量索引
 
@@ -401,7 +422,7 @@ make index-full                                 # 同上
 ./venv/bin/python everythingsearch/incremental.py
 ```
 
-> **注意**：索引完成后需重启搜索服务以加载新数据：`./scripts/run_app.sh restart`
+> **注意**：增量/全量索引完成后会自动重启搜索服务（launchd 未托管时按日志手动 `./scripts/run_app.sh start`）。
 
 ### 4.6 `everythingsearch.app` 与服务编排层
 
@@ -423,7 +444,7 @@ Flask 应用路由（核心）：
 - `POST /api/open` — 用默认应用打开文件
 
 > 出于安全考虑，以下接口仍不提供：`/api/config`、`/api/stats`、`/api/reload`。
-> 索引重建后需重启搜索服务以加载新数据：`./scripts/run_app.sh restart`
+> 索引重建后搜索服务会自动重启（launchd 未托管时按日志手动 start）。
 
 **运行方式**：
 
@@ -524,24 +545,23 @@ cd /path/to/EverythingSearch
 ```bash
 cd /path/to/EverythingSearch
 ./venv/bin/python -m everythingsearch.incremental
-# 索引完成后重启搜索服务以加载新数据
-./scripts/run_app.sh restart
+# 索引完成后会自动重启搜索服务；非 launchd 托管时按日志手动 start
 ```
 
 ### 完整重建索引（`make index-full`）
 
 **普通用户**：一条命令、干净环境，无需手动删 `data/` 下文件。
 
-1. 建议停止 Web 与定时索引：`make app-stop`、`make index-svc-disable`
+1. （可选）禁用定时增量以免与全量抢锁：`make index-svc-disable`
 2. 将 `etc/config.example.py` 中「索引重建」相关项同步到 `config.py`（模型、维度、限速等）
-3. 执行（**默认删除** embedding cache、scan cache 及全部派生索引）：
+3. 执行（**默认删除** embedding cache、scan cache 及全部派生索引；**自动**暂停/恢复搜索服务）：
 
 ```bash
 cd /path/to/EverythingSearch
 caffeinate -i nohup ./venv/bin/python -m everythingsearch.incremental --full >> "logs/full_rebuild_$(date +%Y-%m-%d).log" 2>&1 &
 ```
 
-4. 索引完成后：`./scripts/run_app.sh restart`
+索引成功结束后搜索服务会自动恢复；无需再手动 `./scripts/run_app.sh restart`。
 
 **高阶用户**（省 Token / 省解析 / 中断续跑）：
 

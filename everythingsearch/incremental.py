@@ -55,6 +55,11 @@ from everythingsearch.indexing.full_rebuild_environment import (
     prepare_full_rebuild_environment,
     print_full_rebuild_summary,
 )
+from everythingsearch.infra.app_service_control import (
+    restart_search_service,
+    suspend_search_service_for_rebuild,
+)
+from everythingsearch.infra.index_run_lock import IndexRunLock, read_index_run_lock_holder
 from everythingsearch.indexing.sparse_index_writer import SQLiteSparseIndexWriter
 from everythingsearch.indexing.dense_index_writer import ChromaDenseIndexWriter
 from everythingsearch.retrieval.embedding import DashScopeEmbeddingProvider
@@ -122,12 +127,37 @@ def _delete_chunks(collection, filepath: str, sparse_writer: SQLiteSparseIndexWr
             logger.warning(f"删除 Sparse 索引失败 {filepath}: {e}")
 
 
+def _reload_app_service_after_indexing() -> None:
+    """索引写入完成后重启搜索服务，加载最新 sparse / chroma 数据。"""
+    settings = get_settings()
+    try:
+        restart_search_service(settings.port)
+    except RuntimeError as exc:
+        logger.error("索引已完成，但重启搜索服务失败: %s", exc)
+        sys.exit(1)
+
+
 def run_incremental():
+    settings = get_settings()
+    lock = IndexRunLock(settings.index_run_lock_path, "incremental")
+    if not lock.try_acquire():
+        holder = read_index_run_lock_holder(settings.index_run_lock_path)
+        if holder is not None:
+            logger.warning(
+                "已有索引任务正在运行 (pid=%s, mode=%s)，本次增量更新跳过。",
+                holder.pid,
+                holder.run_mode,
+            )
+        else:
+            logger.warning("已有索引任务正在运行，本次增量更新跳过。")
+        return
     try:
         _run_incremental_impl()
     except KeyboardInterrupt:
         logger.warning("用户中断，索引已停止。")
         sys.exit(1)
+    finally:
+        lock.release()
 
 
 def _run_incremental_impl():
@@ -217,16 +247,17 @@ def _run_incremental_impl():
         from everythingsearch.indexing.pipeline_indexer import build_pipeline_index
 
         fallback_plan = FullRebuildPlan.keep_caches_for_fallback()
-        prepare_full_rebuild_environment(settings, fallback_plan)
-        if build_pipeline_index(
-            initial_scale_snapshot=scale_snapshot,
-            transition_reason="Dense collection 不存在",
-            full_rebuild_plan=fallback_plan,
-        ):
-            _rebuild_state_db()
-        else:
-            logger.error("全量索引构建未完成，跳过状态库重建。")
-            sys.exit(1)
+        with suspend_search_service_for_rebuild(settings.port):
+            prepare_full_rebuild_environment(settings, fallback_plan)
+            if build_pipeline_index(
+                initial_scale_snapshot=scale_snapshot,
+                transition_reason="Dense collection 不存在",
+                full_rebuild_plan=fallback_plan,
+            ):
+                _rebuild_state_db()
+            else:
+                logger.error("全量索引构建未完成，跳过状态库重建。")
+                sys.exit(1)
         return
 
     reporter = IndexProgressReporter("增量索引更新", logger)
@@ -410,6 +441,8 @@ def _run_incremental_impl():
         )
     logger.info("总耗时: %.1fs", elapsed)
     reporter.finish()
+    _reload_app_service_after_indexing()
+
 
 def _rebuild_state_db():
     """Rebuild the state DB after a full index by scanning disk state."""
@@ -442,19 +475,42 @@ def run_full(plan: FullRebuildPlan):
         print_full_rebuild_summary(settings, plan)
         return
 
+    lock = IndexRunLock(settings.index_run_lock_path, "full")
+    if not lock.try_acquire():
+        holder = read_index_run_lock_holder(settings.index_run_lock_path)
+        if holder is not None:
+            logger.error(
+                "已有索引任务正在运行 (pid=%s, mode=%s)，无法开始全量重建。",
+                holder.pid,
+                holder.run_mode,
+            )
+        else:
+            logger.error("已有索引任务正在运行，无法开始全量重建。")
+        sys.exit(1)
+
+    try:
+        with suspend_search_service_for_rebuild(settings.port):
+            _run_full_rebuild_body(settings, plan)
+    except RuntimeError as exc:
+        logger.error("%s", exc)
+        sys.exit(1)
+    except KeyboardInterrupt:
+        logger.warning("用户中断，索引已停止。")
+        sys.exit(1)
+    finally:
+        lock.release()
+
+
+def _run_full_rebuild_body(settings, plan: FullRebuildPlan) -> None:
     if not plan.resume:
         prepare_full_rebuild_environment(settings, plan)
 
-    try:
-        from everythingsearch.indexing.pipeline_indexer import build_pipeline_index
+    from everythingsearch.indexing.pipeline_indexer import build_pipeline_index
 
-        if build_pipeline_index(full_rebuild_plan=plan):
-            _rebuild_state_db()
-        else:
-            logger.error("全量索引构建未完成，跳过状态库重建。")
-            sys.exit(1)
-    except KeyboardInterrupt:
-        logger.warning("用户中断，索引已停止。")
+    if build_pipeline_index(full_rebuild_plan=plan):
+        _rebuild_state_db()
+    else:
+        logger.error("全量索引构建未完成，跳过状态库重建。")
         sys.exit(1)
 
 

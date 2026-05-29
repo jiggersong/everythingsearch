@@ -237,8 +237,9 @@ make app-stop
 
 ```bash
 ./venv/bin/python -m everythingsearch.incremental
-./scripts/run_app.sh restart
 ```
+
+After incremental indexing completes, the search service is **restarted automatically** to load new data (if launchd is not managing the service and auto-restart fails, follow the log and run `./scripts/run_app.sh start` manually).
 
 Incremental indexing first reports added, modified, and deleted file counts plus estimated cost. If the current vector collection is missing, it explicitly falls back to a full rebuild.
 
@@ -250,15 +251,16 @@ Incremental indexing first reports added, modified, and deleted file counts plus
 
 **Recommended flow (typical users)**
 
-1. Reduce interference: `make app-stop`, `make index-svc-disable` (optional but recommended)
-2. Run a clean rebuild (default):
+1. (Optional) disable scheduled incremental to avoid lock contention: `make index-svc-disable`
+2. Run a clean rebuild (**by default** auto-suspends and restores the search service; no manual `app-stop` / `restart`):
 
 ```bash
 caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full
-./scripts/run_app.sh restart
 ```
 
 A summary of files to be removed or kept is printed before work starts. Token figures are local estimates; billing is per DashScope.
+
+**Embedding rate limits**: Mainland China `text-embedding-v4` **shares** quota with v1–v3 (RPS 30, TPM 1,200,000 input tokens, batch size 10). Defaults such as `EMBED_RATE_RPS_LIMIT=28` sit slightly below official caps. Dense writes retry on 429 with backoff; after repeated failure the process exits 1—resume with `--resume --keep-caches`. See [SEARCH_ACCURACY_TECHNICAL_DESIGN.en.md](SEARCH_ACCURACY_TECHNICAL_DESIGN.en.md) §9.1.
 
 **Advanced flags** (opt in when you want to save time or tokens):
 
@@ -284,7 +286,9 @@ caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full --keep-em
 
 - After changing `EMBEDDING_MODEL`, `EMBEDDING_DIMENSIONS`, `CHUNK_SIZE`, etc., use the **default** full rebuild (no `--keep-*`), unless you understand partial cache invalidation.  
 - `--resume` fails if the checkpoint does not match the current config fingerprint; drop `--resume` for a clean rebuild.  
-- See [PROJECT_MANUAL.en.md](PROJECT_MANUAL.en.md) §6 and §4.4 for details.
+- If Dense embedding retries are exhausted, the process exits 1; checkpoint is kept—resume with `make index-full ARGS="--resume --keep-caches"`.  
+- If another index run is already active (including scheduled incremental), a new full rebuild is refused; overlapping incremental runs skip.  
+- See [PROJECT_MANUAL.en.md](PROJECT_MANUAL.en.md) §4.4, §4.4.2, and §6 for details.
 
 ## 7. FAQ
 

@@ -1,7 +1,6 @@
 import hashlib
 import json
 import logging
-import random
 import sqlite3
 import threading
 import time
@@ -12,9 +11,11 @@ from queue import Queue, Empty
 
 from pydantic import ConfigDict, PrivateAttr
 from langchain_community.embeddings import DashScopeEmbeddings
-from langchain_community.embeddings.dashscope import embed_with_retry
-from requests.exceptions import HTTPError
 
+from everythingsearch.infra.dashscope_embed_client import (
+    DASHSCOPE_TEXT_EMBEDDING_MAINLAND_LIMITS,
+    call_with_retry,
+)
 from everythingsearch.infra.embed_rate_limiter import (
     DualTokenBucketRateLimiter,
     estimate_tokens_for_texts,
@@ -22,12 +23,9 @@ from everythingsearch.infra.embed_rate_limiter import (
 
 logger = logging.getLogger(__name__)
 
-# 与 langchain_community.embeddings.dashscope.BATCH_SIZE 保持一致
+# 与 DashScope SDK / langchain 单批上限一致
 DASHSCOPE_EMBED_BATCH_SIZES: dict[str, int] = {
-    "text-embedding-v1": 25,
-    "text-embedding-v2": 25,
-    "text-embedding-v3": 10,
-    "text-embedding-v4": 10,
+    name: limits.api_batch_size for name, limits in DASHSCOPE_TEXT_EMBEDDING_MAINLAND_LIMITS.items()
 }
 
 
@@ -298,52 +296,41 @@ class CachedEmbeddings(DashScopeEmbeddings):
                 safe_texts.append(t)
         return safe_texts
 
-    def _build_api_kwargs(self, texts: list[str], text_type: str) -> dict[str, Any]:
-        kwargs: dict[str, Any] = {
-            "input": texts,
-            "text_type": text_type,
-            "model": self.model,
-        }
-        if self._embedding_dimensions is not None:
-            kwargs["dimension"] = self._embedding_dimensions
-        return kwargs
-
     def _remote_api_batch_size(self) -> int:
         return DASHSCOPE_EMBED_BATCH_SIZES.get(self.model, 25)
 
     def _call_remote_embed_single_batch(self, texts: list[str], text_type: str) -> list[list[float]]:
         """对不超过 SDK 单批上限的文本发起一次（或数次内部重试）远端 embedding。"""
-        last_exc: Exception | None = None
-        for attempt in range(self._embed_retry_max + 1):
-            estimated_tokens = estimate_tokens_for_texts(texts)
-            try:
-                if self._rate_limiter is not None:
-                    with self._rate_limiter.request_slot(estimated_tokens):
-                        embeddings = embed_with_retry(self, **self._build_api_kwargs(texts, text_type))
-                else:
-                    embeddings = embed_with_retry(self, **self._build_api_kwargs(texts, text_type))
-                return [item["embedding"] for item in embeddings]
-            except HTTPError as exc:
-                last_exc = exc
-                if attempt >= self._embed_retry_max:
-                    raise
-                delay_ms = min(
-                    self._embed_backoff_max_ms,
-                    self._embed_backoff_base_ms * (2**attempt),
-                )
-                jitter = random.randint(0, max(1, delay_ms // 4))
-                sleep_sec = (delay_ms + jitter) / 1000.0
-                logger.warning(
-                    "Embedding API 失败，%ss 后重试 (%s/%s): %s",
-                    sleep_sec,
-                    attempt + 1,
-                    self._embed_retry_max,
-                    exc,
-                )
-                time.sleep(sleep_sec)
-        if last_exc is not None:
-            raise last_exc
-        return []
+        client = self.client
+
+        def _on_retry(attempt: int, retry_max: int, exc: Exception, sleep_sec: float) -> None:
+            logger.warning(
+                "Embedding API 失败，%ss 后重试 (%s/%s): %s",
+                sleep_sec,
+                attempt,
+                retry_max,
+                exc,
+            )
+
+        estimated_tokens = estimate_tokens_for_texts(texts)
+
+        def _invoke() -> list[list[float]]:
+            return call_with_retry(
+                client,
+                model=self.model,
+                texts=texts,
+                text_type=text_type,
+                dimension=self._embedding_dimensions,
+                retry_max=self._embed_retry_max,
+                backoff_base_ms=self._embed_backoff_base_ms,
+                backoff_max_ms=self._embed_backoff_max_ms,
+                on_retry=_on_retry,
+            )
+
+        if self._rate_limiter is not None:
+            with self._rate_limiter.request_slot(estimated_tokens):
+                return _invoke()
+        return _invoke()
 
     def _call_remote_embed(self, texts: list[str], text_type: str) -> list[list[float]]:
         """按 DashScope SDK 实际批大小拆分，每批单独申请限流槽。"""

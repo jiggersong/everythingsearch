@@ -255,6 +255,29 @@ EMBEDDING_TEXT_MAX_CHARS = 1600
 
 The final default model must be decided by benchmark results.
 
+### 9.1 DashScope Embedding API rate limits and retries (Mainland China)
+
+Indexing and query-time embeddings call the Alibaba Cloud DashScope **Text Embedding** API. Official limits are in the [rate-limit documentation](https://help.aliyun.com/zh/model-studio/rate-limit); `text-embedding-v1` through `v4` **share** the same quota:
+
+| Metric | Official | Notes |
+|--------|----------|-------|
+| RPS | 30 | Requests per second |
+| TPM | 1,200,000 | Input tokens per minute (output excluded) |
+| Batch size (v3/v4) | 10 | Max items per SDK / HTTP `input` call |
+
+Additional notes:
+
+- The docs also mention **per-second** RPS/TPS caps; bursts can still trigger 429; throttling usually clears within about one minute.
+- Defaults `EMBED_RATE_RPS_LIMIT=28` and `EMBED_RATE_TPM_LIMIT=1_100_000` sit slightly below the official caps; `EMBED_MAX_INFLIGHT` caps concurrent in-flight requests.
+
+**Implementation layers** (`everythingsearch/embedding_cache.py` + `everythingsearch/infra/`):
+
+1. **`embed_rate_limiter.DualTokenBucketRateLimiter`**: RPS + TPM dual token buckets before each call; quota is consumed per SDK batch (10 for v4).
+2. **`dashscope_embed_client.call_dashscope_text_embeddings`**: calls the DashScope SDK directly and parses `status_code` / `code` / `message`—**not** langchain `embed_with_retry` (which could raise `KeyError: 'request'` when wrapping non-200 responses in `requests.HTTPError`, hiding real 429/5xx).
+3. **`call_with_retry`**: exponential backoff + jitter for 429, 5xx, `Throttling.*`, etc.; 429 waits at least 5s, capped by `EMBED_BACKOFF_MAX_MS` (default 60s). Default `EMBED_RETRY_MAX=5` (six attempts total); exhaustion raises `EmbeddingApiFatalError`, indexing **exits 1** with checkpoint preserved—resume with `--resume --keep-caches`. Non-retriable errors (e.g. 401) fail immediately.
+
+See `etc/config.example.py` and PROJECT_MANUAL §3 for related settings.
+
 ## 10. Fusion and Rerank
 
 Fusion uses RRF by default:

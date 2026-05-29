@@ -255,6 +255,29 @@ EMBEDDING_TEXT_MAX_CHARS = 1600
 
 最终默认模型必须由 benchmark 决定。
 
+### 9.1 DashScope Embedding API 限速与重试（中国内地）
+
+索引构建与查询侧 embedding 均调用阿里云 DashScope **Text Embedding** API。官方限流以 [模型限流说明](https://help.aliyun.com/zh/model-studio/rate-limit) 为准；`text-embedding-v1`～`v4` **共用**同一配额：
+
+| 指标 | 官方值 | 说明 |
+|------|--------|------|
+| RPS | 30 | 每秒调用次数 |
+| TPM | 1,200,000 | 每分钟**输入** Token（不含输出） |
+| 单批条数（v3/v4） | 10 | SDK / HTTP 单次 `input` 上限 |
+
+补充说明：
+
+- 文档另有**秒级** RPS/TPS 限制；突发流量仍可能触发 429，限流通常约 1 分钟内恢复。
+- 项目客户端默认 `EMBED_RATE_RPS_LIMIT=28`、`EMBED_RATE_TPM_LIMIT=1_100_000`，略低于官方上限以留余量；`EMBED_MAX_INFLIGHT` 控制并发 in-flight 请求数。
+
+**实现分层**（`everythingsearch/embedding_cache.py` + `everythingsearch/infra/`）：
+
+1. **`embed_rate_limiter.DualTokenBucketRateLimiter`**：发请求前按 **RPS + TPM** 双桶占槽；按 DashScope SDK 实际批大小（v4 为 10）逐批申请配额。
+2. **`dashscope_embed_client.call_dashscope_text_embeddings`**：直连 `dashscope` SDK，解析 `status_code` / `code` / `message`，**不再**经 langchain `embed_with_retry`（避免非 200 响应被 `requests.HTTPError` 包装时触发 `KeyError: 'request'`，掩盖真实 429/5xx）。
+3. **`call_with_retry`**：对 429、5xx、`Throttling.*` 等可重试错误做**指数退避 + 抖动**；429 首次等待不低于 5s，上限 `EMBED_BACKOFF_MAX_MS`（默认 60s）。默认 `EMBED_RETRY_MAX=5`（共 6 次尝试）；耗尽后抛出 `EmbeddingApiFatalError`，全量/增量索引 **exit 1**，checkpoint 保留，可用 `--resume --keep-caches` 续跑。401 等不可重试错误立即失败。
+
+相关配置见 `etc/config.example.py` 与 PROJECT_MANUAL §3 配置表。
+
 ## 10. 融合与 rerank
 
 融合默认使用 RRF：

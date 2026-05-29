@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import sys
+from contextlib import contextmanager
 from types import SimpleNamespace
 
 import pytest
 
 from everythingsearch import incremental
 from everythingsearch.indexing.progress_estimator import IndexScaleSnapshot
+from everythingsearch.infra.app_service_control import SearchServiceSnapshot
 
 
 def test_delete_chunks_raises_when_both_dense_deletes_fail():
@@ -38,6 +40,8 @@ def test_incremental_missing_collection_passes_scale_snapshot_to_full_rebuild(mo
         embedding_cache_path=str(tmp_path / "embedding.db"),
         rebuild_staging_path=str(tmp_path / "staging.db"),
         rebuild_checkpoint_path=str(tmp_path / "checkpoint.db"),
+        index_run_lock_path=str(tmp_path / "index_run.lock"),
+        port=8000,
         enable_mweb=False,
         mweb_export_script=None,
     )
@@ -84,6 +88,13 @@ def _patch_incremental_missing_collection(monkeypatch, tmp_path, settings):
     monkeypatch.setattr(incremental, "_scan_disk_mweb", lambda: {})
     monkeypatch.setattr(incremental, "load_historical_chunks_per_file", lambda *args, **kwargs: None)
 
+    @contextmanager
+    def _noop_suspend(port):
+        yield SearchServiceSnapshot(launchd_was_loaded=False, service_was_running=False)
+
+    monkeypatch.setattr(incremental, "suspend_search_service_for_rebuild", _noop_suspend)
+    monkeypatch.setattr(incremental, "_reload_app_service_after_indexing", lambda: None)
+
     class FakeClient:
         def __init__(self, path):
             self.path = path
@@ -105,6 +116,8 @@ def test_incremental_fallback_exits_when_full_rebuild_fails(monkeypatch, tmp_pat
         embedding_cache_path=str(tmp_path / "embedding.db"),
         rebuild_staging_path=str(tmp_path / "staging.db"),
         rebuild_checkpoint_path=str(tmp_path / "checkpoint.db"),
+        index_run_lock_path=str(tmp_path / "index_run.lock"),
+        port=8000,
         enable_mweb=False,
         mweb_export_script=None,
     )
@@ -143,6 +156,8 @@ def test_incremental_sparse_failure_skips_state_and_rolls_back_dense(monkeypatch
         scan_cache_path="",
         embedding_model="text-embedding-v2",
         embedding_cache_path=str(tmp_path / "embedding.db"),
+        index_run_lock_path=str(tmp_path / "index_run.lock"),
+        port=8000,
         enable_mweb=False,
         mweb_export_script=None,
     )
@@ -209,6 +224,12 @@ def test_incremental_sparse_failure_skips_state_and_rolls_back_dense(monkeypatch
         "build_documents_for_path_cached",
         lambda *a, **k: [Document(page_content="body", metadata={"source_type": "file"})],
     )
+    restart_called = {"value": False}
+    monkeypatch.setattr(
+        incremental,
+        "_reload_app_service_after_indexing",
+        lambda: restart_called.update(value=True),
+    )
 
     incremental.run_incremental()
 
@@ -218,3 +239,99 @@ def test_incremental_sparse_failure_skips_state_and_rolls_back_dense(monkeypatch
 
     assert row is None
     assert len(deleted_file_ids) == 1
+
+
+def test_incremental_success_restarts_app_service(monkeypatch, tmp_path):
+    """增量成功完成后应重启搜索服务。"""
+    import os
+    import sqlite3
+    from pathlib import Path
+
+    fp = str(tmp_path / "a.md")
+    Path(fp).write_text("body", encoding="utf-8")
+    mtime = os.path.getmtime(fp)
+    state_db = tmp_path / "state.db"
+    settings = SimpleNamespace(
+        index_state_db=str(state_db),
+        sparse_index_path=str(tmp_path / "sparse.db"),
+        persist_directory=str(tmp_path / "chroma"),
+        scan_cache_path="",
+        embedding_model="text-embedding-v2",
+        embedding_cache_path=str(tmp_path / "embedding.db"),
+        index_run_lock_path=str(tmp_path / "index_run.lock"),
+        port=8000,
+        enable_mweb=False,
+        mweb_export_script=None,
+    )
+
+    conn = sqlite3.connect(state_db)
+    incremental._init_state_db(conn)
+    conn.close()
+
+    class FakeCollection:
+        name = "local_files"
+
+        def delete(self, where):
+            return None
+
+    class FakeClient:
+        def __init__(self, path=None):
+            self.path = path
+
+        def list_collections(self):
+            return [FakeCollection()]
+
+        def get_collection(self, name):
+            return FakeCollection()
+
+    class FakeDenseWriter:
+        def upsert_chunks(self, chunks):
+            return None
+
+        def delete_file(self, file_id):
+            return None
+
+    class FakeSparseWriter:
+        def upsert_chunks(self, chunks):
+            return None
+
+        def delete_file(self, file_id):
+            return None
+
+    from langchain_core.documents import Document
+
+    monkeypatch.setattr(incremental, "get_settings", lambda: settings)
+    monkeypatch.setattr(incremental, "require_target_dirs", lambda _s: (str(tmp_path),))
+    monkeypatch.setattr(incremental, "require_dashscope_api_key", lambda _s: "fake-key")
+    monkeypatch.setattr(incremental, "apply_sdk_environment", lambda _s: None)
+    monkeypatch.setattr(incremental, "_scan_disk_files", lambda: {fp: (mtime, "file")})
+    monkeypatch.setattr(incremental, "_scan_disk_mweb", lambda: {})
+    monkeypatch.setattr(incremental, "load_historical_chunks_per_file", lambda *a, **k: None)
+    monkeypatch.setattr(incremental.chromadb, "PersistentClient", FakeClient)
+    monkeypatch.setattr(
+        incremental,
+        "DashScopeEmbeddingProvider",
+        lambda _s: SimpleNamespace(
+            stats_snapshot=lambda: SimpleNamespace(
+                cache_hit_text_count=0,
+                uncached_text_count=1,
+                remote_batch_count=1,
+            )
+        ),
+    )
+    monkeypatch.setattr(incremental, "ChromaDenseIndexWriter", lambda _s, _e: FakeDenseWriter())
+    monkeypatch.setattr(incremental, "SQLiteSparseIndexWriter", lambda _s: FakeSparseWriter())
+    monkeypatch.setattr(
+        incremental,
+        "build_documents_for_path_cached",
+        lambda *a, **k: [Document(page_content="body", metadata={"source_type": "file"})],
+    )
+    restart_called = {"value": False}
+    monkeypatch.setattr(
+        incremental,
+        "restart_search_service",
+        lambda port, snapshot=None: restart_called.update(value=True) or True,
+    )
+
+    incremental.run_incremental()
+    assert restart_called["value"] is True

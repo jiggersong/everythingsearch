@@ -64,6 +64,7 @@ PERSIST_DIRECTORY = os.path.join(_ROOT, "data", "chroma_db")
 SPARSE_INDEX_PATH = os.path.join(_ROOT, "data", "sparse_index.db")
 REBUILD_CHECKPOINT_PATH = os.path.join(_ROOT, "data", "rebuild_checkpoint.db")
 REBUILD_STAGING_PATH = os.path.join(_ROOT, "data", "rebuild_staging.db")
+INDEX_RUN_LOCK_PATH = os.path.join(_ROOT, "data", "index_run.lock")
 
 # 索引重建（v4）
 EMBEDDING_MODEL = "text-embedding-v4"
@@ -71,12 +72,14 @@ EMBEDDING_DIMENSIONS = 1024
 EMBEDDING_DOCUMENT_TEXT_TYPE = "document"
 EMBEDDING_QUERY_TEXT_TYPE = "query"
 EMBED_VECTOR_STORAGE_FORMAT = "blob_float32"
-EMBED_RATE_RPS_LIMIT = 20
-EMBED_RATE_TPM_LIMIT = 900000
+# text-embedding-v4 中国内地官方限速（v1~v4 共用）：RPS 30、TPM 1,200,000（仅输入 Token）
+# 见 https://help.aliyun.com/zh/model-studio/rate-limit ；客户端默认略低于官方上限以留余量
+EMBED_RATE_RPS_LIMIT = 28
+EMBED_RATE_TPM_LIMIT = 1100000
 EMBED_MAX_INFLIGHT = 6
 EMBED_RETRY_MAX = 5
 EMBED_BACKOFF_BASE_MS = 500
-EMBED_BACKOFF_MAX_MS = 15000
+EMBED_BACKOFF_MAX_MS = 60000
 TITLE_PATH_MAX_DEPTH = 3
 TITLE_PATH_MAX_ITEM_CHARS = 120
 TITLE_PATH_MAX_CHARS = 256
@@ -88,6 +91,9 @@ SPARSE_CHECKPOINT_INTERVAL = 5000
 SPARSE_TOKENIZE_WORKERS = 0
 SPARSE_BULK_PRAGMA_FAST = True
 SPARSE_SKIP_FTS_DELETE_ON_FRESH = True
+
+# Dense 写入（Chroma upsert 外层批大小，实际上限 50；与 Sparse / Embedding API 批次解耦）
+INDEXER_BATCH_SIZE = 50
 
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 80
