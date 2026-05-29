@@ -38,7 +38,7 @@ _get_service_pid() {
 }
 
 _start() {
-    local pid
+    local pid domain="gui/$(id -u)" job_target="${domain}/${LAUNCHD_LABEL}"
     pid=$(_get_service_pid)
     if [ -n "$pid" ]; then
         echo "服务已在运行 (PID $pid)"
@@ -46,7 +46,19 @@ _start() {
         return 0
     fi
     echo "启动搜索服务 (端口 $PORT)..."
-    launchctl start "$LAUNCHD_LABEL" 2>/dev/null || true
+    if [ ! -f "$LAUNCHD_PLIST" ]; then
+        echo "❌ 未找到 launchd plist: $LAUNCHD_PLIST"
+        echo "   请先运行: ./scripts/install_launchd_wrappers.sh"
+        return 1
+    fi
+    if ! launchctl print "$job_target" >/dev/null 2>&1; then
+        echo "加载 launchd 任务 (bootstrap)..."
+        if ! launchctl bootstrap "$domain" "$LAUNCHD_PLIST" 2>/dev/null; then
+            # 已加载或并发 bootstrap 时忽略
+            :
+        fi
+    fi
+    launchctl kickstart -k "$job_target" 2>/dev/null || launchctl start "$LAUNCHD_LABEL" 2>/dev/null || true
     sleep 2
     pid=$(_get_service_pid)
     if [ -n "$pid" ]; then
@@ -54,6 +66,7 @@ _start() {
         echo "   访问: http://127.0.0.1:$PORT"
     else
         echo "❌ 启动失败，请查看 logs/ 下 app_err.log（及按日归档的同名 .YYYY-MM-DD 文件）与 launchd_app_*.log"
+        echo "   也可尝试: $0 resume"
         return 1
     fi
 }

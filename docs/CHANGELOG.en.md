@@ -2,6 +2,12 @@
 
 [English](CHANGELOG.en.md) | [中文](CHANGELOG.md)
 
+## [2.5.3] - 2026-05-29
+
+### Fixes
+
+- **`run_app.sh start`**: after full-rebuild `bootout` unloads the launchd job, `start` now `bootstrap`s then `kickstart`s instead of failing silently.
+
 ## [2.5.2] - 2026-05-29
 
 ### Fixes

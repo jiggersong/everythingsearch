@@ -2,6 +2,12 @@
 
 [English](CHANGELOG.en.md) | [中文](CHANGELOG.md)
 
+## [2.5.3] - 2026-05-29
+
+### 修复
+
+- **`run_app.sh start`**：全量重建 `bootout` 后 launchd 任务未加载时，`start` 会先 `bootstrap` 再 `kickstart`，不再静默失败。
+
 ## [2.5.2] - 2026-05-29
 
 ### 修复
