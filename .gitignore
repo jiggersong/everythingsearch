@@ -19,6 +19,7 @@ data/chroma_db/
 data/mweb_export/
 data/*.db
 data/*.db-journal
+data/*.lock
 *.db-wal
 *.db-shm
 chroma_db/
