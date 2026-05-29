@@ -269,7 +269,7 @@ configure_project() {
         if grep -q "^ENABLE_MWEB" "$config_file" 2>/dev/null; then
             sed -i '' "s|^ENABLE_MWEB = .*|ENABLE_MWEB = False|" "$config_file" || true
         else
-            # 兼容旧配置：在文件末尾追加
+            # 配置项不存在时：在文件末尾追加
             echo "" >> "$config_file"
             echo "ENABLE_MWEB = False" >> "$config_file"
         fi
@@ -577,10 +577,17 @@ check_port() {
 
     log_info "自动选择替代端口: ${APP_PORT}"
 
-    # 更新 gunicorn.conf.py 默认端口
-    sed -i '' "s|os.environ.get(\"PORT\", \"8000\")|os.environ.get(\"PORT\", \"${APP_PORT}\")|" \
-        "$INSTALL_DIR/gunicorn.conf.py"
-    log_ok "已更新 gunicorn.conf.py 默认端口为 ${APP_PORT}"
+    # 写入 config.py 端口
+    if [[ -f "$INSTALL_DIR/config.py" ]]; then
+        if grep -q '^PORT' "$INSTALL_DIR/config.py"; then
+            sed -i '' "s/^PORT = .*/PORT = ${APP_PORT}/" "$INSTALL_DIR/config.py"
+        else
+            printf '\nPORT = %s\n' "${APP_PORT}" >> "$INSTALL_DIR/config.py"
+        fi
+        log_ok "已更新 config.py 端口为 ${APP_PORT}"
+    else
+        log_warn "未找到 config.py，请手动设置 PORT = ${APP_PORT}"
+    fi
 }
 
 create_launcher() {

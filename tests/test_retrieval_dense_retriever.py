@@ -84,7 +84,18 @@ def test_dense_retriever_basic(populated_db):
     original_search = retriever._db.similarity_search_with_score
     def mock_search(*args, **kwargs):
         # 假设 distance 是 0.3
-        doc = Document(page_content="test content 1", metadata={"chunk_id": "c1", "file_id": "f1"})
+        doc = Document(
+            page_content="test content 1",
+            metadata={
+                "chunk_id": "c1",
+                "file_id": "f1",
+                "filepath": "/test/f1.txt",
+                "filename": "f1.txt",
+                "source_type": "file",
+                "filetype": ".txt",
+                "chunk_type": "content",
+            },
+        )
         return [(doc, 0.3)]
     
     retriever._db.similarity_search_with_score = mock_search

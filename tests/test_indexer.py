@@ -8,8 +8,8 @@ from types import SimpleNamespace
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from everythingsearch.indexer import (
-    normalize_path,
+from everythingsearch.indexing.path_utils import normalize_path
+from everythingsearch.indexing.document_scan import (
     _extract_md_headings,
     _parse_front_matter,
     _truncate_for_embed,
@@ -20,7 +20,6 @@ from everythingsearch.indexer import (
     build_documents_for_path_cached,
     load_file_content,
     calculate_batch_size,
-    build_index,
     EMBED_MAX_CHARS,
 )
 from langchain_core.documents import Document
@@ -183,18 +182,18 @@ class TestTitlePathForChunkMetadata:
     """Chroma 要求 title_path 列表非空时的回退逻辑。"""
 
     def test_non_empty_when_raw_empty_uses_display_name(self):
-        from everythingsearch.indexer import _title_path_for_chunk_metadata
+        from everythingsearch.indexing.document_scan import _title_path_for_chunk_metadata
 
         assert _title_path_for_chunk_metadata([], "book") == ["book"]
         assert _title_path_for_chunk_metadata([], "几何变换") == ["几何变换"]
 
     def test_preserves_nonempty_path(self):
-        from everythingsearch.indexer import _title_path_for_chunk_metadata
+        from everythingsearch.indexing.document_scan import _title_path_for_chunk_metadata
 
         assert _title_path_for_chunk_metadata(["第一章", "  "], "x") == ["第一章"]
 
     def test_underscore_when_both_empty(self):
-        from everythingsearch.indexer import _title_path_for_chunk_metadata
+        from everythingsearch.indexing.document_scan import _title_path_for_chunk_metadata
 
         assert _title_path_for_chunk_metadata([], "") == ["_"]
         assert _title_path_for_chunk_metadata(["", "  "], "") == ["_"]
@@ -210,7 +209,7 @@ class TestBuildDocuments:
     def test_build_documents_for_txt(self, sample_text_file):
         """测试文本文件文档构建"""
         try:
-            from everythingsearch.indexer import build_documents_for_file
+            from everythingsearch.indexing.document_scan import build_documents_for_file
             from langchain_core.documents import Document
             
             docs = build_documents_for_file(
@@ -236,7 +235,7 @@ class TestBuildDocuments:
     def test_build_documents_for_md(self, sample_md_file):
         """测试 Markdown 文件文档构建"""
         try:
-            from everythingsearch.indexer import build_documents_for_file
+            from everythingsearch.indexing.document_scan import build_documents_for_file
             
             docs = build_documents_for_file(
                 sample_md_file,
@@ -309,7 +308,7 @@ class TestScanCache:
         _save_cached_docs(conn, "/tmp/a.txt", 100.0, "file", cached_docs)
 
         monkeypatch.setattr(
-            "everythingsearch.indexer.build_documents_for_file",
+            "everythingsearch.indexing.document_scan.build_documents_for_file",
             lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("不应重建文档")),
         )
 
@@ -346,7 +345,7 @@ class TestLoadFileContentFailurePaths:
             office_extensions=frozenset({".docx", ".xlsx", ".pptx", ".pdf"}),
         )
 
-        monkeypatch.setattr("everythingsearch.indexer.get_settings", lambda: settings)
+        monkeypatch.setattr("everythingsearch.indexing.document_scan.get_settings", lambda: settings)
 
         content, headings = load_file_content(str(office_file), ".docx")
 
@@ -362,50 +361,11 @@ class TestLoadFileContentFailurePaths:
             office_extensions=frozenset({".docx", ".xlsx", ".pptx", ".pdf"}),
         )
 
-        monkeypatch.setattr("everythingsearch.indexer.get_settings", lambda: settings)
-        monkeypatch.setattr("everythingsearch.indexer._read_via_subprocess", lambda filepath, ext: ("", []))
+        monkeypatch.setattr("everythingsearch.indexing.document_scan.get_settings", lambda: settings)
+        monkeypatch.setattr("everythingsearch.indexing.document_scan._read_via_subprocess", lambda filepath, ext: ("", []))
 
         content, headings = load_file_content(str(office_file), ".pdf")
 
         assert content == ""
         assert headings == []
 
-
-class TestBuildIndex:
-    """测试全量索引构建边界行为。"""
-
-    def test_build_index_clears_existing_collection_when_scan_result_is_empty(self, monkeypatch, tmp_path):
-        settings = SimpleNamespace(
-            persist_directory=str(tmp_path / "chroma_db"),
-            scan_cache_path="",
-            embedding_model="text-embedding-v2",
-            embedding_cache_path=str(tmp_path / "embedding_cache.db"),
-        )
-        deleted = []
-
-        class FakeCollection:
-            def __init__(self, name):
-                self.name = name
-
-        class FakeClient:
-            def __init__(self, path):
-                self.path = path
-
-            def list_collections(self):
-                return [FakeCollection("local_files")]
-
-            def delete_collection(self, name):
-                deleted.append(name)
-
-        monkeypatch.setattr("everythingsearch.indexer.get_settings", lambda: settings)
-        monkeypatch.setattr("everythingsearch.indexer.require_target_dirs", lambda _settings: ("/tmp/docs",))
-        monkeypatch.setattr("everythingsearch.indexer.require_dashscope_api_key", lambda _settings: "fake-key")
-        monkeypatch.setattr("everythingsearch.indexer.apply_sdk_environment", lambda _settings: None)
-        monkeypatch.setattr("everythingsearch.indexer.scan_files", lambda: ([], 0.1))
-        monkeypatch.setattr("everythingsearch.indexer.scan_mweb_notes", lambda: ([], 0.0))
-        monkeypatch.setattr("everythingsearch.indexer._cleanup_orphaned_hnsw_dirs", lambda client: None)
-        monkeypatch.setattr("chromadb.PersistentClient", FakeClient)
-
-        build_index()
-
-        assert deleted == ["local_files"]

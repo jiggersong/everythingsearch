@@ -23,17 +23,17 @@ description: >-
 ## 前置条件
 
 1. 用户已在本机运行搜索服务（例如 `./scripts/run_app.sh start` 或 `./venv/bin/python -m everythingsearch.app`）。
-2. 若连接失败，提示用户先启动服务并确认端口（环境变量 `PORT` 或 `config.PORT`；多实例安装可查看该克隆下 `scripts/.launchd_instance` 中的 `APP_PORT`，未安装 launchd 时常见默认仍为 `8000`）。
-3. 可选环境变量 `EVERYTHINGSEARCH_BASE`：若服务绑在其他地址/端口，用该值作为基址（须带 scheme，如 `http://127.0.0.1:8000`）。
+2. 若连接失败，提示用户先启动服务并确认 `config.py` 中的 `HOST` / `PORT`（多实例安装可查看 `scripts/.launchd_instance` 中的 `APP_PORT`）。
+3. 非本机访问时由用户提供完整服务基址（须带 scheme，例如 `http://192.168.1.10:8000`）。
 
 ```
-BASE="${EVERYTHINGSEARCH_BASE:-http://127.0.0.1:8000}"
+BASE="http://127.0.0.1:8000"   # 按 config.HOST / config.PORT 或用户给出的 URL 调整
 ```
 
 ### 智能能力对 DashScope API Key 的依赖
 
 - **`GET /api/search`**：不调用生成式模型；仅需本地向量库已构建（嵌入阶段仍需要 Key 建索引）。
-- **`POST /api/search/nl`**、**`/api/search/interpret*`**：服务端需配置 **`DASHSCOPE_API_KEY`**（或 `config` 中等价项）。未配置时这些接口会返回业务错误（如 `MISSING_API_KEY`），Agent 应退化为 **`GET /api/search`** 完成检索。
+- **`POST /api/search/nl`**、**`/api/search/interpret*`**：服务端需在 `config.py` 配置 **`MY_API_KEY`**。未配置时这些接口会返回业务错误（如 `MISSING_API_KEY`），Agent 应退化为 **`GET /api/search`** 完成检索。
 - 意图识别与解读会访问外网模型服务；默认限流见配置 `RATE_LIMIT_NL_PER_MIN`、`RATE_LIMIT_INTERPRET_PER_MIN`（常见默认各约每分钟每 IP 10 次，以 `everythingsearch/infra/settings.py` 为准）。
 
 ## 1. 直接搜索（混合检索，无大模型）
@@ -155,14 +155,6 @@ curl -s "$BASE/api/health"
 ```bash
 curl -s -X POST "$BASE/api/cache/clear"
 ```
-
-## 9. 索引构建（不在本 Skill 范围内）
-
-本 Skill 仅覆盖 **HTTP 检索与读文件**；**不**指导 Agent 执行 `make index-full`、`incremental --full` 或删除 `data/` 下文件。
-
-- 用户需要**全量重建**或**增量索引**时：提示其参阅 [INSTALL.md](../../docs/INSTALL.md) §6，或自行在终端执行；Agent **不要**擅自 wipe 缓存或索引目录。
-- **v2.5.0 目标行为**（代码落地前以 INSTALL 为准）：`index-full` 默认真·全量（含删除 embedding / scan 缓存）；省 Token 或续跑需用户显式加 `--keep-caches` 等参数，Agent 不得默认替用户选择保留缓存。
-- 索引完成后若搜索仍异常，可建议 `POST /api/cache/clear` 并 `./scripts/run_app.sh restart`；仍不行再指向全量重建文档，而非文件系统遍历找文件。
 
 ## 安全说明
 

@@ -38,18 +38,9 @@ if ! PYTHON_BIN="$(find_python_bin)"; then
     exit 1
 fi
 
-# 与 gunicorn.conf.py 中 os.environ.get("PORT", ...) 的默认值一致
+# 与仓库根目录 config.py 的 PORT 一致
 read_default_port() {
-    local gc="${PROJECT_ROOT}/gunicorn.conf.py"
-    local p
-    if [[ -f "$gc" ]]; then
-        p=$(sed -n 's/.*get("PORT", "\([^"]*\)".*/\1/p' "$gc" | head -1)
-        if [[ -n "$p" ]]; then
-            echo "$p"
-            return
-        fi
-    fi
-    echo "8000"
+    "${PYTHON_BIN}" -c "import sys; sys.path.insert(0, '${PROJECT_ROOT}'); import config; print(getattr(config, 'PORT', 8000))" 2>/dev/null || echo "8000"
 }
 APP_PORT="$(read_default_port)"
 
@@ -58,7 +49,7 @@ mkdir -p "$LAUNCH_AGENTS" "${PROJECT_ROOT}/scripts"
 echo "项目目录: $PROJECT_ROOT"
 echo "实例后缀: $INSTANCE_SUFFIX"
 echo "Python: $PYTHON_BIN"
-echo "默认端口(来自 gunicorn.conf.py): $APP_PORT"
+echo "默认端口(来自 config.py): $APP_PORT"
 
 APP_WRAPPER="${PROJECT_ROOT}/scripts/launchd_app_wrapper.sh"
 INDEX_WRAPPER="${PROJECT_ROOT}/scripts/launchd_index_wrapper.sh"
@@ -69,13 +60,12 @@ set -euo pipefail
 APP_DIR="${PROJECT_ROOT}"
 cd "\$APP_DIR" || exit 1
 LOG_DIR="\$APP_DIR/logs"
-PORT="\${PORT:-${APP_PORT}}"
 LOG_DATE=\$(date +%Y-%m-%d)
 mkdir -p "\$LOG_DIR"
 exec >>"\$LOG_DIR/launchd_app_\${LOG_DATE}.log" 2>&1
 exec "${PYTHON_BIN}" -m gunicorn \\
   -c "\$APP_DIR/gunicorn.conf.py" \\
-  -w 1 -b "127.0.0.1:\$PORT" --timeout 120 \\
+  -w 1 --timeout 120 \\
   everythingsearch.app:app
 EOF
 chmod +x "$APP_WRAPPER"

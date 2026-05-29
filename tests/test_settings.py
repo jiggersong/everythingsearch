@@ -28,16 +28,14 @@ class TestSettings:
     def teardown_method(self):
         reset_settings_cache()
 
-    def test_env_dashscope_api_key_overrides_legacy_config(self, monkeypatch):
-        monkeypatch.setenv("DASHSCOPE_API_KEY", "env-key")
-        monkeypatch.setattr(config, "MY_API_KEY", "legacy-key")
+    def test_dashscope_api_key_reads_from_config(self, monkeypatch):
+        monkeypatch.setattr(config, "MY_API_KEY", "config-key")
 
         settings = get_settings()
 
-        assert settings.dashscope_api_key == "env-key"
+        assert settings.dashscope_api_key == "config-key"
 
     def test_placeholder_dashscope_api_key_is_treated_as_missing(self, monkeypatch):
-        monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
         monkeypatch.setattr(config, "MY_API_KEY", "sk-your-api-key-here")
 
         settings = get_settings()
@@ -107,15 +105,14 @@ class TestSettings:
         assert reloaded_settings.api_max_read_bytes == 32
 
     def test_apply_sdk_environment_writes_normalized_key(self, monkeypatch):
-        monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
-        monkeypatch.setattr(config, "MY_API_KEY", "legacy-key")
+        monkeypatch.setattr(config, "MY_API_KEY", "config-key")
 
         settings = get_settings()
 
         apply_sdk_environment(settings)
 
-        assert settings.dashscope_api_key == "legacy-key"
-        assert settings_mod.os.environ["DASHSCOPE_API_KEY"] == "legacy-key"
+        assert settings.dashscope_api_key == "config-key"
+        assert settings_mod.os.environ["DASHSCOPE_API_KEY"] == "config-key"
 
     def test_apply_sdk_environment_clears_stale_env_when_key_missing(self, monkeypatch):
         monkeypatch.setenv("DASHSCOPE_API_KEY", "stale-key")
@@ -125,36 +122,25 @@ class TestSettings:
 
         assert "DASHSCOPE_API_KEY" not in settings_mod.os.environ
 
-    def test_default_enable_mweb_is_false_without_legacy_config(self, monkeypatch):
-        monkeypatch.setattr(settings_mod, "_load_legacy_config", lambda: None)
-        monkeypatch.delenv("ENABLE_MWEB", raising=False)
-        monkeypatch.delenv("TARGET_DIR", raising=False)
+    def test_default_enable_mweb_is_false_without_local_config(self, monkeypatch):
+        monkeypatch.setattr(settings_mod, "_load_local_config", lambda: None)
 
         settings = get_settings()
 
         assert settings.enable_mweb is False
 
     def test_require_dashscope_api_key_raises_when_missing(self, monkeypatch):
-        monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
         monkeypatch.setattr(config, "MY_API_KEY", "")
 
         with pytest.raises(MissingRequiredSettingError):
             require_dashscope_api_key()
 
-    def test_search_timeout_seconds_reads_from_legacy_config(self, monkeypatch):
+    def test_search_timeout_seconds_reads_from_config(self, monkeypatch):
         monkeypatch.setattr(config, "SEARCH_TIMEOUT_SECONDS", 45, raising=False)
 
         settings = get_settings()
 
         assert settings.search_timeout_seconds == 45
-
-    def test_env_search_timeout_seconds_overrides_legacy_config(self, monkeypatch):
-        monkeypatch.setenv("SEARCH_TIMEOUT_SECONDS", "12")
-        monkeypatch.setattr(config, "SEARCH_TIMEOUT_SECONDS", 45, raising=False)
-
-        settings = get_settings()
-
-        assert settings.search_timeout_seconds == 12
 
     def test_negative_search_timeout_seconds_raises_invalid_setting(self, monkeypatch):
         monkeypatch.setattr(config, "SEARCH_TIMEOUT_SECONDS", -1, raising=False)

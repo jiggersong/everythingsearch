@@ -133,9 +133,11 @@ class TestLoggingConfig:
 class TestLoggingPrintUsage:
     """测试核心路径不再使用 print。"""
 
-    def test_indexer_has_no_print_calls(self):
-        """indexer 核心路径源码不应再包含 print 调用。"""
-        source = (_PROJECT_ROOT / "everythingsearch" / "indexer.py").read_text(encoding="utf-8")
+    def test_document_scan_has_no_print_calls(self):
+        """文档扫描核心路径源码不应再包含 print 调用。"""
+        source = (
+            _PROJECT_ROOT / "everythingsearch" / "indexing" / "document_scan.py"
+        ).read_text(encoding="utf-8")
         tree = ast.parse(source)
 
         assert not any(

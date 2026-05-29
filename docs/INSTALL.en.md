@@ -64,16 +64,10 @@ If `config.py` does not exist yet:
 cp etc/config.example.py config.py
 ```
 
-Prefer the API key through an environment variable:
-
-```bash
-export DASHSCOPE_API_KEY="sk-your-real-api-key"
-```
-
-Then confirm the main local settings in `config.py`:
+Set the main local settings in `config.py`:
 
 ```python
-MY_API_KEY = ""
+MY_API_KEY = "sk-your-real-api-key"
 TARGET_DIR = "/Users/your-name/Documents/your-folder"
 
 # Optional when ENABLE_MWEB = True
@@ -81,11 +75,10 @@ TARGET_DIR = "/Users/your-name/Documents/your-folder"
 # MWEB_DIR = "..."
 ```
 
-Configuration precedence:
+Configuration notes:
 
-- Environment variables override `config.py`
-- `config.py` is still supported as the compatibility layer
-- `DASHSCOPE_API_KEY`, `MY_API_KEY`, and `TARGET_DIR` no longer ship with runnable placeholder values
+- Runtime settings come from `config.py`; unset values use safe code defaults
+- `MY_API_KEY` and `TARGET_DIR` no longer ship with runnable placeholder values
 - If `PERSIST_DIRECTORY`, `INDEX_STATE_DB`, `SCAN_CACHE_PATH`, or `EMBEDDING_CACHE_PATH` are not set, they default under the repository `data/` directory
 
 ### 3.3 Build the First Index
@@ -140,7 +133,7 @@ The full configuration matrix lives in [PROJECT_MANUAL.en.md](PROJECT_MANUAL.en.
 | Key | Notes |
 | --- | --- |
 | `TARGET_DIR` | Root directory or list of roots to index |
-| `DASHSCOPE_API_KEY` or `MY_API_KEY` | Required for indexing embeddings; browser smart search also needs it |
+| `MY_API_KEY` | Required for indexing embeddings; browser smart search also needs it |
 
 ### Common Optional Settings
 
@@ -305,7 +298,7 @@ caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full --keep-em
      ```
      Zero rows in both → the file was never indexed here; place it under `TARGET_DIR` and run `make index` or incremental indexing.
   4. **Extension and filters**: check supported types; path/date/filename-only filters on the Web UI narrow results.
-  5. **Full filename with extension fails (v2.3.4 and earlier)**: older builds required a literal `.` FTS token, so `report.pdf` could return nothing; upgrade to v2.3.5+ or search without the extension.
+  5. **Full filename with extension fails on very old indexes**: rebuild with `make index-full` or search without the extension.
   6. **Same file listed twice (v2.3.4 and earlier)**: common with legacy Chroma `file_id`s after upgrading from v1.x; v2.3.5+ dedupes by physical path; a full reindex aligns `file_id`s.
 - **`error: externally-managed-environment` during install**: use the project virtualenv pip instead of the system pip.
 - **launchd startup keeps failing**: rerun `./scripts/install_launchd_wrappers.sh` and verify the generated wrapper paths.
@@ -316,7 +309,6 @@ caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full --keep-em
 | File or Path | Purpose |
 | --- | --- |
 | `scripts/install.sh` | Interactive installer |
-| `scripts/upgrade.sh` | Auto version upgrade script (v1.0+ → latest) |
 | `scripts/install_launchd_wrappers.sh` | Generate launchd wrappers and plist files |
 | `scripts/run_app.sh` | App lifecycle management |
 | `docs/PROJECT_MANUAL.en.md` | Technical manual |
@@ -334,117 +326,19 @@ caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full --keep-em
 
 Version history: [GitHub Releases](https://github.com/jiggersong/everythingsearch/releases).
 
-## 9. Version Upgrade
+## 9. Updating an existing install
 
-> ⚠️ **Before upgrading**: The upgrade script only automatically migrates these 5 config fields: `MY_API_KEY`, `TARGET_DIR`, `ENABLE_MWEB`, `MWEB_LIBRARY_PATH`, `MWEB_DIR`. If you customized `INDEX_ONLY_KEYWORDS`, `HOST`, `PORT`, `NL_INTENT_MODEL`, `SEARCH_INTERPRET_MODEL`, `SPARSE_TOP_K`, `DENSE_TOP_K`, `RERANK_MODEL`, etc., those will revert to defaults. **Back up your old `config.py` before upgrading** and manually restore any custom values afterwards.
-
-If you have an older version (v1.0.0 or later) installed, this section walks you through upgrading to the latest version. The entire process is handled automatically by `scripts/upgrade.sh` on macOS and requires `rsync` — **you don't need to manually deal with index files or data migration**.
-
-### 9.1 Preparation: Download the new version
-
-**Important: Do not extract or copy the new version directly over your old project directory.** Download it to a **completely separate directory** first:
+After pulling the latest code, reinstall dependencies if `requirements/base.txt` changed, refresh launchd wrappers when scripts change, and run `make index-full` when index formats change:
 
 ```bash
-# Option 1: via git clone (recommended)
-git clone https://github.com/jiggersong/everythingsearch.git ~/Downloads/EverythingSearch-new
-
-# Option 2: Download the zip from GitHub Releases and unzip
-# Assuming you unzipped to ~/Downloads/EverythingSearch-new
-```
-
-> **Why not overwrite directly?** Your old project directory contains runtime files (virtual environment, index data, logs, config) that could conflict or be lost if overwritten. The upgrade script safely syncs the new code over.
-
-### 9.2 Run the Upgrade
-
-Enter the newly downloaded directory and run the upgrade script:
-
-```bash
-cd ~/Downloads/EverythingSearch-new
-./scripts/upgrade.sh
-```
-
-The script looks for your old installation at `~/Documents/code/EverythingSearch` by default. If it's elsewhere, specify the path:
-
-```bash
-./scripts/upgrade.sh /path/to/your/old/installation
-```
-
-### 9.3 What Happens During Upgrade
-
-The script walks you through these steps interactively, explaining each one:
-
-**① Version Detection** — The script examines your old project's files (directory structure, index format, config) to determine which version you're upgrading from.
-
-**② Deployment Confirmation** — If the old project path differs from the current directory, the script asks "Deploy new version to old installation path and upgrade?" Choose **Y** (the default).
-
-**③ Data Backup** — The following critical files are backed up to `upgrade_backups_timestamp/` inside the project directory:
-- `config.py` (your personal configuration)
-- `embedding_cache.db` (embedding cache — preserves API cost savings)
-- `chroma_db/` (old vector database)
-
-This is a key-file backup, not a full project snapshot. It does not include the virtual environment, logs, sparse index, scan cache, or every `data/*.db` file.
-
-**④ Config Merge** — The script generates a new `config.py` from the latest template and migrates only these selected fields from the old `config.py`: `MY_API_KEY`, `TARGET_DIR`, `ENABLE_MWEB`, `MWEB_LIBRARY_PATH`, and `MWEB_DIR`. Other custom edits, such as `INDEX_ONLY_KEYWORDS`, `HOST`, `PORT`, `NL_INTENT_MODEL`, or `SEARCH_INTERPRET_MODEL`, return to template defaults and should be copied over manually if still needed.
-
-**⑤ Data Cleanup** — Depending on the detected old version, incompatible files are cleaned up:
-
-| Scenario | Old Version | What Gets Cleaned |
-|----------|-------------|-------------------|
-| **A** | v1.0.x – v1.1.x | Delete old ChromaDB (metadata format incompatible with v2.x), clear scan cache and index state |
-| **B** | v1.2.0 – v1.5.2 | Delete old ChromaDB (no FTS5 sparse index), clear scan cache and index state, keep embedding cache |
-| **C** | v2.0.0+ | Index format is compatible — only clear scan cache and index state (rebuilt on next incremental run) |
-
-The integrity check stage ensures `data/` exists before the script continues. If scenario C upgrades successfully but vector search behaves abnormally, delete `data/chroma_db/` and run a full rebuild.
-
-**⑥ Dependency and Launchd Update** — Runs `venv/bin/python -m pip install -r requirements/base.txt` (or `.venv/bin/python` if that is the existing virtual environment), then runs `install_launchd_wrappers.sh` to regenerate wrapper scripts and plist files pointing to the current project path. Your existing auto-start and scheduled indexing setup is preserved.
-
-**⑦ Index Rebuild** — For scenarios A/B, you'll be asked "Rebuild index now?" **Recommended: choose Y**. The script uses `caffeinate -i` to prevent sleep and runs the full rebuild in the foreground. Depending on file count, this may take 10 minutes to several hours. Scenario C only needs a quick incremental index verification.
-
-> **vs §6 Full Rebuild**: the upgrade script may **keep** `embedding_cache.db` in scenario B to save migration cost; day-to-day `make index-full` under **v2.5.0 target behavior** **wipes** embedding and scan caches by default. After upgrading, use default `index-full` for the cleanest index, or `--keep-caches` to save tokens.
-
-### 9.4 Post-Upgrade Verification
-
-After the full index rebuild completes, verify everything works:
-
-```bash
-cd ~/Documents/code/EverythingSearch   # or your project path
-
-# 1. Run incremental index — should complete without errors
-./venv/bin/python -m everythingsearch.incremental
-
-# 2. Perform a search — should return results
-# CLI requires DashScope key; avoid lone words — use a full sentence:
-./venv/bin/python -m everythingsearch search "find documents about architecture" --json
-# Or verify HTTP search only (no NL intent):
-curl -sG "http://127.0.0.1:8000/api/search" --data-urlencode "q=architecture" --data-urlencode "limit=3"
-
-# 3. Ensure the web service is running
+git pull
+./venv/bin/pip install -r requirements/base.txt
+./scripts/install_launchd_wrappers.sh
+make index-full
 ./scripts/run_app.sh restart
 ```
 
-Open [http://127.0.0.1:8000](http://127.0.0.1:8000) in a browser, search for a few files you remember, and confirm results look correct.
-
-### 9.5 Clean Up
-
-Once the upgrade is successful and everything is confirmed working:
-
-- **New download directory** (e.g. `~/Downloads/EverythingSearch-new`): job done — **delete it**
-- **Old project directory** (e.g. `~/Documents/code/EverythingSearch`): **now updated to the latest version** — keep using this one
-- **Backup directory** (`upgrade_backups_timestamp/` inside the project): delete after confirming everything is fine
-
-### 9.6 FAQ
-
-**Q: I already overwrote my old directory with the new version. What now?**
-
-No worries. Just run `./scripts/upgrade.sh` from the mixed directory. The script detects this as an in-place upgrade, skips the code sync step, and proceeds directly to config merge and data cleanup.
-
-**Q: The upgrade failed. How do I recover?**
-
-The `upgrade_backups_timestamp/` directory contains key files from before the upgrade, not a full project snapshot. Copy the backed-up `config.py` and data directories back as needed, then redeploy with your old version's code and rebuild the index if required.
-
-**Q: I have multiple TARGET_DIRs. Will my config migrate correctly?**
-
-Yes. The script parses your old `config.py` with Python — whether `TARGET_DIR` is a single string or a list of paths, it's extracted and written into the new config correctly.
+Back up `config.py` before updating. Merging code does not auto-migrate custom settings; see `docs/CHANGELOG.md` for breaking changes.
 
 ## Copyright
 

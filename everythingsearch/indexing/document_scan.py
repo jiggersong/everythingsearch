@@ -18,16 +18,11 @@ except ImportError:
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
 
-from .embedding_cache import CachedEmbeddings
-from .indexing.progress_estimator import estimate_tokens_from_texts
-from .indexing.progress_reporter import IndexProgressReporter
-from .infra.settings import (
-    apply_sdk_environment,
-    get_settings,
-    require_dashscope_api_key,
-    require_target_dirs,
-)
-from .logging_config import setup_cli_logging
+from everythingsearch.embedding_cache import CachedEmbeddings
+from everythingsearch.indexing.path_utils import normalize_path, strip_lone_surrogates
+from everythingsearch.indexing.progress_estimator import estimate_tokens_from_texts
+from everythingsearch.indexing.progress_reporter import IndexProgressReporter
+from everythingsearch.infra.settings import get_settings
 
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -102,28 +97,9 @@ def calculate_batch_size(docs_list: list[Document]) -> int:
     return 55
 
 
-def normalize_path(path_str):
-    """将 macOS 常见的 NFD 编码强制转为 NFC 标准编码"""
-    return unicodedata.normalize('NFC', path_str)
-
-
-_LONE_SURROGATE_RE = re.compile(r'[\ud800-\udfff]')
-
-
 def _strip_lone_surrogates(text: str) -> str:
-    """剥离孤立的 UTF-16 代理项字符，避免 UTF-8 编码崩溃。
-
-    pypdf/python-docx 等库在提取数学字母数字符号（如 𝐀、𝟙，码位 > U+FFFF）时，
-    偶尔会输出未配对的高/低代理项（U+D800–U+DFFF）。Python ``str`` 容忍这种
-    "半合法"字符，但一旦下游需要 UTF-8 编码（SQLite 写入 JSON 缓存、JSON 序列化、
-    Chroma/Embedding HTTP 请求体），就会抛出 ``UnicodeEncodeError``，
-    在串行写索引阶段会直接中断整个 ``make index`` 流程。
-
-    本函数在文件读取出口一次性剥离，下游所有路径无需重复防御。
-    """
-    if not text:
-        return text
-    return _LONE_SURROGATE_RE.sub('', text)
+    """文件读取出口剥离孤立代理项（见 path_utils.strip_lone_surrogates）。"""
+    return strip_lone_surrogates(text)
 
 
 def _init_scan_cache(conn: sqlite3.Connection):
@@ -1008,180 +984,3 @@ def scan_mweb_notes(progress_reporter: IndexProgressReporter | None = None):
     return documents, duration
 
 
-def _cleanup_orphaned_hnsw_dirs(client):
-    """Remove orphaned HNSW segment directories left by previous index builds."""
-    settings = get_settings()
-    import sqlite3 as _sqlite3
-    db_path = os.path.join(settings.persist_directory, "chroma.sqlite3")
-    if not os.path.isfile(db_path):
-        return
-    try:
-        conn = _sqlite3.connect(db_path)
-        active_ids = {row[0] for row in conn.execute("SELECT id FROM segments").fetchall()}
-        conn.close()
-    except Exception:
-        return
-    for entry in os.listdir(settings.persist_directory):
-        full = os.path.join(settings.persist_directory, entry)
-        if os.path.isdir(full) and entry not in active_ids:
-            import shutil
-            shutil.rmtree(full, ignore_errors=True)
-            logger.info("已清理孤立索引目录: %s", entry)
-
-
-def build_index():
-    """
-    Deprecated: 请使用 everythingsearch.indexing.pipeline_indexer.build_pipeline_index()。
-    旧版索引构建函数仅向 ChromaDB 写入数据，不双写 FTS5 稀疏索引。
-    """
-    logger.warning("build_index() 已被废弃，建议切换至 pipeline_indexer.build_pipeline_index() 以支持双写索引。")
-    settings = get_settings()
-    require_target_dirs(settings)
-    require_dashscope_api_key(settings)
-    apply_sdk_environment(settings)
-    total_start = time.time()
-
-    docs, scan_time = scan_files()
-
-    mweb_docs, mweb_time = scan_mweb_notes()
-    docs.extend(mweb_docs)
-    scan_time += mweb_time
-
-    # 清理已删除文件的扫描缓存
-    cache_path = settings.scan_cache_path
-    if cache_path and docs:
-        valid_sources = {d.metadata.get("source", "") for d in docs if d.metadata.get("source")}
-        conn = sqlite3.connect(cache_path, timeout=30)
-        _init_scan_cache(conn)
-        _prune_scan_cache(conn, valid_sources)
-        conn.close()
-
-    logger.info("开始清除旧索引。")
-    import chromadb
-    client = chromadb.PersistentClient(path=settings.persist_directory)
-    existing = [c.name for c in client.list_collections()]
-    if "local_files" in existing:
-        client.delete_collection("local_files")
-        logger.info("已删除旧 collection。")
-
-    _cleanup_orphaned_hnsw_dirs(client)
-
-    if not docs:
-        logger.warning(
-            "扫描结果为空，旧索引已清空，当前索引为空。请检查 TARGET_DIR（环境变量或 config.py）和 INDEX_ONLY_KEYWORDS 的配置。"
-        )
-        return
-
-    # 最终校验：确保所有 doc 的 page_content 符合 API 限制
-    max_chars = settings.embed_max_chars
-    for d in docs:
-        if len(d.page_content) > max_chars:
-            d.page_content = d.page_content[:max_chars]
-        if not d.page_content.strip():
-            d.page_content = " "
-
-    logger.info("开始生成向量，模型: %s", settings.embedding_model)
-    embed_start = time.time()
-
-    embeddings = CachedEmbeddings(
-        model=settings.embedding_model,
-        cache_path=settings.embedding_cache_path,
-    )
-
-    batch_size = calculate_batch_size(docs)
-    logger.debug("动态 batch_size: %s (基于文档平均长度)", batch_size)
-    total = len(docs)
-    max_retries = 3
-    retry_delay = 5
-
-    skip_count = 0
-    db = None
-    try:
-        for i in range(0, total, batch_size):
-            batch = docs[i:i + batch_size]
-            last_err = None
-            for attempt in range(max_retries):
-                try:
-                    if db is None:
-                        db = Chroma.from_documents(
-                            documents=batch,
-                            embedding=embeddings,
-                            persist_directory=settings.persist_directory,
-                            collection_name="local_files",
-                            collection_metadata={"hnsw:space": "cosine"},
-                        )
-                    else:
-                        db.add_documents(batch)
-                    break
-                except Exception as e:
-                    last_err = e
-                    err_str = str(e)
-                    if attempt < max_retries - 1:
-                        logger.warning(
-                            "批次 %s-%s 失败，%ss 后重试 (%s/%s): %s",
-                            i,
-                            i + len(batch),
-                            retry_delay,
-                            attempt + 1,
-                            max_retries,
-                            err_str[:80],
-                        )
-                        time.sleep(retry_delay)
-                    elif "2048" in err_str or "InvalidParameter" in err_str:
-                        # 逐条重试，跳过仍失败的文档
-                        logger.warning("批次失败，开始逐条重试并跳过异常文档。")
-                        for j, doc in enumerate(batch):
-                            try:
-                                if db is None:
-                                    db = Chroma.from_documents(
-                                        documents=[doc],
-                                        embedding=embeddings,
-                                        persist_directory=settings.persist_directory,
-                                        collection_name="local_files",
-                                        collection_metadata={"hnsw:space": "cosine"},
-                                    )
-                                else:
-                                    db.add_documents([doc])
-                            except Exception:
-                                skip_count += 1
-                                if skip_count <= 5:
-                                    logger.warning(
-                                        "跳过文档 (len=%s): %s...",
-                                        len(doc.page_content),
-                                        doc.page_content[:50],
-                                    )
-                        break
-                    else:
-                        raise last_err
-
-            pct = min((i + batch_size) / total * 100, 100)
-            logger.info(
-                "向量化进度: %.0f%% (%s/%s)",
-                pct,
-                min(i + batch_size, total),
-                total,
-            )
-
-            if i + batch_size < total:
-                time.sleep(0.3)
-
-    except Exception as e:
-        logger.error("向量化错误: %s", e)
-        return
-
-    embed_time = time.time() - embed_start
-    total_time = time.time() - total_start
-
-    skipped_suffix = f" (跳过 {skip_count})" if skip_count else ""
-    logger.info("索引构建成功。")
-    logger.info("文件扫描耗时: %.2fs", scan_time)
-    logger.info("向量化与存储耗时: %.2fs", embed_time)
-    logger.info("总耗时: %.2fs", total_time)
-    logger.info("文档片段数: %s%s", total, skipped_suffix)
-    logger.info("嵌入缓存: %s", embeddings.stats_str())
-    logger.info("数据库目录: %s", os.path.abspath(settings.persist_directory))
-
-
-if __name__ == "__main__":
-    setup_cli_logging()
-    build_index()

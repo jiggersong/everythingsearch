@@ -39,6 +39,7 @@ class Settings:
     mweb_export_script: str | None
     host: str
     port: int
+    debug: bool
     api_max_read_bytes: int
     index_state_db: str
     scan_cache_path: str
@@ -87,7 +88,6 @@ class Settings:
 
     # 稠密检索与融合 (Dense & Fusion)
     dense_top_k: int
-    embedding_text_type_enabled: bool
     fusion_top_k: int
     rrf_k: int
 
@@ -157,7 +157,7 @@ def require_dashscope_api_key(settings: Settings | None = None) -> str:
     if normalized_settings.dashscope_api_key:
         return normalized_settings.dashscope_api_key
     raise MissingRequiredSettingError(
-        "未配置 DashScope API Key。请设置环境变量 DASHSCOPE_API_KEY 或在 config.py 中填写 MY_API_KEY。"
+        "未配置 DashScope API Key。请在 config.py 中填写 MY_API_KEY。"
     )
 
 
@@ -167,334 +167,183 @@ def require_target_dirs(settings: Settings | None = None) -> tuple[str, ...]:
     if normalized_settings.target_dirs:
         return normalized_settings.target_dirs
     raise MissingRequiredSettingError(
-        "未配置 TARGET_DIR。请在环境变量 TARGET_DIR 或 config.py 中设置索引目录。"
+        "未配置 TARGET_DIR。请在 config.py 中设置索引目录。"
     )
 
 
 def _load_settings() -> Settings:
-    legacy_config = _load_legacy_config()
+    local_config = _load_local_config()
 
-    target_dirs = _load_target_dirs(legacy_config)
-    enable_mweb = _load_bool("ENABLE_MWEB", legacy_config, "ENABLE_MWEB", default=False)
+    target_dirs = _load_target_dirs(local_config)
+    enable_mweb = _load_bool(local_config, "ENABLE_MWEB", default=False)
     
     mweb_library_path = _load_required_path(
-        "MWEB_LIBRARY_PATH",
-        legacy_config,
+        local_config,
         "MWEB_LIBRARY_PATH",
         default="~/Library/Containers/com.coderforart.iOS.MWeb/Data/Library/Application Support/MWebLibrary"
     )
 
-    mweb_dir = _load_optional_path("MWEB_DIR", legacy_config, "MWEB_DIR")
+    mweb_dir = _load_optional_path(local_config, "MWEB_DIR")
     if not mweb_dir and enable_mweb:
         mweb_dir = str(get_project_root() / "data" / "mweb_export")
 
-    mweb_export_script = _load_optional_path(
-        "MWEB_EXPORT_SCRIPT",
-        legacy_config,
-        "MWEB_EXPORT_SCRIPT",
-    )
+    mweb_export_script = _load_optional_path(local_config, "MWEB_EXPORT_SCRIPT")
     if not mweb_export_script and enable_mweb:
         mweb_export_script = str(get_project_root() / "scripts" / "mweb_export.py")
 
     settings = Settings(
-        dashscope_api_key=_load_dashscope_api_key(legacy_config),
+        dashscope_api_key=_load_dashscope_api_key(local_config),
         target_dirs=target_dirs,
         enable_mweb=enable_mweb,
         mweb_library_path=mweb_library_path,
         mweb_dir=mweb_dir if enable_mweb else None,
         mweb_export_script=mweb_export_script if enable_mweb else None,
-        host=_load_str("FLASK_HOST", legacy_config, "HOST", default="127.0.0.1"),
-        port=_load_int("PORT", legacy_config, "PORT", default=8000),
-        api_max_read_bytes=_load_int(
-            "API_MAX_READ_BYTES",
-            legacy_config,
-            "API_MAX_READ_BYTES",
-            default=524288,
+        host=_load_str(local_config, "HOST", default="127.0.0.1"),
+        port=_load_int(local_config, "PORT", default=8000),
+        debug=_load_bool(local_config, "DEBUG", default=False),
+        api_max_read_bytes=_load_int(local_config, "API_MAX_READ_BYTES", default=524288,
         ),
-        index_state_db=_load_required_path(
-            "INDEX_STATE_DB",
-            legacy_config,
-            "INDEX_STATE_DB",
+        index_state_db=_load_required_path(local_config, "INDEX_STATE_DB",
             default=str(get_project_root() / "data" / "index_state.db"),
         ),
-        scan_cache_path=_load_required_path(
-            "SCAN_CACHE_PATH",
-            legacy_config,
-            "SCAN_CACHE_PATH",
+        scan_cache_path=_load_required_path(local_config, "SCAN_CACHE_PATH",
             default=str(get_project_root() / "data" / "scan_cache.db"),
         ),
-        persist_directory=_load_required_path(
-            "PERSIST_DIRECTORY",
-            legacy_config,
-            "PERSIST_DIRECTORY",
+        persist_directory=_load_required_path(local_config, "PERSIST_DIRECTORY",
             default=str(get_project_root() / "data" / "chroma_db"),
         ),
-        embedding_cache_path=_load_required_path(
-            "EMBEDDING_CACHE_PATH",
-            legacy_config,
-            "EMBEDDING_CACHE_PATH",
+        embedding_cache_path=_load_required_path(local_config, "EMBEDDING_CACHE_PATH",
             default=str(get_project_root() / "data" / "embedding_cache.db"),
         ),
-        embedding_model=_load_str(
-            "EMBEDDING_MODEL",
-            legacy_config,
-            "EMBEDDING_MODEL",
-            default="text-embedding-v2",
+        embedding_model=_load_str(local_config, "EMBEDDING_MODEL", default="text-embedding-v2",
         ),
-        embedding_dimensions=_load_optional_int(
-            "EMBEDDING_DIMENSIONS",
-            legacy_config,
-            "EMBEDDING_DIMENSIONS",
+        embedding_dimensions=_load_optional_int(local_config, "EMBEDDING_DIMENSIONS"),
+        embedding_document_text_type=_load_str(local_config, "EMBEDDING_DOCUMENT_TEXT_TYPE", default="document",
         ),
-        embedding_document_text_type=_load_str(
-            "EMBEDDING_DOCUMENT_TEXT_TYPE",
-            legacy_config,
-            "EMBEDDING_DOCUMENT_TEXT_TYPE",
-            default="document",
+        embedding_query_text_type=_load_str(local_config, "EMBEDDING_QUERY_TEXT_TYPE", default="query",
         ),
-        embedding_query_text_type=_load_str(
-            "EMBEDDING_QUERY_TEXT_TYPE",
-            legacy_config,
-            "EMBEDDING_QUERY_TEXT_TYPE",
-            default="query",
+        embed_vector_storage_format=_load_str(local_config, "EMBED_VECTOR_STORAGE_FORMAT", default="blob_float32",
         ),
-        embed_vector_storage_format=_load_str(
-            "EMBED_VECTOR_STORAGE_FORMAT",
-            legacy_config,
-            "EMBED_VECTOR_STORAGE_FORMAT",
-            default="blob_float32",
+        embed_rate_rps_limit=_load_float(local_config, "EMBED_RATE_RPS_LIMIT", default=28.0,
         ),
-        embed_rate_rps_limit=_load_float(
-            "EMBED_RATE_RPS_LIMIT",
-            legacy_config,
-            "EMBED_RATE_RPS_LIMIT",
-            default=28.0,
+        embed_rate_tpm_limit=_load_float(local_config, "EMBED_RATE_TPM_LIMIT", default=1_100_000.0,
         ),
-        embed_rate_tpm_limit=_load_float(
-            "EMBED_RATE_TPM_LIMIT",
-            legacy_config,
-            "EMBED_RATE_TPM_LIMIT",
-            default=1_100_000.0,
+        embed_max_inflight=_load_int(local_config, "EMBED_MAX_INFLIGHT", default=6,
         ),
-        embed_max_inflight=_load_int(
-            "EMBED_MAX_INFLIGHT",
-            legacy_config,
-            "EMBED_MAX_INFLIGHT",
-            default=6,
+        embed_retry_max=_load_int(local_config, "EMBED_RETRY_MAX", default=5,
         ),
-        embed_retry_max=_load_int(
-            "EMBED_RETRY_MAX",
-            legacy_config,
-            "EMBED_RETRY_MAX",
-            default=5,
+        embed_backoff_base_ms=_load_int(local_config, "EMBED_BACKOFF_BASE_MS", default=500,
         ),
-        embed_backoff_base_ms=_load_int(
-            "EMBED_BACKOFF_BASE_MS",
-            legacy_config,
-            "EMBED_BACKOFF_BASE_MS",
-            default=500,
+        embed_backoff_max_ms=_load_int(local_config, "EMBED_BACKOFF_MAX_MS", default=60000,
         ),
-        embed_backoff_max_ms=_load_int(
-            "EMBED_BACKOFF_MAX_MS",
-            legacy_config,
-            "EMBED_BACKOFF_MAX_MS",
-            default=60000,
+        title_path_max_depth=_load_int(local_config, "TITLE_PATH_MAX_DEPTH", default=3,
         ),
-        title_path_max_depth=_load_int(
-            "TITLE_PATH_MAX_DEPTH",
-            legacy_config,
-            "TITLE_PATH_MAX_DEPTH",
-            default=3,
+        title_path_max_item_chars=_load_int(local_config, "TITLE_PATH_MAX_ITEM_CHARS", default=120,
         ),
-        title_path_max_item_chars=_load_int(
-            "TITLE_PATH_MAX_ITEM_CHARS",
-            legacy_config,
-            "TITLE_PATH_MAX_ITEM_CHARS",
-            default=120,
+        title_path_max_chars=_load_int(local_config, "TITLE_PATH_MAX_CHARS", default=256,
         ),
-        title_path_max_chars=_load_int(
-            "TITLE_PATH_MAX_CHARS",
-            legacy_config,
-            "TITLE_PATH_MAX_CHARS",
-            default=256,
-        ),
-        skip_aux_chunks_for_short_files=_load_bool(
-            "SKIP_AUX_CHUNKS_FOR_SHORT_FILES",
-            legacy_config,
-            "SKIP_AUX_CHUNKS_FOR_SHORT_FILES",
+        skip_aux_chunks_for_short_files=_load_bool(local_config, "SKIP_AUX_CHUNKS_FOR_SHORT_FILES",
             default=False,
         ),
-        rebuild_checkpoint_path=_load_required_path(
-            "REBUILD_CHECKPOINT_PATH",
-            legacy_config,
-            "REBUILD_CHECKPOINT_PATH",
+        rebuild_checkpoint_path=_load_required_path(local_config, "REBUILD_CHECKPOINT_PATH",
             default=str(get_project_root() / "data" / "rebuild_checkpoint.db"),
         ),
-        rebuild_staging_path=_load_required_path(
-            "REBUILD_STAGING_PATH",
-            legacy_config,
-            "REBUILD_STAGING_PATH",
+        rebuild_staging_path=_load_required_path(local_config, "REBUILD_STAGING_PATH",
             default=str(get_project_root() / "data" / "rebuild_staging.db"),
         ),
-        index_run_lock_path=_load_required_path(
-            "INDEX_RUN_LOCK_PATH",
-            legacy_config,
-            "INDEX_RUN_LOCK_PATH",
+        index_run_lock_path=_load_required_path(local_config, "INDEX_RUN_LOCK_PATH",
             default=str(get_project_root() / "data" / "index_run.lock"),
         ),
-        chunk_size=_load_int("CHUNK_SIZE", legacy_config, "CHUNK_SIZE", default=500),
-        chunk_overlap=_load_int("CHUNK_OVERLAP", legacy_config, "CHUNK_OVERLAP", default=80),
-        max_content_length=_load_int(
-            "MAX_CONTENT_LENGTH",
-            legacy_config,
-            "MAX_CONTENT_LENGTH",
-            default=20000,
+        chunk_size=_load_int(local_config, "CHUNK_SIZE", default=500),
+        chunk_overlap=_load_int(local_config, "CHUNK_OVERLAP", default=80),
+        max_content_length=_load_int(local_config, "MAX_CONTENT_LENGTH", default=20000,
         ),
-        search_timeout_seconds=_load_int(
-            "SEARCH_TIMEOUT_SECONDS",
-            legacy_config,
-            "SEARCH_TIMEOUT_SECONDS",
-            default=30,
+        search_timeout_seconds=_load_int(local_config, "SEARCH_TIMEOUT_SECONDS", default=30,
         ),
-        search_top_k=_load_int("SEARCH_TOP_K", legacy_config, "SEARCH_TOP_K", default=250),
-        score_threshold=_load_float(
-            "SCORE_THRESHOLD",
-            legacy_config,
-            "SCORE_THRESHOLD",
-            default=0.35,
+        search_top_k=_load_int(local_config, "SEARCH_TOP_K", default=250),
+        score_threshold=_load_float(local_config, "SCORE_THRESHOLD", default=0.35,
         ),
-        index_only_keywords=_load_keyword_tuple(legacy_config),
-        text_extensions=_load_extension_set(legacy_config, "TEXT_EXTENSIONS", default=frozenset()),
-        office_extensions=_load_extension_set(legacy_config, "OFFICE_EXTENSIONS", default=frozenset()),
-        media_extensions=_load_extension_set(legacy_config, "MEDIA_EXTENSIONS", default=frozenset()),
-        supported_extensions=_load_supported_extensions(legacy_config),
-        position_weights=_load_position_weights(legacy_config),
-        keyword_freq_bonus=_load_float(
-            "KEYWORD_FREQ_BONUS",
-            legacy_config,
-            "KEYWORD_FREQ_BONUS",
-            default=0.03,
+        index_only_keywords=_load_keyword_tuple(local_config),
+        text_extensions=_load_extension_set(local_config, "TEXT_EXTENSIONS", default=frozenset()),
+        office_extensions=_load_extension_set(local_config, "OFFICE_EXTENSIONS", default=frozenset()),
+        media_extensions=_load_extension_set(local_config, "MEDIA_EXTENSIONS", default=frozenset()),
+        supported_extensions=_load_supported_extensions(local_config),
+        position_weights=_load_position_weights(local_config),
+        keyword_freq_bonus=_load_float(local_config, "KEYWORD_FREQ_BONUS", default=0.03,
         ),
-        trust_proxy=_load_bool(
-            "TRUST_PROXY",
-            legacy_config,
-            "TRUST_PROXY",
+        trust_proxy=_load_bool(local_config, "TRUST_PROXY",
             default=False,
         ),
-        sparse_index_path=_load_required_path(
-            "SPARSE_INDEX_PATH",
-            legacy_config,
-            "SPARSE_INDEX_PATH",
+        sparse_index_path=_load_required_path(local_config, "SPARSE_INDEX_PATH",
             default=str(get_project_root() / "data" / "sparse_index.db"),
         ),
-        sparse_top_k=_load_int("SPARSE_TOP_K", legacy_config, "SPARSE_TOP_K", default=120),
-        sparse_filename_weight=_load_float("SPARSE_FILENAME_WEIGHT", legacy_config, "SPARSE_FILENAME_WEIGHT", default=8.0),
-        sparse_path_weight=_load_float("SPARSE_PATH_WEIGHT", legacy_config, "SPARSE_PATH_WEIGHT", default=3.0),
-        sparse_heading_weight=_load_float("SPARSE_HEADING_WEIGHT", legacy_config, "SPARSE_HEADING_WEIGHT", default=4.0),
-        sparse_content_weight=_load_float("SPARSE_CONTENT_WEIGHT", legacy_config, "SPARSE_CONTENT_WEIGHT", default=1.0),
-        dense_top_k=_load_int("DENSE_TOP_K", legacy_config, "DENSE_TOP_K", default=120),
-        embedding_text_type_enabled=_load_bool("EMBEDDING_TEXT_TYPE_ENABLED", legacy_config, "EMBEDDING_TEXT_TYPE_ENABLED", default=False),
-        fusion_top_k=_load_int("FUSION_TOP_K", legacy_config, "FUSION_TOP_K", default=200),
-        rrf_k=_load_int("RRF_K", legacy_config, "RRF_K", default=60),
-        rerank_model=_load_str("RERANK_MODEL", legacy_config, "RERANK_MODEL", default="qwen3-rerank"),
-        rerank_top_n=_load_int("RERANK_TOP_N", legacy_config, "RERANK_TOP_N", default=50),
-        rerank_max_doc_chars=_load_int("RERANK_MAX_DOC_CHARS", legacy_config, "RERANK_MAX_DOC_CHARS", default=2000),
-        indexer_batch_size=_load_int("INDEXER_BATCH_SIZE", legacy_config, "INDEXER_BATCH_SIZE", default=50),
-        sparse_index_batch_size=_load_int(
-            "SPARSE_INDEX_BATCH_SIZE", legacy_config, "SPARSE_INDEX_BATCH_SIZE", default=5000
+        sparse_top_k=_load_int(local_config, "SPARSE_TOP_K", default=120),
+        sparse_filename_weight=_load_float(local_config, "SPARSE_FILENAME_WEIGHT", default=8.0),
+        sparse_path_weight=_load_float(local_config, "SPARSE_PATH_WEIGHT", default=3.0),
+        sparse_heading_weight=_load_float(local_config, "SPARSE_HEADING_WEIGHT", default=4.0),
+        sparse_content_weight=_load_float(local_config, "SPARSE_CONTENT_WEIGHT", default=1.0),
+        dense_top_k=_load_int(local_config, "DENSE_TOP_K", default=120),
+        fusion_top_k=_load_int(local_config, "FUSION_TOP_K", default=200),
+        rrf_k=_load_int(local_config, "RRF_K", default=60),
+        rerank_model=_load_str(local_config, "RERANK_MODEL", default="qwen3-rerank"),
+        rerank_top_n=_load_int(local_config, "RERANK_TOP_N", default=50),
+        rerank_max_doc_chars=_load_int(local_config, "RERANK_MAX_DOC_CHARS", default=2000),
+        indexer_batch_size=_load_int(local_config, "INDEXER_BATCH_SIZE", default=50),
+        sparse_index_batch_size=_load_int(local_config, "SPARSE_INDEX_BATCH_SIZE", default=5000
         ),
-        sparse_checkpoint_interval=_load_int(
-            "SPARSE_CHECKPOINT_INTERVAL", legacy_config, "SPARSE_CHECKPOINT_INTERVAL", default=5000
+        sparse_checkpoint_interval=_load_int(local_config, "SPARSE_CHECKPOINT_INTERVAL", default=5000
         ),
-        sparse_tokenize_workers=_load_int(
-            "SPARSE_TOKENIZE_WORKERS", legacy_config, "SPARSE_TOKENIZE_WORKERS", default=0
+        sparse_tokenize_workers=_load_int(local_config, "SPARSE_TOKENIZE_WORKERS", default=0
         ),
-        sparse_bulk_pragma_fast=_load_bool(
-            "SPARSE_BULK_PRAGMA_FAST", legacy_config, "SPARSE_BULK_PRAGMA_FAST", default=True
+        sparse_bulk_pragma_fast=_load_bool(local_config, "SPARSE_BULK_PRAGMA_FAST", default=True
         ),
-        sparse_skip_fts_delete_on_fresh=_load_bool(
-            "SPARSE_SKIP_FTS_DELETE_ON_FRESH",
-            legacy_config,
-            "SPARSE_SKIP_FTS_DELETE_ON_FRESH",
+        sparse_skip_fts_delete_on_fresh=_load_bool(local_config, "SPARSE_SKIP_FTS_DELETE_ON_FRESH",
             default=True,
         ),
-        embed_max_chars=_load_int("EMBED_MAX_CHARS", legacy_config, "EMBED_MAX_CHARS", default=600),
-        default_search_limit=_load_int("DEFAULT_SEARCH_LIMIT", legacy_config, "DEFAULT_SEARCH_LIMIT", default=50),
-        agg_best_weight=_load_float("AGG_BEST_WEIGHT", legacy_config, "AGG_BEST_WEIGHT", default=0.70),
-        agg_second_weight=_load_float("AGG_SECOND_WEIGHT", legacy_config, "AGG_SECOND_WEIGHT", default=0.15),
-        agg_third_weight=_load_float("AGG_THIRD_WEIGHT", legacy_config, "AGG_THIRD_WEIGHT", default=0.05),
-        agg_filename_bonus=_load_float("AGG_FILENAME_BONUS", legacy_config, "AGG_FILENAME_BONUS", default=0.10),
-        agg_heading_bonus=_load_float("AGG_HEADING_BONUS", legacy_config, "AGG_HEADING_BONUS", default=0.05),
-        agg_exact_bonus=_load_float("AGG_EXACT_BONUS", legacy_config, "AGG_EXACT_BONUS", default=0.10),
-        agg_multi_hit_bonus=_load_float("AGG_MULTI_HIT_BONUS", legacy_config, "AGG_MULTI_HIT_BONUS", default=0.05),
-        agg_large_file_penalty=_load_float("AGG_LARGE_FILE_PENALTY", legacy_config, "AGG_LARGE_FILE_PENALTY", default=0.05),
-        agg_recency_bonus_max=_load_float("AGG_RECENCY_BONUS_MAX", legacy_config, "AGG_RECENCY_BONUS_MAX", default=0.05),
-        agg_recency_halflife_days=_load_int("AGG_RECENCY_HALFLIFE_DAYS", legacy_config, "AGG_RECENCY_HALFLIFE_DAYS", default=7),
-        nl_intent_model=_load_str(
-            "NL_INTENT_MODEL",
-            legacy_config,
-            "NL_INTENT_MODEL",
-            default="qwen-turbo",
+        embed_max_chars=_load_int(local_config, "EMBED_MAX_CHARS", default=600),
+        default_search_limit=_load_int(local_config, "DEFAULT_SEARCH_LIMIT", default=50),
+        agg_best_weight=_load_float(local_config, "AGG_BEST_WEIGHT", default=0.70),
+        agg_second_weight=_load_float(local_config, "AGG_SECOND_WEIGHT", default=0.15),
+        agg_third_weight=_load_float(local_config, "AGG_THIRD_WEIGHT", default=0.05),
+        agg_filename_bonus=_load_float(local_config, "AGG_FILENAME_BONUS", default=0.10),
+        agg_heading_bonus=_load_float(local_config, "AGG_HEADING_BONUS", default=0.05),
+        agg_exact_bonus=_load_float(local_config, "AGG_EXACT_BONUS", default=0.10),
+        agg_multi_hit_bonus=_load_float(local_config, "AGG_MULTI_HIT_BONUS", default=0.05),
+        agg_large_file_penalty=_load_float(local_config, "AGG_LARGE_FILE_PENALTY", default=0.05),
+        agg_recency_bonus_max=_load_float(local_config, "AGG_RECENCY_BONUS_MAX", default=0.05),
+        agg_recency_halflife_days=_load_int(local_config, "AGG_RECENCY_HALFLIFE_DAYS", default=7),
+        nl_intent_model=_load_str(local_config, "NL_INTENT_MODEL", default="qwen-turbo",
         ),
-        search_interpret_model=_load_str(
-            "SEARCH_INTERPRET_MODEL",
-            legacy_config,
-            "SEARCH_INTERPRET_MODEL",
-            default="qwen-turbo",
+        search_interpret_model=_load_str(local_config, "SEARCH_INTERPRET_MODEL", default="qwen-turbo",
         ),
-        nl_timeout_sec=_load_int(
-            "NL_TIMEOUT_SEC",
-            legacy_config,
-            "NL_TIMEOUT_SEC",
-            default=10,
+        nl_timeout_sec=_load_int(local_config, "NL_TIMEOUT_SEC", default=10,
         ),
-        interpret_timeout_sec=_load_int(
-            "INTERPRET_TIMEOUT_SEC",
-            legacy_config,
-            "INTERPRET_TIMEOUT_SEC",
-            default=20,
+        interpret_timeout_sec=_load_int(local_config, "INTERPRET_TIMEOUT_SEC", default=20,
         ),
-        nl_max_message_chars=_load_int(
-            "NL_MAX_MESSAGE_CHARS",
-            legacy_config,
-            "NL_MAX_MESSAGE_CHARS",
-            default=1000,
+        nl_max_message_chars=_load_int(local_config, "NL_MAX_MESSAGE_CHARS", default=1000,
         ),
-        interpret_max_results=_load_int(
-            "INTERPRET_MAX_RESULTS",
-            legacy_config,
-            "INTERPRET_MAX_RESULTS",
-            default=10,
+        interpret_max_results=_load_int(local_config, "INTERPRET_MAX_RESULTS", default=10,
         ),
-        rate_limit_nl_per_min=_load_int(
-            "RATE_LIMIT_NL_PER_MIN",
-            legacy_config,
-            "RATE_LIMIT_NL_PER_MIN",
-            default=10,
+        rate_limit_nl_per_min=_load_int(local_config, "RATE_LIMIT_NL_PER_MIN", default=10,
         ),
-        rate_limit_interpret_per_min=_load_int(
-            "RATE_LIMIT_INTERPRET_PER_MIN",
-            legacy_config,
-            "RATE_LIMIT_INTERPRET_PER_MIN",
-            default=10,
+        rate_limit_interpret_per_min=_load_int(local_config, "RATE_LIMIT_INTERPRET_PER_MIN", default=10,
         ),
     )
     _validate_settings(settings)
     return settings
 
 
-def _load_legacy_config() -> ModuleType | None:
+def _load_local_config() -> ModuleType | None:
     try:
         return importlib.import_module("config")
     except ModuleNotFoundError:
         return None
 
 
-def _load_dashscope_api_key(legacy_config: ModuleType | None) -> str | None:
-    raw_value = os.environ.get("DASHSCOPE_API_KEY")
-    if raw_value is None and legacy_config is not None:
-        raw_value = getattr(legacy_config, "MY_API_KEY", None)
-    return _normalize_secret(raw_value)
+def _load_dashscope_api_key(local_config: ModuleType | None) -> str | None:
+    if local_config is None:
+        return None
+    return _normalize_secret(getattr(local_config, "MY_API_KEY", None))
 
 
 def _normalize_secret(raw_value: Any) -> str | None:
@@ -506,18 +355,14 @@ def _normalize_secret(raw_value: Any) -> str | None:
     return normalized or None
 
 
-def _load_target_dirs(legacy_config: ModuleType | None) -> tuple[str, ...]:
-    raw_env = os.environ.get("TARGET_DIR")
-    if raw_env is not None:
-        candidates = [raw_env]
-    elif legacy_config is not None:
-        raw_value = getattr(legacy_config, "TARGET_DIR", "")
-        if isinstance(raw_value, (list, tuple)):
-            candidates = list(raw_value)
-        elif raw_value:
-            candidates = [raw_value]
-        else:
-            candidates = []
+def _load_target_dirs(local_config: ModuleType | None) -> tuple[str, ...]:
+    if local_config is None:
+        return ()
+    raw_value = getattr(local_config, "TARGET_DIR", "")
+    if isinstance(raw_value, (list, tuple)):
+        candidates = list(raw_value)
+    elif raw_value:
+        candidates = [raw_value]
     else:
         candidates = []
 
@@ -531,87 +376,73 @@ def _load_target_dirs(legacy_config: ModuleType | None) -> tuple[str, ...]:
     return tuple(normalized)
 
 
-def _load_bool(env_name: str, legacy_config: ModuleType | None, legacy_name: str, *, default: bool) -> bool:
-    raw_value = os.environ.get(env_name)
-    if raw_value is not None:
-        normalized = str(raw_value).strip().lower()
-        if normalized in {"1", "true", "yes", "on"}:
-            return True
-        if normalized in {"0", "false", "no", "off"}:
-            return False
-        raise InvalidSettingError(f"{env_name} 不是合法布尔值: {raw_value}")
-    if legacy_config is not None and hasattr(legacy_config, legacy_name):
-        return bool(getattr(legacy_config, legacy_name))
+def _load_bool(local_config: ModuleType | None, name: str, *, default: bool) -> bool:
+    if local_config is not None and hasattr(local_config, name):
+        return bool(getattr(local_config, name))
     return default
 
 
-def _load_optional_int(
-    env_name: str,
-    legacy_config: ModuleType | None,
-    legacy_name: str,
-) -> int | None:
-    raw_value = os.environ.get(env_name)
-    if raw_value is None and legacy_config is not None and hasattr(legacy_config, legacy_name):
-        raw_value = getattr(legacy_config, legacy_name)
+def _load_optional_int(local_config: ModuleType | None, name: str) -> int | None:
+    if local_config is None or not hasattr(local_config, name):
+        return None
+    raw_value = getattr(local_config, name)
     if raw_value is None or str(raw_value).strip() == "":
         return None
     try:
         return int(raw_value)
     except (TypeError, ValueError) as exc:
-        raise InvalidSettingError(f"{env_name or legacy_name} 不是合法整数: {raw_value}") from exc
+        raise InvalidSettingError(f"{name} 不是合法整数: {raw_value}") from exc
 
 
-def _load_int(env_name: str, legacy_config: ModuleType | None, legacy_name: str, *, default: int) -> int:
-    raw_value = os.environ.get(env_name)
-    if raw_value is None and legacy_config is not None and hasattr(legacy_config, legacy_name):
-        raw_value = getattr(legacy_config, legacy_name)
+def _load_int(local_config: ModuleType | None, name: str, *, default: int) -> int:
+    if local_config is None or not hasattr(local_config, name):
+        return default
+    raw_value = getattr(local_config, name)
     if raw_value is None:
         return default
     try:
         return int(raw_value)
     except (TypeError, ValueError) as exc:
-        raise InvalidSettingError(f"{env_name or legacy_name} 不是合法整数: {raw_value}") from exc
+        raise InvalidSettingError(f"{name} 不是合法整数: {raw_value}") from exc
 
 
-def _load_float(env_name: str, legacy_config: ModuleType | None, legacy_name: str, *, default: float) -> float:
-    raw_value = os.environ.get(env_name)
-    if raw_value is None and legacy_config is not None and hasattr(legacy_config, legacy_name):
-        raw_value = getattr(legacy_config, legacy_name)
+def _load_float(local_config: ModuleType | None, name: str, *, default: float) -> float:
+    if local_config is None or not hasattr(local_config, name):
+        return default
+    raw_value = getattr(local_config, name)
     if raw_value is None:
         return default
     try:
         return float(raw_value)
     except (TypeError, ValueError) as exc:
-        raise InvalidSettingError(f"{env_name or legacy_name} 不是合法数字: {raw_value}") from exc
+        raise InvalidSettingError(f"{name} 不是合法数字: {raw_value}") from exc
 
 
-def _load_str(env_name: str, legacy_config: ModuleType | None, legacy_name: str, *, default: str) -> str:
-    raw_value = os.environ.get(env_name)
-    if raw_value is None and legacy_config is not None and hasattr(legacy_config, legacy_name):
-        raw_value = getattr(legacy_config, legacy_name)
+def _load_str(local_config: ModuleType | None, name: str, *, default: str) -> str:
+    if local_config is None or not hasattr(local_config, name):
+        return default
+    raw_value = getattr(local_config, name)
     if raw_value is None:
         return default
     normalized = str(raw_value).strip()
     return normalized or default
 
 
-def _load_optional_path(env_name: str, legacy_config: ModuleType | None, legacy_name: str) -> str | None:
-    raw_value = os.environ.get(env_name)
-    if raw_value is None and legacy_config is not None and hasattr(legacy_config, legacy_name):
-        raw_value = getattr(legacy_config, legacy_name)
-    return _normalize_path(raw_value)
+def _load_optional_path(local_config: ModuleType | None, name: str) -> str | None:
+    if local_config is None or not hasattr(local_config, name):
+        return None
+    return _normalize_path(getattr(local_config, name))
 
 
 def _load_required_path(
-    env_name: str,
-    legacy_config: ModuleType | None,
-    legacy_name: str,
+    local_config: ModuleType | None,
+    name: str,
     *,
     default: str,
 ) -> str:
-    raw_value = os.environ.get(env_name)
-    if raw_value is None and legacy_config is not None and hasattr(legacy_config, legacy_name):
-        raw_value = getattr(legacy_config, legacy_name)
+    raw_value = None
+    if local_config is not None and hasattr(local_config, name):
+        raw_value = getattr(local_config, name)
     normalized = _normalize_path(raw_value)
     return normalized or _normalize_path(default) or default
 
@@ -625,43 +456,43 @@ def _normalize_path(raw_value: Any) -> str | None:
     return str(Path(text).expanduser().resolve())
 
 
-def _load_keyword_tuple(legacy_config: ModuleType | None) -> tuple[str, ...]:
-    if legacy_config is None:
+def _load_keyword_tuple(local_config: ModuleType | None) -> tuple[str, ...]:
+    if local_config is None:
         return ()
-    raw_value = getattr(legacy_config, "INDEX_ONLY_KEYWORDS", ())
+    raw_value = getattr(local_config, "INDEX_ONLY_KEYWORDS", ())
     if not isinstance(raw_value, (list, tuple, set, frozenset)):
         raise InvalidSettingError("INDEX_ONLY_KEYWORDS 必须是序列类型")
     return tuple(str(item) for item in raw_value if str(item).strip())
 
 
 def _load_extension_set(
-    legacy_config: ModuleType | None,
-    legacy_name: str,
+    local_config: ModuleType | None,
+    name: str,
     *,
     default: frozenset[str],
 ) -> frozenset[str]:
-    if legacy_config is None or not hasattr(legacy_config, legacy_name):
+    if local_config is None or not hasattr(local_config, name):
         return default
-    raw_value = getattr(legacy_config, legacy_name)
+    raw_value = getattr(local_config, name)
     if not isinstance(raw_value, (set, frozenset, list, tuple)):
-        raise InvalidSettingError(f"{legacy_name} 必须是集合或序列类型")
+        raise InvalidSettingError(f"{name} 必须是集合或序列类型")
     return frozenset(str(item) for item in raw_value)
 
 
-def _load_supported_extensions(legacy_config: ModuleType | None) -> frozenset[str]:
-    if legacy_config is not None and hasattr(legacy_config, "SUPPORTED_EXTENSIONS"):
-        raw_value = getattr(legacy_config, "SUPPORTED_EXTENSIONS")
+def _load_supported_extensions(local_config: ModuleType | None) -> frozenset[str]:
+    if local_config is not None and hasattr(local_config, "SUPPORTED_EXTENSIONS"):
+        raw_value = getattr(local_config, "SUPPORTED_EXTENSIONS")
         if not isinstance(raw_value, (set, frozenset, list, tuple)):
             raise InvalidSettingError("SUPPORTED_EXTENSIONS 必须是集合或序列类型")
         return frozenset(str(item) for item in raw_value)
-    text_extensions = _load_extension_set(legacy_config, "TEXT_EXTENSIONS", default=frozenset())
-    office_extensions = _load_extension_set(legacy_config, "OFFICE_EXTENSIONS", default=frozenset())
-    media_extensions = _load_extension_set(legacy_config, "MEDIA_EXTENSIONS", default=frozenset())
+    text_extensions = _load_extension_set(local_config, "TEXT_EXTENSIONS", default=frozenset())
+    office_extensions = _load_extension_set(local_config, "OFFICE_EXTENSIONS", default=frozenset())
+    media_extensions = _load_extension_set(local_config, "MEDIA_EXTENSIONS", default=frozenset())
     return text_extensions | office_extensions | media_extensions
 
 
-def _load_position_weights(legacy_config: ModuleType | None) -> MappingProxyType:
-    raw_value = getattr(legacy_config, "POSITION_WEIGHTS", None) if legacy_config is not None else None
+def _load_position_weights(local_config: ModuleType | None) -> MappingProxyType:
+    raw_value = getattr(local_config, "POSITION_WEIGHTS", None) if local_config is not None else None
     if raw_value is None:
         raw_value = {"filename": 0.60, "heading": 0.80, "content": 1.00}
     if not isinstance(raw_value, dict):

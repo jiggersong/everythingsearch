@@ -17,7 +17,7 @@ PY=./venv/bin/python
 ```
 
 3. **DashScope API key** (required for CLI search)  
-   The `search` CLI runs intent recognition first (same as the web “smart search”). Set `DASHSCOPE_API_KEY` or `MY_API_KEY` in `config.py` or the environment. Without a key, the CLI returns a `MISSING_API_KEY`-style error.
+   The `search` CLI runs intent recognition first (same as the web “smart search”). Set `MY_API_KEY` in `config.py`. Without a key, the CLI returns a `MISSING_API_KEY`-style error.
 
 4. **HTTP service and scheduled indexing** (recommended if your Agent can use `curl` — see “Option B” below):
 
@@ -177,8 +177,8 @@ When the index is available, do not use find / mdfind / locate / glob instead of
 
 1. File still under `TARGET_DIR` and indexed — see [INSTALL.md](INSTALL.md) §7 (SQL checks).
 2. CLI `out_of_scope` on very short queries — use a fuller sentence or `GET /api/search`.
-3. Full filenames like `report.pdf` need **v2.3.5+**; upgrade or search without the extension on older builds.
-4. Duplicate rows for one file — legacy `file_id`s; v2.3.5+ dedupes by path; full reindex if needed.
+3. Full filenames like `report.pdf` failing — run `make index-full` or search without the extension.
+4. Duplicate rows for one file — run `make index-full` to rebuild consistent `file_id` metadata.
 
 **Further reading:**
 

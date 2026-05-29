@@ -84,8 +84,8 @@ def _patch_incremental_missing_collection(monkeypatch, tmp_path, settings):
     monkeypatch.setattr(incremental, "require_target_dirs", lambda _settings: (str(tmp_path),))
     monkeypatch.setattr(incremental, "require_dashscope_api_key", lambda _settings: "fake-key")
     monkeypatch.setattr(incremental, "apply_sdk_environment", lambda _settings: None)
-    monkeypatch.setattr(incremental, "_scan_disk_files", lambda: {str(tmp_path / "a.md"): (1.0, "file")})
-    monkeypatch.setattr(incremental, "_scan_disk_mweb", lambda: {})
+    monkeypatch.setattr(incremental, "scan_disk_files_for_index", lambda: {str(tmp_path / "a.md"): (1.0, "file")})
+    monkeypatch.setattr(incremental, "scan_mweb_notes_for_index", lambda: {})
     monkeypatch.setattr(incremental, "load_historical_chunks_per_file", lambda *args, **kwargs: None)
 
     @contextmanager
@@ -202,8 +202,8 @@ def test_incremental_sparse_failure_skips_state_and_rolls_back_dense(monkeypatch
     monkeypatch.setattr(incremental, "require_target_dirs", lambda _s: (str(tmp_path),))
     monkeypatch.setattr(incremental, "require_dashscope_api_key", lambda _s: "fake-key")
     monkeypatch.setattr(incremental, "apply_sdk_environment", lambda _s: None)
-    monkeypatch.setattr(incremental, "_scan_disk_files", lambda: {fp: (mtime, "file")})
-    monkeypatch.setattr(incremental, "_scan_disk_mweb", lambda: {})
+    monkeypatch.setattr(incremental, "scan_disk_files_for_index", lambda: {fp: (mtime, "file")})
+    monkeypatch.setattr(incremental, "scan_mweb_notes_for_index", lambda: {})
     monkeypatch.setattr(incremental, "load_historical_chunks_per_file", lambda *a, **k: None)
     monkeypatch.setattr(incremental.chromadb, "PersistentClient", FakeClient)
     monkeypatch.setattr(
@@ -304,8 +304,8 @@ def test_incremental_success_restarts_app_service(monkeypatch, tmp_path):
     monkeypatch.setattr(incremental, "require_target_dirs", lambda _s: (str(tmp_path),))
     monkeypatch.setattr(incremental, "require_dashscope_api_key", lambda _s: "fake-key")
     monkeypatch.setattr(incremental, "apply_sdk_environment", lambda _s: None)
-    monkeypatch.setattr(incremental, "_scan_disk_files", lambda: {fp: (mtime, "file")})
-    monkeypatch.setattr(incremental, "_scan_disk_mweb", lambda: {})
+    monkeypatch.setattr(incremental, "scan_disk_files_for_index", lambda: {fp: (mtime, "file")})
+    monkeypatch.setattr(incremental, "scan_mweb_notes_for_index", lambda: {})
     monkeypatch.setattr(incremental, "load_historical_chunks_per_file", lambda *a, **k: None)
     monkeypatch.setattr(incremental.chromadb, "PersistentClient", FakeClient)
     monkeypatch.setattr(

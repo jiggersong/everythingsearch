@@ -1,5 +1,4 @@
 import hashlib
-import json
 import logging
 import sqlite3
 import threading
@@ -114,22 +113,13 @@ class EmbeddingCache:
         self._init_db()
 
     def _init_db(self):
-        """初始化数据库表；兼容旧版 TEXT 向量缓存并迁移至 BLOB 列。"""
+        """初始化 embedding 缓存表（text_hash + vector_blob + created_at）。"""
         conn = self._pool.get_connection()
         try:
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS embeddings "
-                "(text_hash TEXT PRIMARY KEY, vector TEXT, vector_blob BLOB, created_at REAL)"
+                "(text_hash TEXT PRIMARY KEY, vector_blob BLOB NOT NULL, created_at REAL)"
             )
-            row = conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name='embeddings'"
-            ).fetchone()
-            if row:
-                cols = {r[1] for r in conn.execute("PRAGMA table_info(embeddings)").fetchall()}
-                if "vector_blob" not in cols:
-                    conn.execute("ALTER TABLE embeddings ADD COLUMN vector_blob BLOB")
-                if "created_at" not in cols:
-                    conn.execute("ALTER TABLE embeddings ADD COLUMN created_at REAL")
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_created_at ON embeddings(created_at)"
             )
@@ -161,15 +151,13 @@ class EmbeddingCache:
                 batch = hash_list[i : i + 500]
                 placeholders = ",".join("?" * len(batch))
                 rows = conn.execute(
-                    f"SELECT text_hash, vector_blob, vector FROM embeddings WHERE text_hash IN ({placeholders})",
+                    f"SELECT text_hash, vector_blob FROM embeddings WHERE text_hash IN ({placeholders})",
                     batch,
                 ).fetchall()
-                for h, vec_blob, vec_json in rows:
+                for h, vec_blob in rows:
                     text = hashes[h]
                     if vec_blob is not None:
                         result[text] = self._blob_to_vector(vec_blob)
-                    elif vec_json is not None:
-                        result[text] = json.loads(vec_json)
         finally:
             self._pool.return_connection(conn)
         return result
@@ -182,14 +170,13 @@ class EmbeddingCache:
             rows = [
                 (
                     self._hash(cache_key, text),
-                    None,
                     self._vector_to_blob(vec),
                     now,
                 )
                 for text, vec in items
             ]
             conn.executemany(
-                "INSERT OR REPLACE INTO embeddings (text_hash, vector, vector_blob, created_at) VALUES (?, ?, ?, ?)",
+                "INSERT OR REPLACE INTO embeddings (text_hash, vector_blob, created_at) VALUES (?, ?, ?)",
                 rows,
             )
             conn.commit()

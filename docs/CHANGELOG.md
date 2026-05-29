@@ -2,6 +2,20 @@
 
 [English](CHANGELOG.en.md) | [中文](CHANGELOG.md)
 
+## [2.5.4] - 2026-05-29
+
+### 维护
+
+- **移除版本升级与历史兼容**：删除 `scripts/upgrade.sh` 及对应测试；安装/手册改为「拉代码 + 按需重装依赖 + `make index-full`」更新路径。
+- **配置单一来源**：业务配置仅从 `config.py` 与代码默认值加载（`MY_API_KEY`、`TARGET_DIR`、`PORT` 等）；`gunicorn` / `run_app.sh` 端口展示与绑定均读 `config.py`；保留 `apply_sdk_environment()` 向 DashScope SDK 注入密钥。
+- **索引与检索契约收紧**：`embedding_cache` 仅 `vector_blob` schema；稠密检索 metadata 必填、禁止 `source`/`type` 回退；增量删除仅按 `file_id`；文件聚合仅按 `file_id` 分组。
+- **模块收口**：删除 `everythingsearch/indexer.py` 与 `build_index()`；扫描/建文档逻辑迁入 `everythingsearch/indexing/document_scan.py`。
+- **脚本**：`run_app.sh` 的 launchd 元数据校验仅作用于常驻子命令；`dev` 无需 `.launchd_instance`；移除 `NL_SEARCH_ENABLED`、`EMBEDDING_TEXT_TYPE_ENABLED` 配置项。
+
+### 文档
+
+- README / INSTALL / PROJECT_MANUAL / OpenClaw / Agent Skill 同步上述契约；修正 `SEARCH_TOP_K` 为 NL 搜索默认条数说明。
+
 ## [2.5.3] - 2026-05-29
 
 ### 修复

@@ -17,6 +17,16 @@ from everythingsearch.retrieval.models import QueryPlan, SearchCandidate
 
 logger = logging.getLogger(__name__)
 
+_DENSE_REQUIRED_META = (
+    "chunk_id",
+    "file_id",
+    "filepath",
+    "filename",
+    "source_type",
+    "filetype",
+    "chunk_type",
+)
+
 
 class DenseRetriever(Protocol):
     """稠密检索器协议。"""
@@ -77,12 +87,7 @@ class ChromaDenseRetriever:
                     where_filter[plan.date_field] = date_conds
 
             if plan.path_filter:
-                path_cond = {
-                    "$or": [
-                        {"filepath": {"$contains": plan.path_filter}},
-                        {"source": {"$contains": plan.path_filter}}
-                    ]
-                }
+                path_cond = {"filepath": {"$contains": plan.path_filter}}
                 if not where_filter:
                     where_filter = path_cond
                 else:
@@ -106,15 +111,24 @@ class ChromaDenseRetriever:
 
             chunk_ids: list[str] = []
             parsed_rows: list[tuple] = []
+            skipped_missing_meta = 0
             for rank, (doc, distance) in enumerate(results, start=1):
                 meta = doc.metadata.copy()
-                chunk_id = meta.pop("chunk_id", "")
-                if not chunk_id:
-                    file_id = meta.get("file_id", str(hash(doc.page_content)))
-                    chunk_idx = meta.get("chunk_idx", 0)
-                    chunk_id = f"{file_id}_{chunk_idx}"
+                chunk_id = str(meta.get("chunk_id") or "").strip()
+                missing = [key for key in _DENSE_REQUIRED_META if not str(meta.get(key) or "").strip()]
+                if missing:
+                    skipped_missing_meta += 1
+                    logger.error(
+                        "稠密检索候选缺少必填 metadata %s（chunk_id=%r）",
+                        missing,
+                        chunk_id or None,
+                    )
+                    continue
                 chunk_ids.append(chunk_id)
                 parsed_rows.append((rank, doc, distance, meta, chunk_id))
+
+            if skipped_missing_meta:
+                logger.error("稠密检索跳过 %s 条 metadata 不完整的候选", skipped_missing_meta)
 
             chunk_records = fetch_chunks_by_ids(self._sparse_index_path, chunk_ids)
 
@@ -122,14 +136,13 @@ class ChromaDenseRetriever:
             for rank, doc, distance, meta, chunk_id in parsed_rows:
                 meta = meta.copy()
 
-                # 提取基础字段
-                chunk_id = meta.pop("chunk_id", chunk_id) or chunk_id
-                file_id = meta.pop("file_id", "")
-                filepath = meta.pop("filepath", meta.pop("source", ""))
-                filename = meta.pop("filename", "")
-                source_type = meta.pop("source_type", "file")
-                filetype = meta.pop("filetype", meta.pop("type", ""))
-                chunk_type = meta.pop("chunk_type", "content")
+                file_id = str(meta.pop("file_id"))
+                filepath = str(meta.pop("filepath"))
+                filename = str(meta.pop("filename"))
+                source_type = str(meta.pop("source_type"))
+                filetype = str(meta.pop("filetype"))
+                chunk_type = str(meta.pop("chunk_type"))
+                meta.pop("chunk_id", None)
                 
                 title_path_str = meta.pop("title_path", "[]")
                 try:

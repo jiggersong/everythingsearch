@@ -171,37 +171,20 @@ class TestEmbeddingCache:
         result = cache.get_many(model, ["text"])
         assert result["text"] == pytest.approx([3.0, 4.0])
     
-    def test_legacy_table_adds_created_at(self, temp_db):
-        """旧库仅 text_hash/vector 两列时，初始化应迁移出新列。"""
-        conn = sqlite3.connect(temp_db)
-        conn.execute(
-            "CREATE TABLE embeddings (text_hash TEXT PRIMARY KEY, vector TEXT)"
-        )
-        conn.commit()
-        conn.close()
-
-        EmbeddingCache(temp_db)
-        conn = sqlite3.connect(temp_db)
-        cols = [r[1] for r in conn.execute("PRAGMA table_info(embeddings)").fetchall()]
-        conn.close()
-        assert "created_at" in cols
-        assert "vector_blob" in cols
-
-    def test_put_many_prefers_blob_storage(self, temp_db):
-        """新写入应优先使用 vector_blob 列。"""
+    def test_put_many_stores_blob_only(self, temp_db):
+        """写入应仅存 vector_blob 列。"""
         cache = EmbeddingCache(temp_db)
         model = "test-model"
         cache.put_many(model, [("blob-text", [0.1, 0.2, 0.3])])
 
         conn = sqlite3.connect(temp_db)
         row = conn.execute(
-            "SELECT vector, vector_blob FROM embeddings WHERE text_hash = ?",
+            "SELECT vector_blob FROM embeddings WHERE text_hash = ?",
             (cache._hash(model, "blob-text"),),
         ).fetchone()
         conn.close()
         assert row is not None
-        assert row[0] is None
-        assert isinstance(row[1], (bytes, bytearray))
+        assert isinstance(row[0], (bytes, bytearray))
 
     def test_thread_safety(self, temp_db):
         """测试线程安全"""

@@ -42,26 +42,10 @@ python3.11 -m venv venv || python3 -m venv venv
 # 2) 准备 config.py
 cp -n etc/config.example.py config.py
 
-# 3) 无交互写入必填配置
-# 运行前请先替换占位值：
-export ES_API_KEY="sk-xxxx"
-export ES_TARGET_DIR="/Users/你/Documents"
-./venv/bin/python - <<'PY'
-from pathlib import Path
-import os
-import re
-
-path = Path("config.py")
-text = path.read_text(encoding="utf-8")
-
-def set_line(src: str, key: str, value: str) -> str:
-    return re.sub(rf'^{key}\s*=.*$', f'{key} = "{value}"', src, flags=re.MULTILINE)
-
-text = set_line(text, "MY_API_KEY", os.environ["ES_API_KEY"])
-text = set_line(text, "TARGET_DIR", os.environ["ES_TARGET_DIR"].rstrip("/"))
-path.write_text(text, encoding="utf-8")
-print("config.py updated")
-PY
+# 3) 编辑 config.py（必填：MY_API_KEY、TARGET_DIR）
+# 示例：
+#   MY_API_KEY = "sk-xxxx"
+#   TARGET_DIR = "/Users/你/Documents"
 
 # 4) 首次构建索引
 make index
@@ -102,54 +86,16 @@ make index-svc-interval MIN=30
 - **`TARGET_DIR` 为 `~/Documents` 等常规目录时**，一般**不必**配置「完全磁盘访问」；仅在启用 MWeb（`ENABLE_MWEB`）或索引 `~/Library` 等受保护路径时，才需按 [INSTALL.md](docs/INSTALL.md) 引导用户到系统设置中手动授权（Agent 无法代点）。
 - 如果 Agent 能访问本机 HTTP，请优先按 [`skills/everythingsearch-local/SKILL.md`](skills/everythingsearch-local/SKILL.md) 接入，并优先使用 `GET /api/search` 做稳定检索。
 
-## 版本升级
+## 更新已有安装
 
-如果电脑上已经安装过 v1.0.0 之后任一旧版本，按以下步骤升级到最新版。
-
-### 第一步：下载新版到新目录
-
-**不要把新版直接覆盖到旧目录里。** 先下载（或 `git clone`）新版到一个**单独的新目录**：
+拉取最新代码；若 `requirements/base.txt` 有变更则重装依赖；脚本变更后刷新 launchd wrapper；索引格式变更时执行全量重建：
 
 ```bash
-# 方式一：git clone
-git clone https://github.com/jiggersong/everythingsearch.git ~/Downloads/EverythingSearch-new
-cd ~/Downloads/EverythingSearch-new
-
-# 方式二：下载 Release 压缩包后解压
-# 假设解压到了 ~/Downloads/EverythingSearch-new
-cd ~/Downloads/EverythingSearch-new
+git pull
+./venv/bin/pip install -r requirements/base.txt
+./scripts/install_launchd_wrappers.sh
+make index-full
 ```
-
-### 第二步：运行升级脚本
-
-在新目录中执行升级脚本，它会自动找到旧安装（默认位置 `~/Documents/code/EverythingSearch`）：
-
-```bash
-./scripts/upgrade.sh
-```
-
-如果旧项目安装在非默认路径，可以手动指定：
-
-```bash
-./scripts/upgrade.sh /你的/旧项目/路径
-```
-
-### 第三步：按提示完成升级
-
-脚本会交互式引导你完成以下操作：
-- 说明检测到的旧版本信息，确认升级
-- 将新版代码同步到旧项目位置（保留你的配置文件和数据）
-- 备份旧版关键数据、迁移指定配置项、清理不兼容的索引，并更新 Python 依赖
-- 询问是否立即重建索引（**推荐选是**，保持终端打开直到跑完）
-
-### 第四步：清理旧文件
-
-升级完成并确认一切正常后：
-- **新目录**（如 `~/Downloads/EverythingSearch-new`）：已经没用了，可以直接删除
-- **旧项目目录**（如 `~/Documents/code/EverythingSearch`）：已被更新为最新版，继续使用这个目录
-- **备份目录**（`upgrade_backups_时间戳/` 在项目目录内）：确认升级无误后可删除
-
-详见 [INSTALL.md](docs/INSTALL.md) 第九节。
 
 ## 常用命令
 
@@ -197,7 +143,7 @@ python -m everythingsearch search "你要搜的东西" --json
 | 4   | [NL_SEARCH_AND_WEB_UI.md](docs/NL_SEARCH_AND_WEB_UI.md)                          | NL 搜索行为说明       | 智能搜索联调、默认回退、接口核对                      | 意图接口、解读接口、`exact_focus`、限流、无 Key 时的行为                   |
 | 5   | [SEARCH_ACCURACY_TECHNICAL_DESIGN.md](docs/SEARCH_ACCURACY_TECHNICAL_DESIGN.md)  | 准确率技术设计       | 检索架构重建设计评审                          | FTS5、向量召回、RRF、远端 Rerank、文件聚合、Benchmark 规划与实施路径        |
 | 6   | [OPENCLAW_INTEGRATION.zh-CN.md](docs/OPENCLAW_INTEGRATION.zh-CN.md)              | Agent 接入指南        | 给 OpenClaw 配置本地搜索能力                        | 傻瓜式的系统提示词配置向导、验证命令，一看就会                                |
-| 7   | [skills/everythingsearch-local/SKILL.md](skills/everythingsearch-local/SKILL.md) | Agent Skill（开源） | Cursor / Claude Code 等与本机 HTTP API 集成 | 各搜索与解读接口的调用示例、`EVERYTHINGSEARCH_BASE`、安全与回退；与手册 §3.1 配套 |
+| 7   | [skills/everythingsearch-local/SKILL.md](skills/everythingsearch-local/SKILL.md) | Agent Skill（开源） | Cursor / Claude Code 等与本机 HTTP API 集成 | 各搜索与解读接口的调用示例、基址与 `config.py` 端口、安全与回退；与手册 §3.1 配套 |
 
 
 ## Agent Skill（开源）

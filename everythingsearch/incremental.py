@@ -17,12 +17,12 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # 直接执行 `python everythingsearch/incremental.py` 时，sys.path 里只有包目录；
-# 这里补上仓库根目录，保证绝对包导入和 legacy config 兼容加载都可用。
+# 直接执行脚本时补上仓库根目录，保证绝对包导入可用。
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from everythingsearch.indexer import (
+from everythingsearch.indexing.document_scan import (
     FILE_READ_TIMEOUT,
     _init_scan_cache,
     _save_cached_docs,
@@ -80,18 +80,6 @@ def _init_state_db(conn: sqlite3.Connection):
     conn.commit()
 
 
-# 迁移兼容层：以下两个 wrapper 仅保留用于兼容旧代码和测试，
-# 新代码应直接从 everythingsearch.indexing.file_scanner 导入。
-def _scan_disk_files() -> dict[str, tuple[float, str]]:
-    """Scan TARGET_DIR(s) and return {filepath: (mtime, 'file')}."""
-    return scan_disk_files_for_index()
-
-
-def _scan_disk_mweb() -> dict[str, tuple[float, str]]:
-    """Scan MWEB_DIR and return {filepath: (mtime, 'mweb')}."""
-    return scan_mweb_notes_for_index()
-
-
 def _load_db_state(conn: sqlite3.Connection) -> dict[str, tuple[float, str]]:
     """Load all tracked files from the state database."""
     rows = conn.execute("SELECT filepath, mtime, source_type FROM file_index").fetchall()
@@ -101,22 +89,10 @@ def _load_db_state(conn: sqlite3.Connection) -> dict[str, tuple[float, str]]:
 def _delete_chunks(collection, filepath: str, sparse_writer: SQLiteSparseIndexWriter = None):
     """Delete all ChromaDB and FTS5 chunks belonging to a file."""
     file_id = generate_file_id(filepath)
-    delete_errors: list[Exception] = []
     try:
-        # 优先按 file_id 删除；兼容旧索引可能仅有 source 字段。
         collection.delete(where={"file_id": file_id})
     except Exception as exc:
-        delete_errors.append(exc)
-        logger.warning("按 file_id 删除 Dense 索引失败 %s: %s", filepath, exc)
-        try:
-            collection.delete(where={"source": filepath})
-            delete_errors.clear()
-        except Exception as fallback_exc:
-            delete_errors.append(fallback_exc)
-            logger.warning("按 source 删除 Dense 索引失败 %s: %s", filepath, fallback_exc)
-
-    if delete_errors:
-        raise RuntimeError(f"删除 Dense 索引失败: {filepath}") from delete_errors[-1]
+        raise RuntimeError(f"删除 Dense 索引失败: {filepath}") from exc
     
     if sparse_writer:
         try:
@@ -188,8 +164,8 @@ def _run_incremental_impl():
     _init_state_db(conn)
 
     logger.info("正在扫描文件系统...")
-    disk_files = _scan_disk_files()
-    disk_mweb = _scan_disk_mweb()
+    disk_files = scan_disk_files_for_index()
+    disk_mweb = scan_mweb_notes_for_index()
     logger.info("扫描到文件数: %s, MWeb 笔记数: %s", len(disk_files), len(disk_mweb))
     logger.info("  文件: %s  笔记: %s", len(disk_files), len(disk_mweb))
 
@@ -300,7 +276,7 @@ def _run_incremental_impl():
         # 同步清理扫描缓存，避免缓存膨胀
         cache_path = settings.scan_cache_path
         if cache_path:
-            from everythingsearch.indexer import _init_scan_cache
+            from everythingsearch.indexing.document_scan import _init_scan_cache
             scan_conn = sqlite3.connect(cache_path, timeout=30)
             _init_scan_cache(scan_conn)
             for fp in deleted_paths:
@@ -315,7 +291,7 @@ def _run_incremental_impl():
         cache_path = settings.scan_cache_path
         scan_cache_conn = sqlite3.connect(cache_path, timeout=30) if cache_path else None
         if scan_cache_conn:
-            from everythingsearch.indexer import _init_scan_cache
+            from everythingsearch.indexing.document_scan import _init_scan_cache
             _init_scan_cache(scan_cache_conn)
         logger.info(
             "正在索引 %s 个文件 (%s 修改 + %s 新增)...",
@@ -454,8 +430,8 @@ def _rebuild_state_db():
     _init_state_db(conn)
     conn.execute("DELETE FROM file_index")
 
-    disk_files = _scan_disk_files()
-    disk_mweb = _scan_disk_mweb()
+    disk_files = scan_disk_files_for_index()
+    disk_mweb = scan_mweb_notes_for_index()
     now = time.time()
 
     for fp, (mtime, stype) in {**disk_files, **disk_mweb}.items():

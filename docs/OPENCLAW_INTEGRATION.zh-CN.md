@@ -17,7 +17,7 @@ PY=./venv/bin/python
 ```
 
 3. **DashScope API Key**（CLI 与 NL 搜索必需）  
-   CLI 命令 `search` 会先调用意图识别（与 Web「智能搜索」相同），需在 `config.py` 或环境变量中配置 `DASHSCOPE_API_KEY` / `MY_API_KEY`。未配置时 CLI 会返回 `MISSING_API_KEY` 类错误。
+   CLI 命令 `search` 会先调用意图识别（与 Web「智能搜索」相同），需在 `config.py` 中配置 `MY_API_KEY`。未配置时 CLI 会返回 `MISSING_API_KEY` 类错误。
 
 4. **HTTP 服务与定时索引**（若 Agent 能用 `curl`，推荐此路径，见下文「方式 B」）：
 
@@ -140,7 +140,7 @@ HTTP 结果字段为 `preview`（不是 `snippet`）。完整 curl 示例、限�
 ## 前置
 - 工作目录: /您的/EverythingSearch/安装目录
 - Python: ./venv/bin/python
-- CLI 搜索依赖 DashScope API Key（config 或环境变量）；无 Key 时勿用 CLI，改用 curl GET /api/search（需先 ./scripts/run_app.sh start）
+- CLI 搜索依赖 `config.py` 中的 `MY_API_KEY`；无 Key 时勿用 CLI，改用 curl GET /api/search（需先 ./scripts/run_app.sh start）
 
 ## 方式 A — CLI（仅当无法发 HTTP 时）
 ./venv/bin/python -m everythingsearch search "<查询>" --json [--limit 20] [--source all]

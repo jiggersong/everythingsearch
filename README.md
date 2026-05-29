@@ -42,26 +42,10 @@ python3.11 -m venv venv || python3 -m venv venv
 # 2) Prepare config.py
 cp -n etc/config.example.py config.py
 
-# 3) Fill required config fields NON-interactively
-# Replace placeholders before running:
-export ES_API_KEY="sk-xxxx"
-export ES_TARGET_DIR="/Users/you/Documents"
-./venv/bin/python - <<'PY'
-from pathlib import Path
-import os
-import re
-
-path = Path("config.py")
-text = path.read_text(encoding="utf-8")
-
-def set_line(src: str, key: str, value: str) -> str:
-    return re.sub(rf'^{key}\s*=.*$', f'{key} = "{value}"', src, flags=re.MULTILINE)
-
-text = set_line(text, "MY_API_KEY", os.environ["ES_API_KEY"])
-text = set_line(text, "TARGET_DIR", os.environ["ES_TARGET_DIR"].rstrip("/"))
-path.write_text(text, encoding="utf-8")
-print("config.py updated")
-PY
+# 3) Edit config.py (required: MY_API_KEY, TARGET_DIR)
+# Example:
+#   MY_API_KEY = "sk-xxxx"
+#   TARGET_DIR = "/Users/you/Documents"
 
 # 4) First index build
 make index
@@ -102,54 +86,16 @@ make index-svc-interval MIN=30
 - For a typical `TARGET_DIR` under `~/Documents`, **Full Disk Access is usually not required**; only enable MWeb (`ENABLE_MWEB`) or index paths under `~/Library` should you follow [INSTALL.en.md](docs/INSTALL.en.md) and have the **user** grant Full Disk Access manually (Agents cannot click System Settings).
 - If your Agent can call localhost HTTP, integrate via [`skills/everythingsearch-local/SKILL.md`](skills/everythingsearch-local/SKILL.md) and prefer `GET /api/search` for deterministic retrieval.
 
-## Version Upgrade
+## Updating an existing install
 
-If you already have an older version (v1.0.0 or later) installed, follow these steps to upgrade.
-
-### Step 1: Download the new version to a separate directory
-
-**Do not overwrite your old installation.** Download (or `git clone`) the new version into a **brand-new directory**:
+Pull the latest code, reinstall dependencies if `requirements/base.txt` changed, refresh launchd wrappers when scripts change, and run `make index-full` if index formats changed:
 
 ```bash
-# Option 1: git clone
-git clone https://github.com/jiggersong/everythingsearch.git ~/Downloads/EverythingSearch-new
-cd ~/Downloads/EverythingSearch-new
-
-# Option 2: Download the release archive and unzip
-# If you unzipped to ~/Downloads/EverythingSearch-new
-cd ~/Downloads/EverythingSearch-new
+git pull
+./venv/bin/pip install -r requirements/base.txt
+./scripts/install_launchd_wrappers.sh
+make index-full
 ```
-
-### Step 2: Run the upgrade script
-
-From the new directory, run the upgrade script — it will automatically find your old installation (default location `~/Documents/code/EverythingSearch`):
-
-```bash
-./scripts/upgrade.sh
-```
-
-If your old project is installed somewhere else, specify its path:
-
-```bash
-./scripts/upgrade.sh /path/to/your/old/installation
-```
-
-### Step 3: Follow the prompts
-
-The script will guide you through:
-- Showing the detected old version and confirming the upgrade
-- Syncing new code to your old project location (your config and data are preserved)
-- Backing up key old data, migrating selected configuration fields, cleaning up incompatible indexes, and updating Python dependencies
-- Asking whether to rebuild the index now (**recommended: say yes** and keep the terminal open while it runs)
-
-### Step 4: Clean up
-
-After the upgrade completes and everything works:
-- **New directory** (e.g. `~/Downloads/EverythingSearch-new`): no longer needed — delete it
-- **Old project directory** (e.g. `~/Documents/code/EverythingSearch`): now updated to the latest version — keep using this one
-- **Backup directory** (`upgrade_backups_timestamp/` inside the project): delete after confirming everything is fine
-
-See [INSTALL.en.md](docs/INSTALL.en.md) §9 for details.
 
 ## Common Commands
 
@@ -197,7 +143,7 @@ After installation, complete these three system-level steps so the service can r
 | 4   | `[NL_SEARCH_AND_WEB_UI.en.md](docs/NL_SEARCH_AND_WEB_UI.en.md)`                    | NL search behavior notes          | Smart search integration, default fallback, API checks      | Intent route, interpretation route, `exact_focus`, rate limits, behavior without a key                                        |
 | 5   | `[SEARCH_ACCURACY_TECHNICAL_DESIGN.en.md](docs/SEARCH_ACCURACY_TECHNICAL_DESIGN.en.md)` | Accuracy technical design          | Reviewing the next search architecture rebuild              | FTS5, vector recall, RRF, remote rerank, file aggregation, benchmark plan, and implementation order                          |
 | 6   | `[OPENCLAW_INTEGRATION.md](docs/OPENCLAW_INTEGRATION.md)`                          | Agent integration guide           | Giving OpenClaw local search powers                         | Foolproof system prompt configuration, test commands, easy for beginners                                                      |
-| 7   | `[skills/everythingsearch-local/SKILL.md](skills/everythingsearch-local/SKILL.md)` | Agent Skill (open source)         | Cursor / Claude Code integration with the local HTTP API    | Example calls for search and interpretation routes, `EVERYTHINGSEARCH_BASE`, safety and fallbacks; pairs with the manual §3.1 |
+| 7   | `[skills/everythingsearch-local/SKILL.md](skills/everythingsearch-local/SKILL.md)` | Agent Skill (open source)         | Cursor / Claude Code integration with the local HTTP API    | Example calls for search and interpretation routes, base URL from `config.py`, safety and fallbacks; pairs with the manual §3.1 |
 
 
 ## Agent Skill (open source)

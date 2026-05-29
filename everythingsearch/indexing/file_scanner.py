@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 
-from everythingsearch.indexer import normalize_path
+from everythingsearch.indexing.path_utils import normalize_path
 from everythingsearch.infra.settings import get_settings, require_target_dirs
 
 

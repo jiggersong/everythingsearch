@@ -5,7 +5,17 @@ _ROOT = os.path.dirname(os.path.abspath(__file__))
 _LOG_DIR = os.path.join(_ROOT, "logs")
 os.makedirs(_LOG_DIR, exist_ok=True)
 
-bind = "127.0.0.1:{}".format(os.environ.get("PORT", "8000"))
+def _service_bind() -> str:
+    try:
+        import config as _config
+        host = getattr(_config, "HOST", "127.0.0.1")
+        port = getattr(_config, "PORT", 8000)
+    except ImportError:
+        host, port = "127.0.0.1", 8000
+    return f"{host}:{port}"
+
+
+bind = _service_bind()
 workers = 1
 timeout = 120
 worker_class = "sync"

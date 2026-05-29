@@ -135,7 +135,7 @@ EverythingSearch/
 │   ├── infra/                # Infrastructure layer (incl. settings.py, embed_rate_limiter)
 │   ├── request_validation.py # Input validation protocol (unified HTTP 400 contract)
 │   ├── file_access.py        # Strict file access boundary; anti path traversal
-│   ├── indexer.py            # Full index build entrypoint
+│   ├── indexing/document_scan.py  # File scan and Document building
 │   ├── incremental.py        # Incremental indexing entrypoint
 │   ├── embedding_cache.py    # Embedding cache layer
 │   ├── logging_config.py     # Standardized logging configuration
@@ -157,7 +157,6 @@ EverythingSearch/
 ├── logs/                     # Runtime and scheduled job logs
 ├── scripts/                  # Operations and helper scripts
 │   ├── install.sh
-│   ├── upgrade.sh             # Automatic version upgrade script (v1.0+ → latest)
 │   ├── install_launchd_wrappers.sh
 │   ├── run_app.sh
 │   ├── run_tests.sh
@@ -194,7 +193,7 @@ For **Cursor, Claude Code, and other tools that support Agent Skills**, this rep
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Path**      | `skills/everythingsearch-local/SKILL.md`                                                                                                                                                                                  |
 | **Contents**  | How to call the local HTTP API for hybrid search, natural-language intent search, intelligent result interpretation, text read / file download, etc.—aligned with `docs/NL_SEARCH_AND_WEB_UI.en.md` and §4.6 routes below |
-| **Base URL**  | Defaults to `http://127.0.0.1:8000`. If the service listens elsewhere, set `EVERYTHINGSEARCH_BASE` in the agent environment (must include the scheme, e.g. `http://127.0.0.1:8000`)                                       |
+| **Base URL**  | Defaults to `http://127.0.0.1:8000` from `config.py` `HOST` / `PORT`; for remote access, provide the full URL explicitly |
 | **DashScope** | NL and interpretation routes require a valid API key on the server; without a key, the Skill recommends falling back to `GET /api/search`—see the Skill preamble                                                          |
 
 
@@ -218,13 +217,13 @@ python -m everythingsearch search "<query>" --json
 
 ### 4.1 `config.py` — Configuration hub
 
-Local settings are concentrated here. Load order: environment variables > repository-root `config.py` > safe in-code defaults.
+Runtime settings come from repository-root `config.py`; unset values use safe defaults in `everythingsearch/infra/settings.py`.
 
 
 | Key                            | Default                                        | Description                                                                                         |
 | ------------------------------ | ---------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `MY_API_KEY`                   | empty string or `DASHSCOPE_API_KEY` env var    | Legacy-compatible Alibaba Tongyi DashScope API key field; prefer environment variables              |
-| `TARGET_DIR`                   | `/path/to/documents` or `["/path1", "/path2"]` | Root directory or list of roots to index; `TARGET_DIR` env var wins                                 |
+| `MY_API_KEY`                   | empty string                                 | Alibaba Tongyi DashScope API key; set in `config.py` only                                           |
+| `TARGET_DIR`                   | `/path/to/documents` or `["/path1", "/path2"]` | Root directory or list of roots to index                                                            |
 | `ENABLE_MWEB`                  | `False` / `True`                               | One-switch seamless built-in MWeb note integration; when on, the system takes over automatic export |
 | `MWEB_LIBRARY_PATH`            | Default macOS library path                     | MWeb main database directory (optional override)                                                    |
 | `MWEB_DIR`                     | `data/mweb_export`                             | Managed export landing zone for MWeb notes                                                          |
@@ -253,7 +252,7 @@ Local settings are concentrated here. Load order: environment variables > reposi
 | `CHUNK_SIZE`                   | `500`                                          | Text chunk size (characters)                                                                        |
 | `CHUNK_OVERLAP`                | `80`                                           | Chunk overlap (characters)                                                                          |
 | `MAX_CONTENT_LENGTH`           | `20000`                                        | Max characters indexed per file                                                                     |
-| `SEARCH_TOP_K`                 | `250`                                          | Vector candidate chunks (legacy indexer; new pipeline uses `DENSE_TOP_K`) |
+| `SEARCH_TOP_K`                 | `250`                                          | Default result cap for NL search (`nl_search_service` when intent/UI omit `limit`; unrelated to retrieval-stage `DENSE_TOP_K`) |
 | `SCORE_THRESHOLD`              | `0.35`                                         | Cosine distance threshold (smaller = stricter; matches `settings.py` default)                       |
 | `POSITION_WEIGHTS`             | `filename:0.60, heading:0.80, content:1.00`    | Position weighting factors                                                                          |
 | `KEYWORD_FREQ_BONUS`           | `0.03`                                         | Keyword frequency bonus coefficient                                                                 |
@@ -294,12 +293,12 @@ Local settings are concentrated here. Load order: environment variables > reposi
 
 **API key best practices**
 
-- Prefer `DASHSCOPE_API_KEY` in the environment instead of a real key in `config.py` (especially when copying the project to another machine)
+- Set `MY_API_KEY` in `config.py`; do not commit real keys to the repository or distribution packages
 - The template does not ship a runnable fake default; empty means “not configured,” not an error by itself
 - Without a key: **incremental/full indexing cannot embed** (embeddings require DashScope). The **web UI** falls back to `GET /api/search` only (no intent or interpretation). If the vector DB is also unavailable, search may still error until indexing succeeds with a valid key.
 - The legacy `NL_SEARCH_ENABLED` toggle is removed: when a key is configured, the web UI uses the NL pipeline by default (intent + hybrid search + optional interpretation). See `docs/NL_SEARCH_AND_WEB_UI.md`.
 
-### 4.2 `indexer.py` — Index builder
+### 4.2 `document_scan.py` — File scan and Document building
 
 **File scan**: Recursively walks `TARGET_DIR` (supports multiple roots), classifying by extension:
 
@@ -433,7 +432,7 @@ make index-full                                 # same
 
 `app.py` focuses exclusively on routing and HTTP interface definitions, delegating all core business logic to the `services/` layer. Coupled with `request_validation.py`, it intercepts invalid JSON and malformed parameters, returning standardized `400 Bad Request` responses to prevent dirty data from causing system-level 500 crashes. Additionally, `file_access.py` provides a strict isolation boundary, enforcing that all read, download, or open operations are securely contained within indexed directories to prevent path traversal vulnerabilities.
 
-**Agent integration**: For Cursor and similar tools, HTTP examples, `EVERYTHINGSEARCH_BASE`, and no-key fallback notes live in §3.1 — `skills/everythingsearch-local/SKILL.md`.
+**Agent integration**: For Cursor and similar tools, HTTP examples and no-key fallback notes live in §3.1 — `skills/everythingsearch-local/SKILL.md`.
 
 Routes:
 
@@ -582,38 +581,9 @@ Full rebuilds and incremental updates now print file scale, estimated index chun
 
 Token counts are local estimates. They are calculated from the text that will be sent to embedding after the current `CachedEmbeddings` 600-character truncation rule. They are useful for sizing the job, but they are not billing-grade provider usage.
 
-### Version upgrade (migrating from an older version)
+### Updating an existing install
 
-If you have an older version (v1.0.0 or later) installed, use the auto-upgrade script to migrate data and configuration.
-
-**Step by step:**
-
-1. **Download the new version to a separate directory** (do not overwrite the old one):
-
-   ```bash
-   git clone https://github.com/jiggersong/everythingsearch.git ~/Downloads/EverythingSearch-new
-   cd ~/Downloads/EverythingSearch-new
-   ```
-
-2. **Run the upgrade script** (looks for the old install at `~/Documents/code/EverythingSearch` by default):
-
-   ```bash
-   ./scripts/upgrade.sh [old-project-path]
-   ```
-
-3. **Follow the prompts** for each step: version detection → code sync → data backup → config merge → data cleanup → dependency update → launchd update → index rebuild.
-
-4. **Clean up**: After the upgrade, the new download directory (e.g. `~/Downloads/EverythingSearch-new`) can be deleted; your old project directory is now updated and ready to use.
-
-Upgrade scenarios:
-
-| Scenario | Old Version | Summary |
-|----------|-------------|---------|
-| A | v1.0.x–v1.1.x | Delete old index, full rebuild |
-| B | v1.2.0–v1.5.2 | Delete incompatible ChromaDB, keep embedding cache, full rebuild |
-| C | v2.0.0+ | Format-compatible, only merge new config fields, verify with incremental index |
-
-See [INSTALL.en.md](INSTALL.en.md) §9 for details.
+After `git pull`, reinstall dependencies if needed, refresh launchd wrappers when scripts change, and run `make index-full` when index formats change. See [INSTALL.en.md](INSTALL.en.md) §9.
 
 ### Incremental index logs
 
@@ -732,7 +702,7 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jigger.everythingsea
 
 ### New file types
 
-Add extensions in `config.py` (`TEXT_EXTENSIONS`, `OFFICE_EXTENSIONS`, `MEDIA_EXTENSIONS`); add a branch in `indexer.py` `_read_file_worker` if a custom parser is needed.
+Add extensions in `config.py` (`TEXT_EXTENSIONS`, `OFFICE_EXTENSIONS`, `MEDIA_EXTENSIONS`); add a branch in `everythingsearch/indexing/document_scan.py` `_read_file_worker` if a custom parser is needed.
 
 ---
 

@@ -12,7 +12,7 @@ from langchain_core.documents import Document
 from pathlib import Path
 from everythingsearch.infra.settings import get_settings, require_dashscope_api_key, require_target_dirs, apply_sdk_environment
 from everythingsearch.logging_config import setup_cli_logging
-from everythingsearch.indexer import scan_files, scan_mweb_notes
+from everythingsearch.indexing.document_scan import scan_files, scan_mweb_notes
 from everythingsearch.indexing.chunk_models import IndexedChunk
 from everythingsearch.indexing.dense_index_writer import ChromaDenseIndexWriter
 from everythingsearch.indexing.dense_lifecycle import reset_dense_collection

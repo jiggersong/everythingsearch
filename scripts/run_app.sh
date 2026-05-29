@@ -14,6 +14,12 @@ cd "$SCRIPT_DIR"
 
 PYTHON="${SCRIPT_DIR}/venv/bin/python"
 
+_read_config_port() {
+    "$PYTHON" -c "import config; print(getattr(config, 'PORT', 8000))" 2>/dev/null || echo "8000"
+}
+
+SERVICE_PORT="$(_read_config_port)"
+
 LAUNCHD_INSTANCE_FILE="$SCRIPT_DIR/scripts/.launchd_instance"
 if [[ -f "$LAUNCHD_INSTANCE_FILE" ]]; then
     set -a
@@ -21,10 +27,15 @@ if [[ -f "$LAUNCHD_INSTANCE_FILE" ]]; then
     source "$LAUNCHD_INSTANCE_FILE"
     set +a
 fi
-# 未运行新版安装时，与旧版固定 Label / 默认端口兼容
-LAUNCHD_LABEL="${LABEL_APP:-com.jigger.everythingsearch.app}"
-PORT="${PORT:-${APP_PORT:-8000}}"
-LAUNCHD_PLIST="${HOME}/Library/LaunchAgents/${LAUNCHD_LABEL}.plist"
+
+_require_launchd_metadata() {
+    if [[ -z "${LABEL_APP:-}" ]]; then
+        echo "❌ 缺少 launchd 实例元数据，请先运行: ./scripts/install_launchd_wrappers.sh" >&2
+        exit 1
+    fi
+    LAUNCHD_LABEL="${LABEL_APP}"
+    LAUNCHD_PLIST="${HOME}/Library/LaunchAgents/${LAUNCHD_LABEL}.plist"
+}
 
 mkdir -p logs
 
@@ -42,10 +53,10 @@ _start() {
     pid=$(_get_service_pid)
     if [ -n "$pid" ]; then
         echo "服务已在运行 (PID $pid)"
-        echo "   访问: http://127.0.0.1:$PORT"
+        echo "   访问: http://127.0.0.1:$SERVICE_PORT"
         return 0
     fi
-    echo "启动搜索服务 (端口 $PORT)..."
+    echo "启动搜索服务 (端口 $SERVICE_PORT)..."
     if [ ! -f "$LAUNCHD_PLIST" ]; then
         echo "❌ 未找到 launchd plist: $LAUNCHD_PLIST"
         echo "   请先运行: ./scripts/install_launchd_wrappers.sh"
@@ -63,7 +74,7 @@ _start() {
     pid=$(_get_service_pid)
     if [ -n "$pid" ]; then
         echo "✅ 服务已启动 (PID $pid)"
-        echo "   访问: http://127.0.0.1:$PORT"
+        echo "   访问: http://127.0.0.1:$SERVICE_PORT"
     else
         echo "❌ 启动失败，请查看 logs/ 下 app_err.log（及按日归档的同名 .YYYY-MM-DD 文件）与 launchd_app_*.log"
         echo "   也可尝试: $0 resume"
@@ -81,67 +92,45 @@ _stop() {
     echo "停止服务 (PID $pid)..."
     launchctl stop "$LAUNCHD_LABEL" 2>/dev/null || true
     sleep 1
-    # launchd KeepAlive 会自动重启，用 kill 确保进程停止后等 launchd 拉起新进程
-    # 这里只是 stop，不需要 launchd 拉起，所以直接 kill
-    if kill -0 "$pid" 2>/dev/null; then
-        kill "$pid" 2>/dev/null || true
-        for _ in $(seq 1 10); do
-            kill -0 "$pid" 2>/dev/null || break
-            sleep 0.5
-        done
+    pid=$(_get_service_pid)
+    if [ -z "$pid" ]; then
+        echo "✅ 服务已停止"
+    else
+        echo "⚠️  服务可能仍在运行 (PID $pid)，launchd KeepAlive 会自动重启"
     fi
-    echo "✅ 服务已停止"
-    # KeepAlive=true 意味着 launchd 会自动重启，这是预期行为
-    # 如需完全停止常驻，请使用: launchctl unload \"$LAUNCHD_PLIST\"
 }
 
 _pause() {
-    if launchctl print "gui/$(id -u)/$LAUNCHD_LABEL" >/dev/null 2>&1; then
-        echo "暂停搜索服务 (bootout $LAUNCHD_LABEL)..."
-        launchctl bootout "gui/$(id -u)/$LAUNCHD_LABEL"
-        echo "✅ 服务已暂停（全量重建期间不会自动拉起）"
-        return 0
+    local domain="gui/$(id -u)" job_target="${domain}/${LAUNCHD_LABEL}"
+    if launchctl print "$job_target" >/dev/null 2>&1; then
+        echo "暂停服务 (bootout)..."
+        launchctl bootout "$domain" "$LAUNCHD_PLIST" 2>/dev/null || true
+        echo "✅ 服务已暂停（全量重建期间使用）"
+    else
+        echo "服务未加载，无需暂停"
     fi
-    echo "服务未加载，无需暂停"
-    return 0
 }
 
 _resume() {
-    if [ ! -f "$LAUNCHD_PLIST" ]; then
-        echo "❌ 未找到 plist: $LAUNCHD_PLIST"
-        return 1
-    fi
-    if launchctl print "gui/$(id -u)/$LAUNCHD_LABEL" >/dev/null 2>&1; then
-        echo "服务已在运行"
-        return 0
-    fi
-    echo "恢复搜索服务 (bootstrap)..."
-    launchctl bootstrap "gui/$(id -u)" "$LAUNCHD_PLIST"
-    echo "✅ 服务已恢复"
+    _start
 }
 
 _restart() {
-    local old_pid
-    old_pid=$(_get_service_pid)
-    if [ -n "$old_pid" ]; then
-        echo "停止旧服务 (PID $old_pid)..."
-        kill "$old_pid" 2>/dev/null || true
-        for _ in $(seq 1 15); do
-            kill -0 "$old_pid" 2>/dev/null || break
-            sleep 0.5
-        done
+    echo "重启搜索服务..."
+    launchctl kickstart -k "gui/$(id -u)/${LAUNCHD_LABEL}" 2>/dev/null || {
+        _stop
+        sleep 1
+        _start
+        return $?
+    }
+    sleep 2
+    local pid
+    pid=$(_get_service_pid)
+    if [ -n "$pid" ]; then
+        echo "✅ 服务已重启 (PID $pid)"
+        echo "   访问: http://127.0.0.1:$SERVICE_PORT"
+        return 0
     fi
-    echo "等待 launchd 重启服务..."
-    local new_pid=""
-    for _ in $(seq 1 40); do
-        new_pid=$(_get_service_pid)
-        if [ -n "$new_pid" ] && { [ -z "$old_pid" ] || [ "$new_pid" != "$old_pid" ]; }; then
-            echo "✅ 服务已重启 (PID $new_pid)"
-            echo "   访问: http://127.0.0.1:$PORT"
-            return 0
-        fi
-        sleep 0.5
-    done
     echo "❌ 重启失败，请查看 logs/ 下 app_err.log（及按日归档）与 launchd_app_*.log"
     return 1
 }
@@ -151,8 +140,8 @@ _status() {
     pid=$(_get_service_pid)
     if [ -n "$pid" ]; then
         echo "✅ 服务运行中 (PID $pid)"
-        echo "   端口: $PORT"
-        echo "   访问: http://127.0.0.1:$PORT"
+        echo "   端口: $SERVICE_PORT (config.py)"
+        echo "   访问: http://127.0.0.1:$SERVICE_PORT"
         return 0
     fi
     echo "❌ 服务未运行"
@@ -161,27 +150,36 @@ _status() {
 
 case "${1:-}" in
     start)
+        _require_launchd_metadata
         _start
         ;;
     stop)
+        _require_launchd_metadata
         _stop
         ;;
     restart)
+        _require_launchd_metadata
         _restart
         ;;
     pause)
+        _require_launchd_metadata
         _pause
         ;;
     resume)
+        _require_launchd_metadata
         _resume
         ;;
     status)
+        _require_launchd_metadata
         _status
         ;;
     dev)
         echo "开发模式 (前台运行，Ctrl+C 停止)..."
-        echo "⚠️ 请先确保常驻服务已停止: launchctl unload \"$LAUNCHD_PLIST\""
-        FLASK_DEBUG=true "$PYTHON" -m everythingsearch.app
+        echo "   端口: $SERVICE_PORT (config.py)"
+        if [[ -n "${LABEL_APP:-}" ]]; then
+            echo "⚠️  请先确保常驻服务已停止: $0 stop"
+        fi
+        "$PYTHON" -c "import config; config.DEBUG = True; from everythingsearch.app import main; main()"
         ;;
     *)
         echo "用法: $0 {start|stop|restart|pause|resume|status|dev}"
@@ -192,7 +190,7 @@ case "${1:-}" in
         echo "  pause   - 暂停服务（bootout，全量重建期间使用）"
         echo "  resume  - 恢复服务（bootstrap）"
         echo "  status  - 查看状态"
-        echo "  dev     - 开发模式（前台，支持热重载）"
+        echo "  dev     - 开发模式（前台，支持热重载；仅需 config.py，无需 launchd）"
         exit 1
         ;;
 esac

@@ -64,16 +64,10 @@ python3.11 -m venv venv
 cp etc/config.example.py config.py
 ```
 
-推荐优先通过环境变量提供 API Key：
-
-```bash
-export DASHSCOPE_API_KEY="sk-你的真实密钥"
-```
-
-然后确认 `config.py` 中的主要本地配置：
+在 `config.py` 中填写主要本地配置：
 
 ```python
-MY_API_KEY = ""
+MY_API_KEY = "sk-你的真实密钥"
 TARGET_DIR = "/Users/你的用户名/Documents/你的文件夹"
 
 # 仅当 ENABLE_MWEB = True 时需要
@@ -81,11 +75,10 @@ TARGET_DIR = "/Users/你的用户名/Documents/你的文件夹"
 # MWEB_DIR = "..."
 ```
 
-配置优先级：
+配置说明：
 
-- 环境变量优先于 `config.py`
-- `config.py` 当前仍作为兼容层保留
-- `DASHSCOPE_API_KEY`、`MY_API_KEY`、`TARGET_DIR` 不再提供可运行的占位默认值
+- 运行时以 `config.py` 为准；未配置项使用代码内安全默认值
+- `MY_API_KEY`、`TARGET_DIR` 不再提供可运行的占位默认值
 - 若未显式配置 `PERSIST_DIRECTORY`、`INDEX_STATE_DB`、`SCAN_CACHE_PATH`、`EMBEDDING_CACHE_PATH`，它们默认落在仓库 `data/` 目录下
 
 ### 3.3 构建首次索引
@@ -140,7 +133,7 @@ sudo nano /etc/hosts
 | 配置项 | 说明 |
 | --- | --- |
 | `TARGET_DIR` | 要索引的根目录，支持单目录或目录列表 |
-| `DASHSCOPE_API_KEY` 或 `MY_API_KEY` | 索引生成向量时必须可用；浏览器智能搜索也依赖该密钥 |
+| `MY_API_KEY` | 索引生成向量时必须可用；浏览器智能搜索也依赖该密钥 |
 
 ### 常用可选配置
 
@@ -319,7 +312,6 @@ caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full --keep-em
 | 文件或路径 | 用途 |
 | --- | --- |
 | `scripts/install.sh` | 交互式安装脚本 |
-| `scripts/upgrade.sh` | 自动版本升级脚本（v1.0+ → 最新版） |
 | `scripts/install_launchd_wrappers.sh` | 生成 launchd wrapper 和 plist |
 | `scripts/run_app.sh` | 搜索服务生命周期管理 |
 | `docs/PROJECT_MANUAL.md` | 技术手册 |
@@ -337,117 +329,19 @@ caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full --keep-em
 
 版本与变更记录见 [GitHub Releases](https://github.com/jiggersong/everythingsearch/releases)。
 
-## 九、版本升级
+## 九、更新已有安装
 
-> ⚠️ **升级前请注意**：升级脚本仅自动迁移 `MY_API_KEY`、`TARGET_DIR`、`ENABLE_MWEB`、`MWEB_LIBRARY_PATH`、`MWEB_DIR` 这 5 个配置项。如果你在旧 `config.py` 中自定义过 `INDEX_ONLY_KEYWORDS`、`HOST`、`PORT`、`NL_INTENT_MODEL`、`SEARCH_INTERPRET_MODEL`、`SPARSE_TOP_K`、`DENSE_TOP_K`、`RERANK_MODEL` 等参数，升级后会回到默认值，请**升级前先备份旧 `config.py`**，升级后手动补回。
-
-如果你之前安装过 v1.0.0 之后任一旧版本，本节将手把手带你升级到最新版。整个升级过程由 `scripts/upgrade.sh` 在 macOS 上自动完成，并依赖 `rsync`，**无需手动处理索引文件或数据迁移**。
-
-### 9.1 准备工作：下载新版
-
-**关键：不要把新版直接解压或复制到旧项目目录里覆盖。** 先下载到一个**全新的独立目录**：
+拉取最新代码后，按需重装依赖、刷新 launchd wrapper，并在索引格式变更时全量重建：
 
 ```bash
-# 方式一：通过 git clone（推荐）
-git clone https://github.com/jiggersong/everythingsearch.git ~/Downloads/EverythingSearch-new
-
-# 方式二：从 GitHub Releases 下载 zip 包后解压
-# 假设解压到了 ~/Downloads/EverythingSearch-new
-```
-
-> **为什么不能直接覆盖？** 旧项目目录里有很多运行时产生的文件（虚拟环境、索引数据、日志、配置文件），直接覆盖可能造成文件冲突或配置丢失。升级脚本会安全地把新版代码同步过去。
-
-### 9.2 执行升级
-
-进入新下载的目录，运行升级脚本：
-
-```bash
-cd ~/Downloads/EverythingSearch-new
-./scripts/upgrade.sh
-```
-
-脚本默认去检测 `~/Documents/code/EverythingSearch`（安装脚本的默认路径）。如果你的旧项目在其他位置，在命令行上指定：
-
-```bash
-./scripts/upgrade.sh /你的/旧项目/路径
-```
-
-### 9.3 升级过程详解
-
-运行脚本后，你会看到以下交互步骤，每一步都会清楚说明在做什么：
-
-**① 版本检测** — 脚本自动检查旧项目中的文件特征（目录结构、索引格式、配置文件），判定你是从哪个版本升级上来的，并告诉你对应哪种升级场景。
-
-**② 确认部署位置** — 如果检测到旧项目路径与当前目录不同，脚本会询问「是否将新版本部署到旧安装路径并升级」。选 **Y**（默认）即可。
-
-**③ 数据备份** — 脚本自动将以下关键文件备份到项目目录下的 `upgrade_backups_时间戳/`：
-- `config.py`（你的个人配置）
-- `embedding_cache.db`（嵌入向量缓存，可节省 API 费用）
-- `chroma_db/`（旧向量数据库）
-
-这是关键文件备份，不是完整项目快照；不会包含虚拟环境、日志、稀疏索引、扫描缓存或所有 `data/*.db` 文件。
-
-**④ 配置合并** — 脚本从新版配置模板生成新的 `config.py`，并且只自动迁移旧 `config.py` 中的这些指定字段：`MY_API_KEY`、`TARGET_DIR`、`ENABLE_MWEB`、`MWEB_LIBRARY_PATH`、`MWEB_DIR`。其它自定义项，例如 `INDEX_ONLY_KEYWORDS`、`HOST`、`PORT`、`NL_INTENT_MODEL`、`SEARCH_INTERPRET_MODEL`，会回到模板默认值；如果仍需保留，请升级后对照旧 `config.py` 手动补回。
-
-**⑤ 数据清理** — 根据检测到的旧版本，清理不兼容的文件：
-
-| 场景 | 旧版本范围 | 清理操作 |
-|------|-----------|----------|
-| **A** | v1.0.x – v1.1.x | 删除旧 ChromaDB（元数据格式不兼容 v2.x），清除扫描缓存和索引状态 |
-| **B** | v1.2.0 – v1.5.2 | 删除旧 ChromaDB（无 FTS5 稀疏索引），清除扫描缓存和索引状态，保留 embedding 缓存 |
-| **C** | v2.0.0+ | 索引格式兼容，仅清除扫描缓存和索引状态（让下次增量索引自动重建） |
-
-完整性检查阶段会确保 `data/` 目录存在。若场景 C 升级成功但向量检索异常，可删除 `data/chroma_db/` 后执行一次全量重建。
-
-**⑥ 更新依赖与后台服务** — 自动运行 `venv/bin/python -m pip install -r requirements/base.txt`（如果现有虚拟环境是 `.venv`，则使用 `.venv/bin/python`），随后运行 `install_launchd_wrappers.sh` 重新生成 launchd 的 wrapper 脚本和 plist 文件，指向当前项目路径。如果之前注册了开机自启和定时索引，无需重新配置。
-
-**⑦ 重建索引** — 场景 A / B 会提示「是否现在开始重建索引」。**推荐选 Y**，脚本会用 `caffeinate -i` 防止系统休眠，在前台跑完全量重建。根据文件数量，可能需要 10 分钟到数小时。场景 C 则只需运行增量索引验证即可。
-
-> **与 §6 全量重建的区别**：升级脚本在场景 B 等路径下会**保留** `embedding_cache.db` 以节省迁移成本；日常执行 `make index-full` 在 **v2.5.0 目标行为**下**默认删除** embedding 与 scan 缓存（真·全量）。升级后若需最干净索引，请用默认 `index-full`；若需省 Token，显式加 `--keep-caches`。
-
-### 9.4 升级后验证
-
-全量索引重建完成后，验证一切正常：
-
-```bash
-cd ~/Documents/code/EverythingSearch   # 或你的项目路径
-
-# 1. 运行增量索引，确认无报错
-./venv/bin/python -m everythingsearch.incremental
-
-# 2. 执行一次搜索，看能否返回结果
-# CLI 需 DashScope Key；短词可能被意图层拒绝，请用完整问句自检：
-./venv/bin/python -m everythingsearch search "帮我找一下架构相关的文档" --json
-# 或仅验证 HTTP 检索（无需 NL）：
-curl -sG "http://127.0.0.1:8000/api/search" --data-urlencode "q=架构" --data-urlencode "limit=3"
-
-# 3. 确保 Web 服务正常运行
+git pull
+./venv/bin/pip install -r requirements/base.txt
+./scripts/install_launchd_wrappers.sh   # 脚本或 plist 有变更时
+make index-full                         # 索引 schema 变更或检索异常时
 ./scripts/run_app.sh restart
 ```
 
-在浏览器打开 [http://127.0.0.1:8000](http://127.0.0.1:8000)，搜索几个你印象中的文件，确认结果正常。
-
-### 9.5 清理旧文件
-
-升级成功并确认一切正常后，可以清理不需要的文件：
-
-- **新下载的目录**（如 `~/Downloads/EverythingSearch-new`）：已完成使命，**可以直接删除**
-- **旧项目目录**（如 `~/Documents/code/EverythingSearch`）：**已经变成最新版了**，继续用它即可
-- **备份目录**（项目目录下的 `upgrade_backups_时间戳/`）：确认升级无误后可以删除，释放磁盘空间
-
-### 9.6 常见问题
-
-**Q: 我已经不小心把新版覆盖到旧目录了怎么办？**
-
-没关系。直接在新旧混合的目录里运行 `./scripts/upgrade.sh` 即可。脚本会检测到这是原地升级，跳过代码同步步骤，直接执行配置合并和数据清理。
-
-**Q: 升级失败了怎么恢复？**
-
-备份目录 `upgrade_backups_时间戳/` 里是升级前的关键文件备份，不是完整项目快照。按需将其中的 `config.py` 和数据目录复制回项目根目录，然后配合旧版代码重新部署；必要时重新构建索引。
-
-**Q: 我有多个 TARGET_DIR，配置能正确迁移吗？**
-
-可以。脚本通过 Python 解析旧 `config.py`，无论 `TARGET_DIR` 是单个路径字符串还是路径列表，都能正确提取并写入新配置。
+更新前请备份 `config.py`。合并代码不会自动迁移自定义配置项；若 `requirements/base.txt` 或索引管线有 breaking change，以 `docs/CHANGELOG.md` 为准。
 
 ## 版权
 

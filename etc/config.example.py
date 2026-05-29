@@ -1,6 +1,6 @@
 # config.example.py - 配置模板
 # 复制到仓库根目录: cp etc/config.example.py config.py
-# 配置优先级：环境变量 > 仓库根目录 config.py > 代码内安全默认值
+# 运行时配置以仓库根目录 config.py 为准；未配置项使用代码内安全默认值
 
 import os
 
@@ -14,10 +14,8 @@ _ROOT = _project_root()
 
 # ================= 必填配置 =================
 
-# 1. 阿里通义千问 API Key
-# 推荐仅设置环境变量 DASHSCOPE_API_KEY，把这里留空；
-# 若你必须把 Key 写入本地 config.py，可直接填写真实值，例如 "sk-xxxx"。
-MY_API_KEY = os.environ.get("DASHSCOPE_API_KEY", "").strip()
+# 1. 阿里通义千问 API Key（仅保存在本机 config.py，勿提交到仓库）
+MY_API_KEY = ""
 
 # 2. 你想要索引的根目录（支持单个路径或路径列表）
 # 单目录: TARGET_DIR = "/path/to/your/documents"
@@ -44,9 +42,10 @@ MWEB_DIR = ""
 # HOST = "127.0.0.1"
 # PORT = 8000
 
-# 说明：
-# - DASHSCOPE_API_KEY 环境变量优先于 MY_API_KEY；TARGET_DIR 环境变量优先于 config.py
-# - 若 DASHSCOPE_API_KEY / TARGET_DIR 缺失，搜索或索引会显式报错，这是预期行为
+# 说明：若 MY_API_KEY 或 TARGET_DIR 未配置，搜索或索引会显式报错，这是预期行为
+
+# [可选] 开发模式热重载（仅 `run_app.sh dev` 会读取）
+# DEBUG = False
 
 # [可选] Skills / HTTP 客户端：/api/file/read 单次读取正文的最大字节数（防止一次读入过大文件）
 API_MAX_READ_BYTES = 524288

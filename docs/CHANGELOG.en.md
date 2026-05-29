@@ -2,6 +2,20 @@
 
 [English](CHANGELOG.en.md) | [中文](CHANGELOG.md)
 
+## [2.5.4] - 2026-05-29
+
+### Maintenance
+
+- **Dropped version upgrade and legacy runtime paths**: removed `scripts/upgrade.sh` and its tests; install/manual docs now describe update via pull, reinstall deps, and `make index-full`.
+- **Single config source**: business settings load only from `config.py` and code defaults (`MY_API_KEY`, `TARGET_DIR`, `PORT`, etc.); gunicorn and `run_app.sh` bind/display port from `config.py`; `apply_sdk_environment()` still injects the key for the DashScope SDK only.
+- **Stricter index/retrieval contract**: embedding cache is blob-only; dense metadata is required with no `source`/`type` fallbacks; incremental deletes use `file_id` only; aggregation groups by `file_id` only.
+- **Module cleanup**: removed `everythingsearch/indexer.py` and `build_index()`; scan/document build lives in `everythingsearch/indexing/document_scan.py`.
+- **Scripts**: launchd metadata is required only for daemon subcommands; `dev` works without `.launchd_instance`; removed `NL_SEARCH_ENABLED` and `EMBEDDING_TEXT_TYPE_ENABLED`.
+
+### Documentation
+
+- README, INSTALL, PROJECT_MANUAL, OpenClaw, and the Agent Skill aligned with the new contract; `SEARCH_TOP_K` documented as the NL search default limit cap.
+
 ## [2.5.3] - 2026-05-29
 
 ### Fixes

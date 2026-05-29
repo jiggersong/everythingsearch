@@ -354,11 +354,8 @@ def main():
     logger.info("启动 EverythingSearch 服务...")
     health_service.warmup_vectordb()
 
-    debug = os.environ.get("FLASK_DEBUG", "false").lower() in ("true", "1", "yes")
     settings = get_settings()
-    port = settings.port
-    host = settings.host
-    app.run(host=host, port=port, debug=debug)
+    app.run(host=settings.host, port=settings.port, debug=settings.debug)
 
 
 if __name__ == "__main__":

@@ -130,7 +130,7 @@ EverythingSearch/
 │   ├── infra/                # 基础设施层（含强类型配置 settings.py、embed_rate_limiter）
 │   ├── request_validation.py # 入参验证协议 (提供统一400失败规范)
 │   ├── file_access.py        # 强一致文件存取控制边界与防路径穿越
-│   ├── indexer.py            # 全量索引构建入口
+│   ├── indexing/document_scan.py  # 文件扫描与 Document 构建
 │   ├── incremental.py        # 增量索引入口
 │   ├── embedding_cache.py    # Embedding 缓存层
 │   ├── logging_config.py     # 标准化日志配置
@@ -152,7 +152,6 @@ EverythingSearch/
 ├── logs/                     # 运行与定时任务日志
 ├── scripts/                  # 运维与辅助脚本
 │   ├── install.sh
-│   ├── upgrade.sh             # 自动版本升级脚本 (v1.0+ → 最新版)
 │   ├── install_launchd_wrappers.sh
 │   ├── run_app.sh
 │   ├── run_tests.sh
@@ -189,7 +188,7 @@ scripts/（安装或 `./scripts/install_launchd_wrappers.sh` 后，多实例相�
 | ------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | **路径**        | `skills/everythingsearch-local/SKILL.md`                                                                                |
 | **内容**        | 如何通过本机 HTTP API 完成混合搜索、自然语言意图搜索、结果智能解读、读文本/下载文件等；与 `docs/NL_SEARCH_AND_WEB_UI.md` 及下文 §4.6 路由一致                         |
-| **基址**        | 默认 `http://127.0.0.1:8000`；若服务监听其他地址或端口，可在运行 Agent 的环境中设置 `EVERYTHINGSEARCH_BASE`（须含 scheme，例如 `http://127.0.0.1:8000`） |
+| **基址**        | 默认 `http://127.0.0.1:8000`（由 `config.py` 的 `HOST` / `PORT` 决定）；非本机访问时由用户提供完整 URL |
 | **DashScope** | NL 与解读接口需服务端配置有效 API Key；无 Key 时 Skill 中建议退化为 `GET /api/search`，见 Skill 正文「前置条件」                                        |
 
 
@@ -213,13 +212,13 @@ python -m everythingsearch search "<查询词>" --json
 
 ### 4.1 config.py — 配置中心
 
-本地兼容配置主要集中在此文件；运行时加载顺序为：环境变量 > 仓库根目录 `config.py` > 代码内安全默认值。
+运行时配置以仓库根目录 `config.py` 为准；未配置项使用 `everythingsearch/infra/settings.py` 中的安全默认值。
 
 
 | 配置项                            | 默认值                                           | 说明                                        |
 | ------------------------------ | --------------------------------------------- | ----------------------------------------- |
-| `MY_API_KEY`                   | 空字符串或 `DASHSCOPE_API_KEY` 环境变量                | 阿里通义千问 DashScope API Key 的兼容字段；推荐优先使用环境变量 |
-| `TARGET_DIR`                   | `/path/to/documents` 或 `["/path1", "/path2"]` | 要索引的根目录（支持单目录或列表；环境变量 `TARGET_DIR` 优先）    |
+| `MY_API_KEY`                   | 空字符串                                       | 阿里通义千问 DashScope API Key（仅保存在本机 config.py） |
+| `TARGET_DIR`                   | `/path/to/documents` 或 `["/path1", "/path2"]` | 要索引的根目录（支持单目录或列表）                         |
 | `ENABLE_MWEB`                  | `False/True`                                  | 是否一键无缝开启内置 MWeb 笔记整合；开启后系统即接管内部自动导出       |
 | `MWEB_LIBRARY_PATH`            | 默认系统库路径                                       | 指定 MWeb 主数据库目录（备用选项）                      |
 | `MWEB_DIR`                     | `data/mweb_export`                            | 闭环自动管理的 MWeb 笔记存落地区                       |
@@ -248,7 +247,7 @@ python -m everythingsearch search "<查询词>" --json
 | `CHUNK_SIZE`                   | `500`                                         | 文本切分块大小（字符）                               |
 | `CHUNK_OVERLAP`                | `80`                                          | 切分块重叠长度                                   |
 | `MAX_CONTENT_LENGTH`           | `20000`                                       | 单文件最大索引字符数                                |
-| `SEARCH_TOP_K`                 | `250`                                         | 向量检索候选 chunk 数量（旧版 indexer 兼容保留字段；新管道使用 `DENSE_TOP_K`） |
+| `SEARCH_TOP_K`                 | `250`                                         | 自然语言搜索默认返回条数上限（`nl_search_service` 在意图未指定 `limit` 且 UI 未传 `limit` 时使用；与检索管道内部的 `DENSE_TOP_K` 无关） |
 | `SCORE_THRESHOLD`              | `0.35`                                        | cosine 距离阈值（越小越严格；与 `settings.py` 默认一致）   |
 | `POSITION_WEIGHTS`             | `filename:0.60, heading:0.80, content:1.00`   | 位置加权因子                                    |
 | `KEYWORD_FREQ_BONUS`           | `0.03`                                        | 关键词频次加分系数                                 |
@@ -289,12 +288,12 @@ python -m everythingsearch search "<查询词>" --json
 
 **关于 API Key 的推荐做法**：
 
-- 推荐使用环境变量 `DASHSCOPE_API_KEY`，避免把真实 Key 写进 `config.py`（尤其是在打包/传给其他电脑时）
+- 在 `config.py` 填写 `MY_API_KEY`；勿将真实 Key 提交到仓库或打包分发
 - 配置模板不再提供可运行的伪默认值；留空表示“未配置”，不是异常
 - 若 Key 未配置：**增量/全量索引无法生成向量**（嵌入依赖 DashScope）。**Web 首页搜索**会退化为仅请求 `GET /api/search`，不调用意图识别与智能解读；若此时向量库亦不可用，搜索仍可能报错，需先完成索引并保证 Key 有效。
 - 已移除历史上的 `NL_SEARCH_ENABLED` 开关：只要配置了 Key，Web 侧默认走智能检索流程（意图 + 混合检索 + 可选解读）。详见 `docs/NL_SEARCH_AND_WEB_UI.md`。
 
-### 4.2 indexer.py — 索引构建
+### 4.2 document_scan.py — 文件扫描与 Document 构建
 
 **文件扫描**：递归遍历 `TARGET_DIR`（支持多目录列表），按后缀分类：
 
@@ -339,7 +338,7 @@ SearchRequest
 3. **Dense Retriever (稠密检索)**：在 ChromaDB 中做向量近邻检索（仅存最小 metadata）；命中后通过 `chunk_store` 从 `sparse_index.db` 回填正文与 `title_path`。
 4. **Candidate Fusion (RRF)**：通过 Reciprocal Rank Fusion 对稀疏和稠密的返回结果进行无监督融合。
 5. **Reranker (二阶段精排)**：若配置了 `RERANK_MODEL`（如 DashScope 的 qwen3-rerank），将 RRF 产生的 Top N 候选发送给重排模型做深度语义打分。当重排模型超时或降级时，默认回退使用 RRF 分数。
-6. **File Aggregator**：替代以往「单文件取最高分 chunk」的粗暴做法，基于所有候选 chunk 按文件粒度重新累加打分，提供更准确的排序。归并键优先使用物理路径 `filepath`，兼容旧版 Chroma 中 `file_id` 不一致的数据，避免同一文件重复出现在结果列表。
+6. **File Aggregator**：替代以往「单文件取最高分 chunk」的粗暴做法，基于所有候选 chunk 按 `file_id` 重新累加打分，提供更准确的排序。
 
 ### 4.4 embedding_cache.py — 向量缓存与限速
 
@@ -428,7 +427,7 @@ make index-full                                 # 同上
 
 `app.py` 专注于路由绑定层的职责：它将核心业务逻辑委派到 `services/` 子层统一处理；同时借由 `request_validation.py` 将所有异常、不合法 JSON 请求类型过滤出标准的 HTTP `400 Bad Request`，从而防止脏数据向下渗透带来 500 系统级崩溃。底层的 `file_access.py` 补充了一道屏障：无论外部调用如何发起文件读取、下载或者打开操作，均强制鉴权对应路径不能跨越索引边界（禁止路径穿越探测）。
 
-**对外集成（Agent）**：面向 Cursor 等工具的 HTTP 调用示例、`EVERYTHINGSEARCH_BASE` 与无 Key 时的回退说明，见 §3.1 中的 `skills/everythingsearch-local/SKILL.md`。
+**对外集成（Agent）**：面向 Cursor 等工具的 HTTP 调用示例与无 Key 时的回退说明，见 §3.1 中的 `skills/everythingsearch-local/SKILL.md`。
 
 Flask 应用路由（核心）：
 
@@ -586,38 +585,9 @@ caffeinate -i nohup ./venv/bin/python -m everythingsearch.incremental --full >> 
 
 Token 数量是本地估算值：按最终送入 embedding 的文本长度估算，并与当前 `CachedEmbeddings` 的 600 字符截断口径保持一致。它用于帮助判断任务规模，不等同于模型服务商账单。
 
-### 版本升级（从旧版本迁移）
+### 更新已有安装
 
-如果已安装过 v1.0.0 之后任一旧版本，可通过自动升级脚本将数据和配置迁移到当前最新版。
-
-**操作流程：**
-
-1. **下载新版到新目录**（不要把新版直接覆盖旧目录）：
-
-   ```bash
-   git clone https://github.com/jiggersong/everythingsearch.git ~/Downloads/EverythingSearch-new
-   cd ~/Downloads/EverythingSearch-new
-   ```
-
-2. **运行升级脚本**（默认检测 `~/Documents/code/EverythingSearch`）：
-
-   ```bash
-   ./scripts/upgrade.sh [旧项目路径]
-   ```
-
-3. **按脚本提示确认**每一步操作：版本检测 → 代码同步 → 数据备份 → 配置合并 → 数据清理 → 依赖更新 → launchd 更新 → 索引重建。
-
-4. **清理**：升级完成后，新下载的目录（如 `~/Downloads/EverythingSearch-new`）可直接删除；旧项目目录已更新为最新版，继续使用即可。
-
-升级场景说明：
-
-| 场景 | 旧版本 | 操作概要 |
-|------|--------|----------|
-| A | v1.0.x–v1.1.x | 删除旧索引，全量重建 |
-| B | v1.2.0–v1.5.2 | 删除不兼容 ChromaDB，保留 embedding 缓存，全量重建 |
-| C | v2.0.0+ | 格式兼容，仅合并配置新字段，建议运行增量索引验证 |
-
-详见 [INSTALL.md](INSTALL.md) 第九节。
+`git pull` 后按需 `pip install -r requirements/base.txt`、`./scripts/install_launchd_wrappers.sh`，索引异常时 `make index-full`。详见 [INSTALL.md](INSTALL.md) 第九节。
 
 ### 查看增量索引日志
 
@@ -739,7 +709,7 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jigger.everythingsea
 
 ### 添加新文件类型支持
 
-在 `config.py` 中将新后缀添加到对应的集合（`TEXT_EXTENSIONS`、`OFFICE_EXTENSIONS` 或 `MEDIA_EXTENSIONS`），如需特殊解析器，在 `indexer.py` 的 `_read_file_worker` 中添加分支。
+在 `config.py` 中将新后缀添加到对应的集合（`TEXT_EXTENSIONS`、`OFFICE_EXTENSIONS` 或 `MEDIA_EXTENSIONS`），如需特殊解析器，在 `everythingsearch/indexing/document_scan.py` 的 `_read_file_worker` 中添加分支。
 
 ---
 
