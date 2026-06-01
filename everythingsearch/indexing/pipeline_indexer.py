@@ -21,10 +21,12 @@ from everythingsearch.indexing.file_scanner import (
     scan_mweb_notes_for_index,
 )
 from everythingsearch.indexing.chunk_conversion import docs_to_indexed_chunks, generate_file_id
-from everythingsearch.indexing.full_rebuild_environment import print_full_rebuild_summary
+from everythingsearch.indexing.full_rebuild_environment import (
+    cleanup_rebuild_artifacts,
+    print_full_rebuild_summary,
+)
 from everythingsearch.indexing.full_rebuild_plan import FullRebuildPlan
 from everythingsearch.indexing.rebuild_checkpoint import (
-    PHASE_COMPLETED,
     PHASE_DENSE,
     PHASE_SPARSE,
     RebuildCheckpointStore,
@@ -270,8 +272,7 @@ def build_pipeline_index(
         chunks_to_write = _scan_and_convert_chunks(settings, reporter)
         if not chunks_to_write:
             logger.warning("未扫描到任何文档内容，将创建空索引。")
-            checkpoint_store.clear()
-            staging_store.clear()
+            cleanup_rebuild_artifacts(settings)
             SQLiteSparseIndexWriter(settings)
             reset_dense_collection(settings.persist_directory)
             reporter.finish()
@@ -382,15 +383,7 @@ def build_pipeline_index(
         reporter.finish()
         return False
 
-    checkpoint_store.save(
-        run_id=run_id,
-        config_fingerprint=config_fingerprint,
-        phase=PHASE_COMPLETED,
-        sparse_batch_end=total_chunks,
-        dense_batch_end=total_chunks,
-        total_chunks=total_chunks,
-    )
-    staging_store.clear()
+    cleanup_rebuild_artifacts(settings)
 
     duration = time.time() - total_start
     logger.info("Pipeline 索引全量构建完成！总耗时: %.2f 秒", duration)

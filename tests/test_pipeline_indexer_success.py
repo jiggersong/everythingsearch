@@ -119,6 +119,8 @@ def test_build_pipeline_index_succeeds_when_scan_is_empty(monkeypatch, tmp_path)
     assert ok is True
     assert reset_called["value"] is True
     assert Path(settings.sparse_index_path).exists()
+    assert not Path(settings.rebuild_staging_path).exists()
+    assert not Path(settings.rebuild_checkpoint_path).exists()
 
 
 def test_build_pipeline_index_resume_fails_when_staging_empty(monkeypatch, tmp_path):

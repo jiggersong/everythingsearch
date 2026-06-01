@@ -2,6 +2,12 @@
 
 [English](CHANGELOG.en.md) | [中文](CHANGELOG.md)
 
+## [2.5.5] - 2026-06-01
+
+### 维护
+
+- **全量重建临时文件自动清理**：成功完成后物理删除 `rebuild_staging.db` 与 `rebuild_checkpoint.db`（含 `-wal`/`-shm`），释放磁盘空间；失败或中断时仍保留以供 `--resume` 续跑。
+
 ## [2.5.4] - 2026-05-29
 
 ### 维护

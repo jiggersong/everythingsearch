@@ -2,6 +2,12 @@
 
 [English](CHANGELOG.en.md) | [中文](CHANGELOG.md)
 
+## [2.5.5] - 2026-06-01
+
+### Maintenance
+
+- **Auto-cleanup after successful full rebuild**: physically removes `rebuild_staging.db` and `rebuild_checkpoint.db` (including `-wal`/`-shm`) to reclaim disk space; failed or interrupted runs keep them for `--resume`.
+
 ## [2.5.4] - 2026-05-29
 
 ### Maintenance

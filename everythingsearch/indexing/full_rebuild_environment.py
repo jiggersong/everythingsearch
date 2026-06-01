@@ -80,10 +80,40 @@ def print_full_rebuild_summary(settings: Settings, plan: FullRebuildPlan) -> Non
         logger.info("提示: 保留缓存请加 --keep-embedding-cache / --keep-scan-cache / --keep-caches")
 
 
-def _unlink_sqlite(path: Path) -> None:
+def _unlink_sqlite(path: Path) -> int:
+    """删除 SQLite 主库及 -wal/-shm 附属文件，返回释放的字节数。"""
+    freed = 0
     for candidate in _sqlite_sidecars(path):
         if candidate.is_file():
+            try:
+                freed += candidate.stat().st_size
+            except OSError:
+                pass
             candidate.unlink()
+    return freed
+
+
+def cleanup_rebuild_artifacts(settings: Settings) -> int:
+    """全量重建成功后删除 staging / checkpoint 临时库，释放磁盘空间。"""
+    paths = [
+        Path(settings.rebuild_staging_path),
+        Path(settings.rebuild_checkpoint_path),
+    ]
+    freed = 0
+    removed: list[str] = []
+    for path in paths:
+        nbytes = _unlink_sqlite(path)
+        if nbytes > 0:
+            freed += nbytes
+            removed.append(str(path))
+    if removed:
+        logger.info(
+            "已清理全量重建临时文件 (%d 个): %s，释放约 %.2f MB",
+            len(removed),
+            ", ".join(removed),
+            freed / (1024 * 1024),
+        )
+    return freed
 
 
 def _remove_path(path: Path) -> None:
