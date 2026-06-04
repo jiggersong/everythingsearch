@@ -44,9 +44,6 @@ MWEB_DIR = ""
 
 # 说明：若 MY_API_KEY 或 TARGET_DIR 未配置，搜索或索引会显式报错，这是预期行为
 
-# [可选] 开发模式热重载（仅 `run_app.sh dev` 会读取）
-# DEBUG = False
-
 # [可选] Skills / HTTP 客户端：/api/file/read 单次读取正文的最大字节数（防止一次读入过大文件）
 API_MAX_READ_BYTES = 524288
 

@@ -97,7 +97,7 @@ EverythingSearch/
 ├── etc/
 │   └── config.example.py     # 配置模板
 ├── everythingsearch/         # Python 应用包
-│   ├── __main__.py           # CLI 命令分发与应用入口
+│   ├── __main__.py           # CLI 命令分发（search 子命令）
 │   ├── cli.py                # 纯净输出终端命令行接口 (Agent 外脑支持)
 │   ├── app.py                # Flask Web 路由入口及总线组装
 │   ├── services/             # 业务服务层（抽象解耦核心逻辑）
@@ -391,7 +391,7 @@ SearchRequest
 - **增量索引**：写入完成后调用 `restart_search_service` 加载新 sparse/chroma
 - 若服务未通过 launchd 管理且无法自动拉起，会提示手动 `./scripts/run_app.sh start`
 
-> 全量/增量现已自动处理搜索服务停启；手动 `make app-stop` 仍可选，用于避免重建期间用户访问（重建期间服务会短暂不可用）。
+> 全量/增量现已自动处理搜索服务停启；手动 `make stop` 仍可选，用于避免重建期间用户访问（重建期间服务会短暂不可用）。
 
 ### 4.5 `everythingsearch.incremental` — 增量索引
 
@@ -447,7 +447,6 @@ Flask 应用路由（核心）：
 
 **运行方式**：
 
-- 开发：`./venv/bin/python -m everythingsearch.app` 或 `./scripts/run_app.sh dev`
 - 常驻：`./scripts/run_app.sh start`（gunicorn 后台）
 - 管理：`./scripts/run_app.sh stop|restart|status`
 
@@ -514,10 +513,10 @@ cd /path/to/EverythingSearch
 make help          # 列出全部 make 目标及一行说明
 make index         # 增量索引
 make index-full    # 全量重建索引
-make app           # 前台启动应用
-make app-status    # 查看常驻服务状态
-make app-restart   # 重启常驻服务
-make app-stop      # 停止常驻服务
+make start             # 启动常驻服务
+make status            # 查看常驻服务状态
+make restart           # 重启常驻服务
+make stop              # 停止常驻服务
 ```
 
 `make help` 与仓库根目录 `Makefile` 中的 `help` 目标同步维护；忘记子命令时可优先执行 `make help`。
@@ -526,11 +525,6 @@ make app-stop      # 停止常驻服务
 
 ```bash
 cd /path/to/EverythingSearch
-# 方式一：开发模式（前台）
-./venv/bin/python -m everythingsearch.app
-# 或 ./scripts/run_app.sh dev
-
-# 方式二：常驻模式（后台，支持重启）
 ./scripts/run_app.sh start
 ./scripts/run_app.sh status   # 查看状态
 ./scripts/run_app.sh restart  # 重启
@@ -551,7 +545,7 @@ cd /path/to/EverythingSearch
 
 **普通用户**：一条命令、干净环境，无需手动删 `data/` 下文件。
 
-1. （可选）禁用定时增量以免与全量抢锁：`make index-svc-disable`
+1. （可选）禁用定时增量以免与全量抢锁：`make index-disable`
 2. 将 `etc/config.example.py` 中「索引重建」相关项同步到 `config.py`（模型、维度、限速等）
 3. 执行（**默认删除** embedding cache、scan cache 及全部派生索引；**自动**暂停/恢复搜索服务）：
 
@@ -755,7 +749,6 @@ caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full
 
 # 6. 启动搜索服务
 ./scripts/run_app.sh start
-# 或开发模式: ./venv/bin/python -m everythingsearch.app
 # 浏览器打开 http://127.0.0.1:8000
 
 # 7.（可选）搜索服务开机自启

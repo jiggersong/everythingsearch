@@ -74,43 +74,6 @@ class TestLoggingConfig:
             logging.root.handlers = original_root_handlers
             logging.root.setLevel(original_root_level)
 
-    def test_cli_logging_can_attach_separate_file_after_flask_logging(self):
-        """Flask 和 CLI 日志配置应各自挂接 handler 到正确的 logger 上。"""
-        logger = logging.getLogger("everythingsearch")
-        original_es_handlers = list(logger.handlers)
-        original_es_level = logger.level
-        original_root_handlers = list(logging.root.handlers)
-        original_root_level = logging.root.level
-        try:
-            logger.handlers = []
-            logger.setLevel(logging.NOTSET)
-            logging.root.handlers = []
-            logging.root.setLevel(logging.WARNING)
-
-            logging_config.setup_flask_dev_daily_file_logging()
-            logging_config.setup_cli_logging()
-
-            # everythingsearch logger 上应有 Flask 的 app_dev.log
-            es_filenames = sorted(
-                Path(handler.baseFilename).name
-                for handler in logger.handlers
-                if getattr(handler, logging_config._MARK, False)
-            )
-            assert es_filenames == ["app_dev.log"]
-
-            # root logger 上应有 CLI 的 cli.log
-            root_filenames = sorted(
-                Path(handler.baseFilename).name
-                for handler in logging.root.handlers
-                if getattr(handler, logging_config._MARK, False)
-            )
-            assert root_filenames == ["cli.log"]
-        finally:
-            logger.handlers = original_es_handlers
-            logger.setLevel(original_es_level)
-            logging.root.handlers = original_root_handlers
-            logging.root.setLevel(original_root_level)
-
     def test_setup_cli_logging_incremental_daily_twice_single_incremental_handler(self):
         """增量入口的按日文件 handler 重复初始化时不应重复挂接。"""
         original_root_handlers = list(logging.root.handlers)

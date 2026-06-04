@@ -102,7 +102,7 @@ EverythingSearch/
 ├── etc/
 │   └── config.example.py     # Config template
 ├── everythingsearch/         # Python application package
-│   ├── __main__.py           # CLI command dispatcher and app entry point
+│   ├── __main__.py           # CLI command dispatcher (search subcommand)
 │   ├── cli.py                # Pure JSON terminal CLI (Agent brain support)
 │   ├── app.py                # Flask entry and app assembly
 │   ├── services/             # Business service layer (decoupled core logic)
@@ -396,7 +396,7 @@ On failure, `build_pipeline_index()` returns `False` and `incremental` exits wit
 - **Incremental**: calls `restart_search_service` after writes to load new sparse/chroma
 - If the service was not launchd-managed and cannot be restarted automatically, logs prompt manual `./scripts/run_app.sh start`
 
-> Full/incremental indexing now manages service stop/start automatically; optional `make app-stop` still reduces user traffic during long rebuilds (service is briefly unavailable while indexing runs).
+> Full/incremental indexing now manages service stop/start automatically; optional `make stop` still reduces user traffic during long rebuilds (service is briefly unavailable while indexing runs).
 
 ### 4.5 `everythingsearch.incremental` — Incremental indexing
 
@@ -452,7 +452,6 @@ Routes:
 
 **How to run**
 
-- Dev: `./venv/bin/python -m everythingsearch.app` or `./scripts/run_app.sh dev`  
 - Daemon: `./scripts/run_app.sh start` (gunicorn background)  
 - Control: `./scripts/run_app.sh stop|restart|status`
 
@@ -515,10 +514,10 @@ cd /path/to/EverythingSearch
 make help          # list all make targets with one-line descriptions
 make index         # incremental index
 make index-full    # full rebuild
-make app           # foreground app
-make app-status    # launchd service status
-make app-restart   # restart launchd service
-make app-stop      # stop launchd service
+make start             # start launchd service
+make status            # launchd service status
+make restart           # restart launchd service
+make stop              # stop launchd service
 ```
 
 Keep `make help` in sync with the root `Makefile` `help` target; run `make help` when you forget a subcommand.
@@ -527,11 +526,6 @@ Keep `make help` in sync with the root `Makefile` `help` target; run `make help`
 
 ```bash
 cd /path/to/EverythingSearch
-# Option A: dev (foreground)
-./venv/bin/python -m everythingsearch.app
-# or ./scripts/run_app.sh dev
-
-# Option B: daemon (background, restartable)
 ./scripts/run_app.sh start
 ./scripts/run_app.sh status
 ./scripts/run_app.sh restart
@@ -552,7 +546,7 @@ cd /path/to/EverythingSearch
 
 **Typical users**: one command, clean environment—no manual `data/` cleanup.
 
-1. (Optional) disable scheduled incremental to avoid lock contention: `make index-svc-disable`
+1. (Optional) disable scheduled incremental to avoid lock contention: `make index-disable`
 2. Sync the “index rebuild” block from `etc/config.example.py` into `config.py` (model, dimensions, rate limits, etc.)
 3. Run (**default wipes** embedding cache, scan cache, and all derived indexes; **auto** suspends/restores the search service):
 
@@ -746,7 +740,6 @@ caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full
 
 # 6. Start search service
 ./scripts/run_app.sh start
-# or dev: ./venv/bin/python -m everythingsearch.app
 # Browser: http://127.0.0.1:8000
 
 # 7. (Optional) Auto-start at login

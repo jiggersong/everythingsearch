@@ -1,6 +1,6 @@
-.PHONY: help test index index-full app app-start app-stop app-restart app-status app-enable app-disable
+.PHONY: help test index index-full start stop restart status enable disable
 .PHONY: mweb-export search
-.PHONY: index-svc-enable index-svc-disable index-svc-status index-svc-interval
+.PHONY: index-enable index-disable index-status index-interval
 
 PYTHON := ./venv/bin/python
 PYTEST := ./venv/bin/pytest
@@ -24,18 +24,18 @@ help:
 	@echo "  ──  常用命令  ──"
 	@echo "  make help              显示本说明"
 	@echo ""
-	@echo "  make app-start         启动应用服务"
-	@echo "  make app-stop          停止应用服务"
-	@echo "  make app-restart       重启应用服务"
-	@echo "  make app-status        查看应用服务状态"
-	@echo "  make app-enable        开启开机自启（登录后自动启动）"
-	@echo "  make app-disable       关闭开机自启"
+	@echo "  make start             启动应用服务"
+	@echo "  make stop              停止应用服务"
+	@echo "  make restart           重启应用服务"
+	@echo "  make status            查看应用服务状态"
+	@echo "  make enable            开启开机自启（登录后自动启动）"
+	@echo "  make disable           关闭开机自启"
 	@echo ""
 	@echo "  ── 定时索引管理 ──"
-	@echo "  make index-svc-enable  开启定时增量索引"
-	@echo "  make index-svc-disable 关闭定时增量索引"
-	@echo "  make index-svc-status  查看定时索引状态"
-	@echo "  make index-svc-interval MIN=30  修改索引间隔（分钟，默认 30）"
+	@echo "  make index-enable      开启定时增量索引"
+	@echo "  make index-disable     关闭定时增量索引"
+	@echo "  make index-status      查看定时索引状态"
+	@echo "  make index-interval MIN=30  修改索引间隔（分钟，默认 30）"
 	@echo ""
 	@echo "  ── 高阶操作（非开发人员不建议使用） ──"
 	@echo "  make index             增量索引（everythingsearch.incremental）"
@@ -43,7 +43,6 @@ help:
 	@echo "                         高阶: make index-full ARGS=\"--keep-caches\""
 	@echo "                               make index-full ARGS=\"--resume --keep-caches\""
 	@echo "  make mweb-export       仅单独执行 MWeb 笔记强制全量扫描导出"
-	@echo "  make app               前台启动 Web 应用（开发模式）"
 	@echo "  make search            执行命令行检索 (例如: make search q='关键字')"
 	@echo "  make test              运行全量测试（固定使用 venv）"
 	@echo ""
@@ -69,28 +68,24 @@ index-full:
 mweb-export:
 	$(PYTHON) scripts/mweb_export.py
 
-# Run app in foreground (development mode)
-app:
-	$(PYTHON) -m everythingsearch.app
-
 # Stop launchd-managed app service
-app-stop:
+stop:
 	./scripts/run_app.sh stop
 
 # Restart launchd-managed app service
-app-restart:
+restart:
 	./scripts/run_app.sh restart
 
 # Show launchd-managed app service status
-app-status:
+status:
 	./scripts/run_app.sh status
 
 # Start app service (launchd)
-app-start:
+start:
 	./scripts/run_app.sh start
 
 # Enable auto-start at login (bootstrap plist)
-app-enable:
+enable:
 	@if [ ! -f "$(APP_PLIST)" ]; then \
 		echo "❌ 未找到 plist: $(APP_PLIST)"; \
 		echo "   请先运行 ./scripts/install.sh 安装后台服务"; \
@@ -101,14 +96,14 @@ app-enable:
 	@echo "✅ 开机自启已开启（登录后自动启动应用服务）"
 
 # Disable auto-start at login (bootout + disable)
-app-disable:
+disable:
 	launchctl bootout $(BOOTSTRAP_DOMAIN)/$(APP_LABEL) 2>/dev/null || true
 	@echo "✅ 开机自启已关闭（应用服务不会在登录时自动启动）"
 
 # ── 定时索引管理 ──
 
 # Enable scheduled incremental indexing
-index-svc-enable:
+index-enable:
 	@if [ ! -f "$(INDEX_PLIST)" ]; then \
 		echo "❌ 未找到 plist: $(INDEX_PLIST)"; \
 		echo "   请先运行 ./scripts/install.sh 安装定时索引服务"; \
@@ -121,12 +116,12 @@ index-svc-enable:
 		| awk '{printf "   间隔: %d 分钟\n", $$1/60}'
 
 # Disable scheduled incremental indexing
-index-svc-disable:
+index-disable:
 	launchctl bootout $(BOOTSTRAP_DOMAIN)/$(INDEX_LABEL) 2>/dev/null || true
 	@echo "✅ 定时增量索引已关闭"
 
 # Show index service status
-index-svc-status:
+index-status:
 	@if launchctl print $(BOOTSTRAP_DOMAIN)/$(INDEX_LABEL) >/dev/null 2>&1; then \
 		echo "✅ 定时增量索引已加载"; \
 		launchctl print $(BOOTSTRAP_DOMAIN)/$(INDEX_LABEL) 2>/dev/null \
@@ -136,7 +131,7 @@ index-svc-status:
 	fi
 
 # Change index interval (minutes, default 30)
-index-svc-interval:
+index-interval:
 	@if [ ! -f "$(INDEX_PLIST)" ]; then \
 		echo "❌ 未找到 plist: $(INDEX_PLIST)"; \
 		echo "   请先运行 ./scripts/install.sh 安装定时索引服务"; \
@@ -145,7 +140,7 @@ index-svc-interval:
 	@MIN=$(MIN); \
 	if [ -z "$$MIN" ]; then MIN=30; fi; \
 	if ! echo "$$MIN" | grep -qE '^[0-9]+$$'; then \
-		echo "❌ 间隔必须为正整数（分钟），例如: make index-svc-interval MIN=60"; \
+		echo "❌ 间隔必须为正整数（分钟），例如: make index-interval MIN=60"; \
 		exit 1; \
 	fi; \
 	SEC=$$((MIN * 60)); \

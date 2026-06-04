@@ -77,25 +77,6 @@ def attach_timed_rotating_file(
     logger.setLevel(level)
 
 
-def setup_flask_dev_daily_file_logging() -> None:
-    """Flask 开发入口（python -m everythingsearch.app）写入 logs/，按天滚动。
-
-    终端与日志文件完全隔离，所有日志仅写入文件。
-    """
-    attach_timed_rotating_file("everythingsearch", "app_dev.log", level=logging.INFO)
-    attach_timed_rotating_file(
-        "werkzeug",
-        "werkzeug_dev.log",
-        level=logging.INFO,
-        fmt="%(message)s",
-    )
-
-    # 防止未配置的 root logger 通过 lastResort 向 stderr 泄漏 WARNING+
-    root = logging.getLogger()
-    if not root.handlers:
-        root.addHandler(logging.NullHandler())
-
-
 def setup_cli_logging(
     *,
     level: int = logging.INFO,

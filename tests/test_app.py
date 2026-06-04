@@ -595,32 +595,6 @@ class TestWarmup:
 
         assert called["count"] >= 1
 
-    def test_main_warmup_uses_health_service(self, monkeypatch):
-        """main 应通过 health_service 触发预热。"""
-        from everythingsearch import app as app_module
-
-        called = {"warmup": 0, "run": 0, "logging": 0}
-
-        def fake_warmup():
-            called["warmup"] += 1
-            return True
-
-        def fake_run(*args, **kwargs):
-            called["run"] += 1
-
-        def fake_setup_logging():
-            called["logging"] += 1
-
-        monkeypatch.setattr("everythingsearch.app.health_service.warmup_vectordb", fake_warmup)
-        monkeypatch.setattr("everythingsearch.app.setup_flask_dev_daily_file_logging", fake_setup_logging)
-        monkeypatch.setattr(app_module.app, "run", fake_run)
-
-        app_module.main()
-
-        assert called["logging"] == 1
-        assert called["warmup"] == 1
-        assert called["run"] == 1
-
 
 class TestMWebConfig:
     """测试 MWeb 配置处理"""

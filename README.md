@@ -55,7 +55,7 @@ make index
 
 # 6) Verify (install_launchd_wrappers bootstraps jobs via launchctl)
 ./scripts/run_app.sh status
-make index-svc-status
+make index-status
 curl -s http://127.0.0.1:8000/api/health
 ```
 
@@ -73,7 +73,7 @@ This matches the optional launchd steps in `install.sh` but requires **no** term
 Optional: change the index interval (default 30 minutes):
 
 ```bash
-make index-svc-interval MIN=30
+make index-interval MIN=30
 ```
 
 ### Agent guardrails
@@ -103,16 +103,16 @@ make index-full
 make help          # list all make targets with short descriptions
 make index         # incremental indexing with scale/token estimates and 30s progress
 make index-full    # full reindex with scale/token estimates and 30s progress
-make app           # run app in the foreground
+make start               # start the background search service
 ```
 
 **Full rebuild (v2.5.0 target)**: `make index-full` performs a **true full rebuild** by default—rebuilds sparse/chroma and **deletes** embedding and scan caches for a clean match with your config; a pre-run summary lists files to remove or keep. Use `--keep-embedding-cache`, `--keep-scan-cache`, or `--keep-caches` to save tokens or parse time; use `--resume --keep-caches` after interruption (resume always keeps both caches). See [INSTALL.en.md](docs/INSTALL.en.md) §6.
 
 ```bash
 make search q="keyword"  # CLI search (JSON output)
-make app-status    # status of launchd-managed app
-make app-restart   # restart launchd-managed app
-make app-stop      # stop launchd-managed app
+make status            # status of launchd-managed app
+make restart           # restart launchd-managed app
+make stop              # stop launchd-managed app
 
 # Or use the CLI module directly
 python -m everythingsearch search "your query here" --json

@@ -590,22 +590,6 @@ check_port() {
     fi
 }
 
-create_launcher() {
-    cd "$INSTALL_DIR"
-    cat > start.sh << LAUNCHER_EOF
-#!/usr/bin/env bash
-DIR="\$(cd "\$(dirname "\$0")" && pwd)"
-cd "\$DIR"
-echo "EverythingSearch 启动中..."
-echo "浏览器访问: http://127.0.0.1:${APP_PORT}"
-echo "按 Ctrl+C 停止服务"
-./venv/bin/python -m everythingsearch.app
-LAUNCHER_EOF
-    chmod +x start.sh
-    log_ok "快捷启动脚本已创建: ${INSTALL_DIR}/start.sh"
-    log_ok "服务管理脚本: ./scripts/run_app.sh {start|stop|restart|status|dev}"
-}
-
 print_summary() {
     echo ""
     echo -e "${GREEN}╔══════════════════════════════════════════════╗${NC}"
@@ -617,8 +601,7 @@ print_summary() {
     echo -e "  ${CYAN}安装指引${NC}: $INSTALL_DIR/docs/INSTALL.md"
     echo ""
     echo -e "  ${YELLOW}启动服务${NC}:"
-    echo "    开发: cd $INSTALL_DIR && ./start.sh"
-    echo "    常驻: cd $INSTALL_DIR && ./scripts/run_app.sh start"
+    echo "    cd $INSTALL_DIR && ./scripts/run_app.sh start"
     echo "    管理: ./scripts/run_app.sh {stop|restart|status}"
     echo ""
     echo -e "  ${YELLOW}浏览器打开${NC}: http://127.0.0.1:${APP_PORT}"
@@ -646,7 +629,6 @@ setup_venv
 setup_directories
 configure_project
 check_port
-create_launcher
 setup_launchd
 show_full_disk_access_guide
 build_first_index

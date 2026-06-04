@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 #
 # EverythingSearch 搜索服务管理脚本
-# 支持: start | stop | restart | status | dev
+# 支持: start | stop | restart | status
 #
-# 常驻模式 (start/stop/restart): 通过 launchd 管理 gunicorn，开机自启 + 自动拉起
-# 开发模式 (dev): 前台运行，Flask 自带服务器，支持热重载
+# 通过 launchd 管理 gunicorn，开机自启 + 自动拉起
 #
 
 set -e
@@ -173,16 +172,8 @@ case "${1:-}" in
         _require_launchd_metadata
         _status
         ;;
-    dev)
-        echo "开发模式 (前台运行，Ctrl+C 停止)..."
-        echo "   端口: $SERVICE_PORT (config.py)"
-        if [[ -n "${LABEL_APP:-}" ]]; then
-            echo "⚠️  请先确保常驻服务已停止: $0 stop"
-        fi
-        "$PYTHON" -c "import config; config.DEBUG = True; from everythingsearch.app import main; main()"
-        ;;
     *)
-        echo "用法: $0 {start|stop|restart|pause|resume|status|dev}"
+        echo "用法: $0 {start|stop|restart|pause|resume|status}"
         echo ""
         echo "  start   - 启动服务（通过 launchd）"
         echo "  stop    - 停止服务（launchd KeepAlive 会自动重启）"
@@ -190,7 +181,6 @@ case "${1:-}" in
         echo "  pause   - 暂停服务（bootout，全量重建期间使用）"
         echo "  resume  - 恢复服务（bootstrap）"
         echo "  status  - 查看状态"
-        echo "  dev     - 开发模式（前台，支持热重载；仅需 config.py，无需 launchd）"
         exit 1
         ;;
 esac

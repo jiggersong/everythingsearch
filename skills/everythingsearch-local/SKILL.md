@@ -22,7 +22,7 @@ description: >-
 
 ## 前置条件
 
-1. 用户已在本机运行搜索服务（例如 `./scripts/run_app.sh start` 或 `./venv/bin/python -m everythingsearch.app`）。
+1. 用户已在本机运行搜索服务（例如 `./scripts/run_app.sh start`）。
 2. 若连接失败，提示用户先启动服务并确认 `config.py` 中的 `HOST` / `PORT`（多实例安装可查看 `scripts/.launchd_instance` 中的 `APP_PORT`）。
 3. 非本机访问时由用户提供完整服务基址（须带 scheme，例如 `http://192.168.1.10:8000`）。
 

@@ -89,16 +89,6 @@ caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full
 
 ### 3.4 Start the Search Service
 
-Foreground development mode:
-
-```bash
-./venv/bin/python -m everythingsearch.app
-# or
-./scripts/run_app.sh dev
-```
-
-Background service mode:
-
 ```bash
 ./scripts/run_app.sh start
 ./scripts/run_app.sh status
@@ -218,10 +208,10 @@ make help
 make index
 make index-full
 make search q="your search query"
-make app
-make app-status
-make app-restart
-make app-stop
+make start
+make status
+make restart
+make stop
 ```
 
 `make index` and `make index-full` print file scale, estimated index chunks, estimated tokens, and estimated duration before work starts. During long runs they log progress every 30 seconds and finish with a short summary. Token counts are local estimates; actual billing is determined by the model provider.
@@ -244,8 +234,8 @@ Incremental indexing first reports added, modified, and deleted file counts plus
 
 **Recommended flow (typical users)**
 
-1. (Optional) disable scheduled incremental to avoid lock contention: `make index-svc-disable`
-2. Run a clean rebuild (**by default** auto-suspends and restores the search service; no manual `app-stop` / `restart`):
+1. (Optional) disable scheduled incremental to avoid lock contention: `make index-disable`
+2. Run a clean rebuild (**by default** auto-suspends and restores the search service; no manual `stop` / `restart`):
 
 ```bash
 caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full

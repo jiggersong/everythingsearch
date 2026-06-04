@@ -26,7 +26,7 @@ PY=./venv/bin/python
 ./scripts/install_launchd_wrappers.sh
 
 ./scripts/run_app.sh status
-make index-svc-status
+make index-status
 curl -s http://127.0.0.1:8000/api/health
 ```
 

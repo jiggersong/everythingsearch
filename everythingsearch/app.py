@@ -10,7 +10,6 @@ from .file_access import (
     UnauthorizedFileError,
 )
 from .infra.settings import get_settings
-from .logging_config import setup_flask_dev_daily_file_logging
 from .request_validation import (
     RequestValidationError,
     map_validation_error,
@@ -347,16 +346,3 @@ def api_file_download():
         mimetype=result.mimetype,
     )
 
-
-def main():
-    """CLI entry: python -m everythingsearch.app"""
-    setup_flask_dev_daily_file_logging()
-    logger.info("启动 EverythingSearch 服务...")
-    health_service.warmup_vectordb()
-
-    settings = get_settings()
-    app.run(host=settings.host, port=settings.port, debug=settings.debug)
-
-
-if __name__ == "__main__":
-    main()

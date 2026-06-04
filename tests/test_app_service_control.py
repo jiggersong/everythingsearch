@@ -46,7 +46,7 @@ def test_list_search_service_pids_filters_by_port_and_process_name(monkeypatch):
         )(),
     )
     commands = {
-        100: "/path/venv/bin/python -m everythingsearch.app",
+        100: "gunicorn -c gunicorn.conf.py everythingsearch.app:app",
         200: "/usr/bin/python other_app.py",
     }
     monkeypatch.setattr(asc, "_process_command", lambda pid: commands.get(pid, ""))

@@ -89,16 +89,6 @@ caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full
 
 ### 3.4 启动搜索服务
 
-前台开发模式：
-
-```bash
-./venv/bin/python -m everythingsearch.app
-# 或
-./scripts/run_app.sh dev
-```
-
-后台服务模式：
-
 ```bash
 ./scripts/run_app.sh start
 ./scripts/run_app.sh status
@@ -219,10 +209,10 @@ make help
 make index
 make index-full
 make search q="你要搜索的词"
-make app
-make app-status
-make app-restart
-make app-stop
+make start
+make status
+make restart
+make stop
 ```
 
 `make index` 与 `make index-full` 会在开始前输出文件规模、预计索引块、预计 Token 和预计耗时；运行中每 30 秒输出一次进度，完成后输出总结报告。Token 为本地估算值，实际账单以模型服务商为准。
@@ -245,8 +235,8 @@ make app-stop
 
 **推荐流程（普通用户）**
 
-1. （可选）禁用定时增量以免与全量抢锁：`make index-svc-disable`
-2. 执行全量（**默认**会自动暂停并在结束后恢复搜索服务；无需手动 `app-stop` / `restart`）：
+1. （可选）禁用定时增量以免与全量抢锁：`make index-disable`
+2. 执行全量（**默认**会自动暂停并在结束后恢复搜索服务；无需手动 `stop` / `restart`）：
 
 ```bash
 caffeinate -i ./venv/bin/python -m everythingsearch.incremental --full

@@ -39,7 +39,6 @@ class Settings:
     mweb_export_script: str | None
     host: str
     port: int
-    debug: bool
     api_max_read_bytes: int
     index_state_db: str
     scan_cache_path: str
@@ -200,7 +199,6 @@ def _load_settings() -> Settings:
         mweb_export_script=mweb_export_script if enable_mweb else None,
         host=_load_str(local_config, "HOST", default="127.0.0.1"),
         port=_load_int(local_config, "PORT", default=8000),
-        debug=_load_bool(local_config, "DEBUG", default=False),
         api_max_read_bytes=_load_int(local_config, "API_MAX_READ_BYTES", default=524288,
         ),
         index_state_db=_load_required_path(local_config, "INDEX_STATE_DB",
