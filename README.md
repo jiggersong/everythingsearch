@@ -109,7 +109,6 @@ make start               # start the background search service
 **Full rebuild (v2.5.0 target)**: `make index-full` performs a **true full rebuild** by default—rebuilds sparse/chroma and **deletes** embedding and scan caches for a clean match with your config; a pre-run summary lists files to remove or keep. Use `--keep-embedding-cache`, `--keep-scan-cache`, or `--keep-caches` to save tokens or parse time; use `--resume --keep-caches` after interruption (resume always keeps both caches). See [INSTALL.en.md](docs/INSTALL.en.md) §6.
 
 ```bash
-make search q="keyword"  # CLI search (JSON output)
 make status            # status of launchd-managed app
 make restart           # restart launchd-managed app
 make stop              # stop launchd-managed app

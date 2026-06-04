@@ -109,7 +109,6 @@ make start               # 启动常驻搜索服务
 **全量重建（v2.5.0 目标行为）**：`make index-full` 默认**真·全量**——重建 sparse/chroma 并**删除** embedding 与 scan 缓存，保证与当前配置一致；启动前会打印将删除/保留的文件摘要。需省 Token 或解析时间时使用 `--keep-embedding-cache`、`--keep-scan-cache` 或 `--keep-caches`；中断续跑用 `--resume --keep-caches`（续跑强制保留两类缓存）。详见 [INSTALL.md](docs/INSTALL.md) 第六节。
 
 ```bash
-make search q="关键词"  # CLI 搜索 (JSON 输出)
 make status            # 查看 launchd 托管服务状态
 make restart           # 重启常驻服务
 make stop              # 停止常驻服务

@@ -207,7 +207,7 @@ open "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
 make help
 make index
 make index-full
-make search q="your search query"
+python -m everythingsearch search "your search query" --json
 make start
 make status
 make restart
