@@ -37,7 +37,7 @@ help:
 	@echo "  make index-svc-status  查看定时索引状态"
 	@echo "  make index-svc-interval MIN=30  修改索引间隔（分钟，默认 30）"
 	@echo ""
-	@echo "  ── 高阶数据管理 ──"
+	@echo "  ── 高阶操作（不建议使用） ──"
 	@echo "  make index             增量索引（everythingsearch.incremental）"
 	@echo "  make index-full        全量重建索引（--full）"
 	@echo "                         高阶: make index-full ARGS=\"--keep-caches\""
