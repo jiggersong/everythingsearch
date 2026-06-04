@@ -84,7 +84,7 @@ make index-interval MIN=30
 - If `TARGET_DIR` is empty or wrong, indexing will succeed with little/no useful data. Validate it first.
 - **Do not skip** `./scripts/install_launchd_wrappers.sh`; otherwise `./scripts/run_app.sh start` fails (launchd not registered) and file changes will not be indexed automatically.
 - For a typical `TARGET_DIR` under `~/Documents`, **Full Disk Access is usually not required**; only enable MWeb (`ENABLE_MWEB`) or index paths under `~/Library` should you follow [INSTALL.en.md](docs/INSTALL.en.md) and have the **user** grant Full Disk Access manually (Agents cannot click System Settings).
-- If your Agent can call localhost HTTP, integrate via [`skills/everythingsearch-local/SKILL.md`](skills/everythingsearch-local/SKILL.md) and prefer `GET /api/search` for deterministic retrieval.
+- If your Agent can call localhost HTTP, integrate via [skills/everythingsearch-local/SKILL.md](skills/everythingsearch-local/SKILL.md) and prefer `GET /api/search` for deterministic retrieval.
 
 ## Updating an existing install
 
@@ -134,15 +134,15 @@ After installation, complete these three system-level steps so the service can r
 ## Documentation Matrix
 
 
-| No  | Document                                                                           | Role                              | Best For                                                    | What You Get                                                                                                                  |
-| --- | ---------------------------------------------------------------------------------- | --------------------------------- | ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| 1   | `[INSTALL.en.md](docs/INSTALL.en.md)`                                              | Installation and operations guide | First install, new machine, environment setup               | Prerequisites, API key, install flow, launchd wrappers, day-to-day commands                                                   |
-| 2   | `[PROJECT_MANUAL.en.md](docs/PROJECT_MANUAL.en.md)`                                | Technical reference manual        | Development, maintenance, customization                     | Architecture, module boundaries, config matrix, indexing/search flow, tuning and deployment                                   |
-| 3   | `[UI_DESIGN_APPLE_GOOGLE.en.md](docs/UI_DESIGN_APPLE_GOOGLE.en.md)`                | Web UI design notes               | UI upkeep, HIG/Material alignment, accessibility and motion | Design principles and tokens; bilingual pages linked at the top                                                               |
-| 4   | `[NL_SEARCH_AND_WEB_UI.en.md](docs/NL_SEARCH_AND_WEB_UI.en.md)`                    | NL search behavior notes          | Smart search integration, default fallback, API checks      | Intent route, interpretation route, `exact_focus`, rate limits, behavior without a key                                        |
-| 5   | `[SEARCH_ACCURACY_TECHNICAL_DESIGN.en.md](docs/SEARCH_ACCURACY_TECHNICAL_DESIGN.en.md)` | Accuracy technical design          | Reviewing the next search architecture rebuild              | FTS5, vector recall, RRF, remote rerank, file aggregation, benchmark plan, and implementation order                          |
-| 6   | `[OPENCLAW_INTEGRATION.md](docs/OPENCLAW_INTEGRATION.md)`                          | Agent integration guide           | Giving OpenClaw local search powers                         | Foolproof system prompt configuration, test commands, easy for beginners                                                      |
-| 7   | `[skills/everythingsearch-local/SKILL.md](skills/everythingsearch-local/SKILL.md)` | Agent Skill (open source)         | Cursor / Claude Code integration with the local HTTP API    | Example calls for search and interpretation routes, base URL from `config.py`, safety and fallbacks; pairs with the manual §3.1 |
+| No  | Document                                                                                | Role                              | Best For                                                    | What You Get                                                                                                                    |
+| --- | --------------------------------------------------------------------------------------- | --------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `[INSTALL.en.md](docs/INSTALL.en.md)`                                                   | Installation and operations guide | First install, new machine, environment setup               | Prerequisites, API key, install flow, launchd wrappers, day-to-day commands                                                     |
+| 2   | `[PROJECT_MANUAL.en.md](docs/PROJECT_MANUAL.en.md)`                                     | Technical reference manual        | Development, maintenance, customization                     | Architecture, module boundaries, config matrix, indexing/search flow, tuning and deployment                                     |
+| 3   | `[UI_DESIGN_APPLE_GOOGLE.en.md](docs/UI_DESIGN_APPLE_GOOGLE.en.md)`                     | Web UI design notes               | UI upkeep, HIG/Material alignment, accessibility and motion | Design principles and tokens; bilingual pages linked at the top                                                                 |
+| 4   | `[NL_SEARCH_AND_WEB_UI.en.md](docs/NL_SEARCH_AND_WEB_UI.en.md)`                         | NL search behavior notes          | Smart search integration, default fallback, API checks      | Intent route, interpretation route, `exact_focus`, rate limits, behavior without a key                                          |
+| 5   | `[SEARCH_ACCURACY_TECHNICAL_DESIGN.en.md](docs/SEARCH_ACCURACY_TECHNICAL_DESIGN.en.md)` | Accuracy technical design         | Reviewing the next search architecture rebuild              | FTS5, vector recall, RRF, remote rerank, file aggregation, benchmark plan, and implementation order                             |
+| 6   | `[OPENCLAW_INTEGRATION.md](docs/OPENCLAW_INTEGRATION.md)`                               | Agent integration guide           | Giving OpenClaw local search powers                         | Foolproof system prompt configuration, test commands, easy for beginners                                                        |
+| 7   | `[skills/everythingsearch-local/SKILL.md](skills/everythingsearch-local/SKILL.md)`      | Agent Skill (open source)         | Cursor / Claude Code integration with the local HTTP API    | Example calls for search and interpretation routes, base URL from `config.py`, safety and fallbacks; pairs with the manual §3.1 |
 
 
 ## Agent Skill (open source)
@@ -154,14 +154,14 @@ After installation, complete these three system-level steps so the service can r
 `[PROJECT_MANUAL.en.md](docs/PROJECT_MANUAL.en.md)` is the project's core technical reference manual. It covers:
 
 
-| Area             | Highlights                                                                            |
-| ---------------- | ------------------------------------------------------------------------------------- |
-| Foundations      | Project goals, core capabilities, overall architecture                                |
-| System design    | Architecture diagram, stack, repository layout                                        |
-| Module internals | Responsibilities of `app`, `retrieval.pipeline`, `indexer`, `incremental`, `embedding_cache`      |
-| Runtime behavior | Configuration matrix, indexing/search lifecycle, HTTP API surface, Agent Skill (§3.1) |
-| Evolution        | Publishable entry point for the accuracy-first search redesign                        |
-| Operations       | launchd service model, common commands, tuning, fresh-deployment checklist            |
+| Area             | Highlights                                                                                   |
+| ---------------- | -------------------------------------------------------------------------------------------- |
+| Foundations      | Project goals, core capabilities, overall architecture                                       |
+| System design    | Architecture diagram, stack, repository layout                                               |
+| Module internals | Responsibilities of `app`, `retrieval.pipeline`, `indexer`, `incremental`, `embedding_cache` |
+| Runtime behavior | Configuration matrix, indexing/search lifecycle, HTTP API surface, Agent Skill (§3.1)        |
+| Evolution        | Publishable entry point for the accuracy-first search redesign                               |
+| Operations       | launchd service model, common commands, tuning, fresh-deployment checklist                   |
 
 
 Use the language links at the top of this page to switch to Chinese.

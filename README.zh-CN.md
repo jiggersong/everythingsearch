@@ -84,7 +84,7 @@ make index-interval MIN=30
 - `TARGET_DIR` 配错会导致索引看似成功但无有效数据，写入前先确认目录存在。
 - **不要跳过** `./scripts/install_launchd_wrappers.sh`；否则 `./scripts/run_app.sh start` 会因未注册 launchd 而失败，且磁盘变更不会自动增量索引。
 - **`TARGET_DIR` 为 `~/Documents` 等常规目录时**，一般**不必**配置「完全磁盘访问」；仅在启用 MWeb（`ENABLE_MWEB`）或索引 `~/Library` 等受保护路径时，才需按 [INSTALL.md](docs/INSTALL.md) 引导用户到系统设置中手动授权（Agent 无法代点）。
-- 如果 Agent 能访问本机 HTTP，请优先按 [`skills/everythingsearch-local/SKILL.md`](skills/everythingsearch-local/SKILL.md) 接入，并优先使用 `GET /api/search` 做稳定检索。
+- 如果 Agent 能访问本机 HTTP，请优先按 [skills/everythingsearch-local/SKILL.md](skills/everythingsearch-local/SKILL.md) 接入，并优先使用 `GET /api/search` 做稳定检索。
 
 ## 更新已有安装
 
@@ -134,18 +134,18 @@ python -m everythingsearch search "你要搜的东西" --json
 ## 文档矩阵
 
 
-| 序号  | 文档                                                                               | 角色              | 适用场景                                  | 可获得信息                                                   |
-| --- | -------------------------------------------------------------------------------- | --------------- | ------------------------------------- | ------------------------------------------------------- |
-| 1   | [INSTALL.md](docs/INSTALL.md)                                                    | 安装与运维指南         | 首次安装、换新机、环境初始化                        | 前置条件、API Key、安装流程、launchd 包装脚本、日常命令                     |
-| 2   | [PROJECT_MANUAL.md](docs/PROJECT_MANUAL.md)                                      | 技术参考手册          | 开发、维护、二次改造                            | 架构、模块边界、配置矩阵、索引/搜索流程、调优与部署                              |
-| 3   | [UI_DESIGN_APPLE_GOOGLE.md](docs/UI_DESIGN_APPLE_GOOGLE.md)                      | Web UI 设计说明     | 界面维护、HIG/Material 对齐、无障碍与动效           | 设计原则与设计令牌；中英文页顶互链                                       |
-| 4   | [NL_SEARCH_AND_WEB_UI.md](docs/NL_SEARCH_AND_WEB_UI.md)                          | NL 搜索行为说明       | 智能搜索联调、默认回退、接口核对                      | 意图接口、解读接口、`exact_focus`、限流、无 Key 时的行为                   |
-| 5   | [SEARCH_ACCURACY_TECHNICAL_DESIGN.md](docs/SEARCH_ACCURACY_TECHNICAL_DESIGN.md)  | 准确率技术设计       | 检索架构重建设计评审                          | FTS5、向量召回、RRF、远端 Rerank、文件聚合、Benchmark 规划与实施路径        |
-| 6   | [OPENCLAW_INTEGRATION.zh-CN.md](docs/OPENCLAW_INTEGRATION.zh-CN.md)              | Agent 接入指南        | 给 OpenClaw 配置本地搜索能力                        | 傻瓜式的系统提示词配置向导、验证命令，一看就会                                |
-| 7   | [skills/everythingsearch-local/SKILL.md](skills/everythingsearch-local/SKILL.md) | Agent Skill（开源） | Cursor / Claude Code 等与本机 HTTP API 集成 | 各搜索与解读接口的调用示例、基址与 `config.py` 端口、安全与回退；与手册 §3.1 配套 |
+| 序号  | 文档                                                                               | 角色          | 适用场景                                  | 可获得信息                                              |
+| --- | -------------------------------------------------------------------------------- | ----------- | ------------------------------------- | -------------------------------------------------- |
+| 1   | [INSTALL.md](docs/INSTALL.md)                                                    | 安装与运维指南     | 首次安装、换新机、环境初始化                        | 前置条件、API Key、安装流程、launchd 包装脚本、日常命令                |
+| 2   | [PROJECT_MANUAL.md](docs/PROJECT_MANUAL.md)                                      | 技术参考手册      | 开发、维护、二次改造                            | 架构、模块边界、配置矩阵、索引/搜索流程、调优与部署                         |
+| 3   | [UI_DESIGN_APPLE_GOOGLE.md](docs/UI_DESIGN_APPLE_GOOGLE.md)                      | Web UI 设计说明 | 界面维护、HIG/Material 对齐、无障碍与动效           | 设计原则与设计令牌；中英文页顶互链                                  |
+| 4   | [NL_SEARCH_AND_WEB_UI.md](docs/NL_SEARCH_AND_WEB_UI.md)                          | NL 搜索行为说明   | 智能搜索联调、默认回退、接口核对                      | 意图接口、解读接口、`exact_focus`、限流、无 Key 时的行为              |
+| 5   | [SEARCH_ACCURACY_TECHNICAL_DESIGN.md](docs/SEARCH_ACCURACY_TECHNICAL_DESIGN.md)  | 准确率技术设计     | 检索架构重建设计评审                            | FTS5、向量召回、RRF、远端 Rerank、文件聚合、Benchmark 规划与实施路径     |
+| 6   | [OPENCLAW_INTEGRATION.zh-CN.md](docs/OPENCLAW_INTEGRATION.zh-CN.md)              | Agent 接入指南  | 给 OpenClaw 配置本地搜索能力                   | 傻瓜式的系统提示词配置向导、验证命令，一看就会                            |
+| 7   | [skills/everythingsearch-local/SKILL.md](skills/everythingsearch-local/SKILL.md) | Agent Skill | Cursor / Claude Code 等与本机 HTTP API 集成 | 各搜索与解读接口的调用示例、基址与 `config.py` 端口、安全与回退；与手册 §3.1 配套 |
 
 
-## Agent Skill（开源）
+## Agent Skill
 
 仓库根目录 `[skills/everythingsearch-local/SKILL.md](skills/everythingsearch-local/SKILL.md)` 描述如何让 **Cursor、Claude Code 等支持 Agent Skills 的工具** 调用本服务的 HTTP API（混合搜索、自然语言检索、智能解读、读文件等）。在 Cursor 中使用时，可将该目录复制或软链到工作区的 `.cursor/skills/everythingsearch-local/`。详细说明见 [PROJECT_MANUAL.md](docs/PROJECT_MANUAL.md) §3.1。
 
@@ -154,14 +154,14 @@ python -m everythingsearch search "你要搜的东西" --json
 [PROJECT_MANUAL.md](docs/PROJECT_MANUAL.md) 是项目的核心技术参考手册，主要覆盖：
 
 
-| 范围   | 要点                                                           |
-| ---- | ------------------------------------------------------------ |
-| 基础   | 项目目标、核心能力、总体架构                                               |
-| 系统设计 | 架构图、技术栈、仓库目录                                                 |
+| 范围   | 要点                                                                       |
+| ---- | ------------------------------------------------------------------------ |
+| 基础   | 项目目标、核心能力、总体架构                                                           |
+| 系统设计 | 架构图、技术栈、仓库目录                                                             |
 | 模块   | `app`、`retrieval.pipeline`、`indexer`、`incremental`、`embedding_cache` 等职责 |
-| 运行   | 配置矩阵、索引/搜索生命周期、HTTP API 能力、Agent Skill（§3.1）                 |
-| 演进   | 准确率优先检索改造的发布版设计入口                                            |
-| 运维   | launchd 模型、常用命令、调优、从零部署检查项                                   |
+| 运行   | 配置矩阵、索引/搜索生命周期、HTTP API 能力、Agent Skill（§3.1）                             |
+| 演进   | 准确率优先检索改造的发布版设计入口                                                        |
+| 运维   | launchd 模型、常用命令、调优、从零部署检查项                                               |
 
 
 可通过本页顶部链接切换至英文文档。
