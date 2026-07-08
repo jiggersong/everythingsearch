@@ -2,6 +2,14 @@
 
 [English](CHANGELOG.en.md) | [中文](CHANGELOG.md)
 
+## [2.5.6] - 2026-07-08
+
+### Search experience
+
+- **Searches are less likely to hang**: the full pipeline—including rerank—shares the `SEARCH_TIMEOUT_SECONDS` budget; on rerank timeout or failure, results fall back to fusion order instead of blocking the service.
+- **Exact keyword searches are faster**: precise-match queries skip the remote rerank step for snappier responses and no extra DashScope usage.
+- **Fewer false duplicate merges**: pre-rerank dedup now compares full content, so chunks in the same file with similar openings but different bodies are kept instead of collapsed.
+
 ## [2.5.5] - 2026-06-01
 
 ### Maintenance

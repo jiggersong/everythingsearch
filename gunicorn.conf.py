@@ -1,4 +1,5 @@
 # Gunicorn: bind/workers + 按天滚动日志（午夜切分，归档文件带日期后缀如 app.log.2025-03-23）。
+import logging
 import os
 
 _ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -81,3 +82,18 @@ logconfig_dict = {
         "handlers": ["console"],
     },
 }
+
+
+def worker_exit(server, worker):
+    """Worker 退出时释放搜索管线线程池，避免线程泄漏。
+
+    SearchPipeline 持有进程级共享的 ThreadPoolExecutor；在 sync worker 退出时
+    显式 shutdown，确保搜索线程随进程干净回收（Flask dev server 等非 Gunicorn
+    场景也会在解释器退出时随线程自然结束，无需此钩子）。
+    """
+    try:
+        from everythingsearch.app import search_service
+
+        search_service.shutdown_pipeline(wait=False)
+    except Exception:  # pragma: no cover - 关闭失败不应阻塞 worker 退出
+        logging.exception("worker_exit: failed to shut down search pipeline")

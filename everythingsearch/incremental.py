@@ -310,6 +310,10 @@ def _run_incremental_impl():
 
         def _read_one(fp: str):
             mtime, stype = disk_all[fp]
+            # 并行解析阶段故意不传 scan_cache_conn：
+            #   1) to_index 仅含新增/修改文件，其 mtime 已变，读缓存必然 miss；
+            #   2) SQLite 连接不宜跨 ThreadPoolExecutor worker 共享（线程不安全）；
+            #   3) 扫描缓存的写回集中在下方 Phase C 串行阶段（见 _save_cached_docs）。
             return build_documents_for_path_cached(fp, mtime, stype, conn=None)
 
         cpu = os.cpu_count() or 4

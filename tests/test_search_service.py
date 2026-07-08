@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import config
 import pytest
+from unittest.mock import MagicMock
 
 from everythingsearch.infra.settings import reset_settings_cache
 from everythingsearch.request_validation import SearchRequest
@@ -128,3 +129,14 @@ class TestSearchService:
                     exact_focus=False,
                 )
             )
+
+
+class TestSearchServiceShutdown:
+    """测试 SearchService.shutdown_pipeline 薄包装。"""
+
+    def test_shutdown_pipeline_delegates_to_pipeline(self):
+        """shutdown_pipeline 应原样委托到底层 _pipeline.shutdown。"""
+        svc = SearchService.__new__(SearchService)
+        svc._pipeline = MagicMock()
+        svc.shutdown_pipeline(wait=True)
+        svc._pipeline.shutdown.assert_called_once_with(wait=True)

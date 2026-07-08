@@ -1,4 +1,5 @@
 import argparse
+import atexit
 import json
 import logging
 import sys
@@ -52,6 +53,8 @@ def run_search(query: str, limit: int, source: str, json_output: bool):
         settings = get_settings()
         
         search_service = SearchService()
+        # 若进程长期驻留或被 Ctrl+C 终止，确保在退出时释放搜索管线线程池，避免线程泄漏。
+        atexit.register(search_service.shutdown_pipeline, wait=False)
         health_service = HealthService(search_service=search_service)
         nl_search_service = NLSearchService()
         

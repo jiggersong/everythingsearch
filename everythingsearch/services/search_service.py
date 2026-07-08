@@ -78,3 +78,11 @@ class SearchService:
             raise SearchExecutionBusyServiceError(str(exc)) from exc
 
         return SearchExecutionResult(query=query, results=results)
+
+    def shutdown_pipeline(self, wait: bool = False) -> None:
+        """释放底层搜索管线资源（线程池）。
+
+        薄包装，避免调用方直接访问私有 ``_pipeline``。应在进程/worker 退出时调用，
+        避免线程泄漏（如 Gunicorn ``worker_exit`` 钩子）。
+        """
+        self._pipeline.shutdown(wait=wait)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from typing import Protocol
 
@@ -32,17 +33,25 @@ class DashScopeReranker:
         if not candidates:
             return []
 
-        # BUG-012: 充分去重，避免 sparse 和 dense 召回的相同物理内容浪费 token
-        seen_keys = set()
+        # BUG-012: 充分去重，避免 sparse 和 dense 召回的相同物理内容浪费 token。
+        # 两层去重：
+        #   1) chunk_id 去重：去除融合后残留的同一 chunk 重复（防御性，通常融合层已按 chunk_id 合并）；
+        #   2) (file_id, content_sha256) 去重：去除「不同 chunk_id 但物理内容完全相同」的重复（真正节省 token 的目标）。
+        # 注意：不再使用「content 前 50 字符」作为去重键 —— 同一文件前 50 字相同但全文不同的 chunk
+        # （如代码文件、带相同表头的表格）会被误合并，丢失候选。
+        seen_chunk_ids: set[str] = set()
+        seen_content_keys: set[tuple[str, str]] = set()
         deduped_candidates = []
         for c in candidates:
-            # chunk_index 在 Metadata 里可能是 'chunk_idx'，如果在 model 里没直接映射好
-            # 使用 content 前 50 个字符 + file_id 也能很好的去重
-            content_prefix = (c.content or "")[:50]
-            key = (c.file_id, content_prefix)
-            if key not in seen_keys:
-                seen_keys.add(key)
-                deduped_candidates.append(c)
+            if c.chunk_id in seen_chunk_ids:
+                continue
+            content_hash = hashlib.sha256((c.content or "").encode("utf-8")).hexdigest()
+            content_key = (c.file_id, content_hash)
+            if content_key in seen_content_keys:
+                continue
+            seen_chunk_ids.add(c.chunk_id)
+            seen_content_keys.add(content_key)
+            deduped_candidates.append(c)
 
         # 截断输入候选集，避免超发
         candidates_to_rerank = deduped_candidates[:self._top_n]
