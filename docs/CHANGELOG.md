@@ -2,6 +2,20 @@
 
 [English](CHANGELOG.en.md) | [中文](CHANGELOG.md)
 
+## [2.5.7] - 2026-08-17
+
+### 模型与兼容
+
+- **默认生成模型切换**：意图识别与结果解读默认由即将下线的 `qwen-turbo` 改为 `qwen3.7-flash`（应对百炼 2026-10-10 下线计划）。
+- **多模态端点适配**：Qwen3.6/3.7 系列在 DashScope 原生 API 仅由多模态端点提供服务；NL / 解读（含流式）改为 `MultiModalConversation`，并统一处理分段 `[{"text": ...}]` 内容。
+- **关闭思考模式**：生成调用统一传 `enable_thinking=False`，保证 JSON Mode 稳定并降低延迟与费用。
+- **上游错误透传**：异常捕获改为 `DashScopeException`（当前 SDK 无 `DashScopeError`），避免业务异常被吞掉后只剩笼统 502。
+
+### 文档与测试
+
+- INSTALL / PROJECT_MANUAL（中英文）默认模型说明与代码对齐。
+- 新增 `tests/test_llm_call_contract.py`，锁定端点、消息格式、思考开关与错误详情透传。
+
 ## [2.5.6] - 2026-07-08
 
 ### 搜索体验

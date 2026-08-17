@@ -2,12 +2,11 @@ import json
 import logging
 from typing import Any, Dict, List, Generator
 import dashscope
-try:
-    from dashscope.common.error import DashScopeError
-except ImportError:
-    DashScopeError = Exception  # type: ignore[misc,assignment]
+from dashscope import MultiModalConversation
+from dashscope.common.error import DashScopeException
 
 from ..infra.settings import get_settings
+from .llm_content import to_parts, to_text
 
 logger = logging.getLogger(__name__)
 
@@ -60,8 +59,8 @@ class SearchInterpretService:
         user_prompt = f"<user_query>\n{user_text}\n</user_query>\n<search_results>\n{json.dumps(compact_results, ensure_ascii=False)}\n</search_results>"
         
         return [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
+            {"role": "system", "content": to_parts(system_prompt)},
+            {"role": "user", "content": to_parts(user_prompt)}
         ]
 
     def interpret(self, user_text: str, results: List[Dict[str, Any]]) -> str:
@@ -74,7 +73,7 @@ class SearchInterpretService:
         messages = self._build_messages(user_text, results)
         
         try:
-            response = dashscope.Generation.call(
+            response = MultiModalConversation.call(
                 model=settings.search_interpret_model,
                 messages=messages,
                 result_format='message',
@@ -82,18 +81,20 @@ class SearchInterpretService:
                 enable_thinking=False,
                 timeout=settings.interpret_timeout_sec
             )
-            if response.status_code != 200:
-                if response.status_code == 429:
-                    raise SearchInterpretServiceError("上游限流", "UPSTREAM_RATE_LIMIT", 503)
-                raise SearchInterpretServiceError("上游模型调用失败", "UPSTREAM_ERROR", 502, detail=response.message)
-            return response.output.choices[0].message.content or ""
-        except DashScopeError as e:
+        except DashScopeException as e:
             raise SearchInterpretServiceError("模型解读异常", "UPSTREAM_ERROR", 502, detail=str(e))
         except (TimeoutError, ConnectionError) as e:
             raise SearchInterpretServiceError("解读超时或网络异常", "UPSTREAM_TIMEOUT", 504, detail=str(e))
         except Exception as e:
             logger.exception("解读服务遇到未知异常")
             raise SearchInterpretServiceError("服务内部异常", "INTERNAL_ERROR", 500, detail=str(e))
+
+        if response.status_code != 200:
+            if response.status_code == 429:
+                raise SearchInterpretServiceError("上游限流", "UPSTREAM_RATE_LIMIT", 503)
+            raise SearchInterpretServiceError("上游模型调用失败", "UPSTREAM_ERROR", 502, detail=response.message)
+
+        return to_text(response.output.choices[0].message.content)
 
     def interpret_stream(self, user_text: str, results: List[Dict[str, Any]]) -> Generator[str, None, None]:
         if not results:
@@ -107,7 +108,7 @@ class SearchInterpretService:
         messages = self._build_messages(user_text, results)
         
         try:
-            responses = dashscope.Generation.call(
+            responses = MultiModalConversation.call(
                 model=settings.search_interpret_model,
                 messages=messages,
                 result_format='message',
@@ -122,13 +123,13 @@ class SearchInterpretService:
                     yield f"event: error\ndata: {json.dumps({'error': resp.message})}\n\n"
                     break
                 
-                delta = resp.output.choices[0].message.content if resp.output.choices else ""
+                delta = to_text(resp.output.choices[0].message.content) if resp.output.choices else ""
                 if delta:
                     yield "data: " + json.dumps({"delta": delta}, ensure_ascii=False) + "\n\n"
             
             yield "event: done\ndata: {}\n\n"
             
-        except DashScopeError as e:
+        except DashScopeException as e:
             logger.exception("Stream error (DashScope API)")
             yield f"event: error\ndata: {json.dumps({'error': '模型流式解读异常', 'detail': str(e)})}\n\n"
         except (TimeoutError, ConnectionError) as e:

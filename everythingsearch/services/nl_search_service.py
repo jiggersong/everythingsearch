@@ -5,12 +5,11 @@ from datetime import datetime
 from typing import Any, Dict, Optional, Literal
 from pydantic import BaseModel, ValidationError
 import dashscope
-try:
-    from dashscope.common.error import DashScopeError
-except ImportError:
-    DashScopeError = Exception  # type: ignore[misc,assignment]
+from dashscope import MultiModalConversation
+from dashscope.common.error import DashScopeException
 
 from ..infra.settings import get_settings
+from .llm_content import to_parts, to_text
 
 logger = logging.getLogger(__name__)
 
@@ -216,12 +215,12 @@ class NLSearchService:
         user_prompt = f"<user_query>\n{sanitized_message}\n</user_query>"
         
         messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
+            {"role": "system", "content": to_parts(system_prompt)},
+            {"role": "user", "content": to_parts(user_prompt)}
         ]
         
         try:
-            response = dashscope.Generation.call(
+            response = MultiModalConversation.call(
                 model=settings.nl_intent_model,
                 messages=messages,
                 result_format='message',
@@ -230,18 +229,18 @@ class NLSearchService:
                 enable_thinking=False,
                 timeout=settings.nl_timeout_sec
             )
-            
-            if response.status_code != 200:
-                if response.status_code == 429:
-                    raise NLSearchServiceError("上游模型 API 请求过于频繁", "UPSTREAM_RATE_LIMIT", 503)
-                raise NLSearchServiceError("上游模型调用失败", "UPSTREAM_ERROR", 502, detail=response.message)
-                
-            content = response.output.choices[0].message.content
-        except DashScopeError as e:
+        except DashScopeException as e:
             raise NLSearchServiceError("模型服务异常", "UPSTREAM_ERROR", 502, detail=str(e))
         except (TimeoutError, ConnectionError) as e:
             raise NLSearchServiceError("模型响应超时或网络异常", "UPSTREAM_TIMEOUT", 504, detail=str(e))
-            
+
+        if response.status_code != 200:
+            if response.status_code == 429:
+                raise NLSearchServiceError("上游模型 API 请求过于频繁", "UPSTREAM_RATE_LIMIT", 503)
+            raise NLSearchServiceError("上游模型调用失败", "UPSTREAM_ERROR", 502, detail=response.message)
+
+        content = to_text(response.output.choices[0].message.content)
+
         try:
             data = json.loads(content)
             intent_obj = NLSearchIntent(**data)

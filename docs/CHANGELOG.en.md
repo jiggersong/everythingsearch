@@ -2,6 +2,20 @@
 
 [English](CHANGELOG.en.md) | [中文](CHANGELOG.md)
 
+## [2.5.7] - 2026-08-17
+
+### Models & compatibility
+
+- **Default generative model**: intent recognition and result interpretation now default to `qwen3.7-flash` instead of the soon-to-retire `qwen-turbo` (DashScope sunset on 2026-10-10).
+- **Multimodal endpoint**: Qwen3.6/3.7 models are served only via DashScope’s multimodal native API; NL and interpretation (including streaming) now use `MultiModalConversation` and flatten `[{"text": ...}]` parts.
+- **Thinking disabled**: generation calls set `enable_thinking=False` for stable JSON Mode and lower latency/cost.
+- **Upstream error passthrough**: catch `DashScopeException` (current SDK has no `DashScopeError`) so business errors are not swallowed into a generic 502.
+
+### Docs & tests
+
+- INSTALL / PROJECT_MANUAL (EN & ZH) defaults aligned with code.
+- Added `tests/test_llm_call_contract.py` covering endpoint, message shape, thinking flag, and error detail passthrough.
+
 ## [2.5.6] - 2026-07-08
 
 ### Search experience
