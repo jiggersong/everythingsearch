@@ -276,8 +276,8 @@ python -m everythingsearch search "<查询词>" --json
 | `SPARSE_TOKENIZE_WORKERS`      | `0`                                           | 并行 jieba worker 数；0 表示自动（**v2.5.0 代码**）        |
 | `EMBED_MAX_CHARS`              | `600`                                         | 单条 Embedding 文本截断字符数                        |
 | `TRUST_PROXY`                  | `False`                                       | 是否信任反向代理传入的 `X-Forwarded-For`（限流取真实 IP）   |
-| `NL_INTENT_MODEL`              | `qwen-turbo`                                  | 自然语言意图识别模型（建议选用支持 JSON Mode 的模型）          |
-| `SEARCH_INTERPRET_MODEL`       | `qwen-turbo`                                  | 搜索结果「智能解读」所用模型                            |
+| `NL_INTENT_MODEL`              | `qwen3.7-flash`                               | 自然语言意图识别模型（需支持 JSON Mode；调用侧 `enable_thinking=False`） |
+| `SEARCH_INTERPRET_MODEL`       | `qwen3.7-flash`                               | 搜索结果「智能解读」所用模型（调用侧关闭思考模式）              |
 | `NL_TIMEOUT_SEC`               | `10`                                          | 意图识别上游超时（秒）                               |
 | `INTERPRET_TIMEOUT_SEC`        | `20`                                          | 解读上游超时（秒）                                 |
 | `NL_MAX_MESSAGE_CHARS`         | `1000`                                        | 单次意图输入最大字符数                               |
@@ -491,7 +491,7 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jigger.everythingsea
 
 - **阿里云 DashScope API**：需要有效的 API Key
   - **嵌入**：生成文本向量（配置模板默认 `text-embedding-v4`，1024 维），索引构建阶段调用
-  - **生成式**（可选）：当 Web 使用 `POST /api/search/nl` 或解读接口时，调用配置的 `NL_INTENT_MODEL` / `SEARCH_INTERPRET_MODEL`（默认 `qwen-turbo`），此时**搜索会话需要外网**
+  - **生成式**（可选）：当 Web 使用 `POST /api/search/nl` 或解读接口时，调用配置的 `NL_INTENT_MODEL` / `SEARCH_INTERPRET_MODEL`（默认 `qwen3.7-flash`），此时**搜索会话需要外网**
   - 获取方式：注册阿里云账号 → 开通 DashScope 服务 → 创建 API Key
   - 费用：极低（嵌入约 ¥0.0007 / 1000 tokens；意图/解读按所选模型计费）
 

@@ -281,8 +281,8 @@ Runtime settings come from repository-root `config.py`; unset values use safe de
 | `SPARSE_TOKENIZE_WORKERS`      | `0`                                            | Parallel jieba workers; 0 = auto (**v2.5.0 code**)                                                 |
 | `EMBED_MAX_CHARS`              | `600`                                          | Max characters per embedding text                                                                  |
 | `TRUST_PROXY`                  | `False`                                        | Trust `X-Forwarded-For` from a reverse proxy (for per-IP rate limiting)                             |
-| `NL_INTENT_MODEL`              | `qwen-turbo`                                   | NL intent model (prefer JSON Mode–capable models)                                                   |
-| `SEARCH_INTERPRET_MODEL`       | `qwen-turbo`                                   | Model for optional “smart interpretation” of hit lists                                              |
+| `NL_INTENT_MODEL`              | `qwen3.7-flash`                                | NL intent model (JSON Mode–capable; call site sets `enable_thinking=False`)                         |
+| `SEARCH_INTERPRET_MODEL`       | `qwen3.7-flash`                                | Model for optional “smart interpretation” of hit lists (thinking disabled at call site)             |
 | `NL_TIMEOUT_SEC`               | `10`                                           | Intent call timeout (seconds)                                                                       |
 | `INTERPRET_TIMEOUT_SEC`        | `20`                                           | Interpretation call timeout (seconds)                                                               |
 | `NL_MAX_MESSAGE_CHARS`         | `1000`                                         | Max characters per intent request                                                                   |
@@ -492,7 +492,7 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jigger.everythingsea
 
 - **Alibaba Cloud DashScope API**: requires a valid API key  
   - **Embeddings**: config template defaults to `text-embedding-v4` (1024-dim), used during indexing  
-  - **Generative** (optional): web `POST /api/search/nl` and interpretation endpoints use `NL_INTENT_MODEL` / `SEARCH_INTERPRET_MODEL` (default `qwen-turbo`); those calls need outbound network  
+  - **Generative** (optional): web `POST /api/search/nl` and interpretation endpoints use `NL_INTENT_MODEL` / `SEARCH_INTERPRET_MODEL` (default `qwen3.7-flash`); those calls need outbound network  
   - Sign up → enable DashScope → create an API key  
   - Cost is very low for embeddings (about ¥0.0007 / 1000 tokens); intent/interpretation billed per model
 

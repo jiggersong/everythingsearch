@@ -138,8 +138,8 @@ The full configuration matrix lives in [PROJECT_MANUAL.en.md](PROJECT_MANUAL.en.
 | `RERANK_MODEL` | `qwen3-rerank` | Precise ranking model (depends on DashScope, e.g., `qwen3-rerank`, `gte-rerank`) |
 | `CHUNK_SIZE` | `500` | Chunk size for indexing |
 | `MAX_CONTENT_LENGTH` | `20000` | Max indexed characters per file |
-| `NL_INTENT_MODEL` | `qwen-turbo` | Intent model for `POST /api/search/nl` |
-| `SEARCH_INTERPRET_MODEL` | `qwen-turbo` | Interpretation model |
+| `NL_INTENT_MODEL` | `qwen3.7-flash` | Intent model for `POST /api/search/nl` (JSON Mode; thinking disabled at call site) |
+| `SEARCH_INTERPRET_MODEL` | `qwen3.7-flash` | Interpretation model (thinking disabled at call site) |
 | `RATE_LIMIT_NL_PER_MIN` | `10` | Per-IP limit for NL search |
 | `RATE_LIMIT_INTERPRET_PER_MIN` | `10` | Per-IP limit for interpretation routes |
 | `TRUST_PROXY` | `False` | Trust `X-Forwarded-For` only behind a controlled reverse proxy |

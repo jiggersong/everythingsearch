@@ -128,11 +128,11 @@ SUPPORTED_EXTENSIONS = TEXT_EXTENSIONS | OFFICE_EXTENSIONS | MEDIA_EXTENSIONS
 # 信任前置代理网关获取真实 IP (例如 Nginx 的 X-Forwarded-For)
 TRUST_PROXY = False
 
-# 意图识别所用的大模型（推荐用支持 JSON Mode 的模型，如 qwen-turbo）
-NL_INTENT_MODEL = "qwen-turbo"
+# 意图识别所用的大模型（推荐支持 JSON Mode 的轻量模型；调用侧会 enable_thinking=False）
+NL_INTENT_MODEL = "qwen3.7-flash"
 
-# 解读长文本返回结构的大模型
-SEARCH_INTERPRET_MODEL = "qwen-turbo"
+# 解读长文本返回结构的大模型（可与意图模型相同）
+SEARCH_INTERPRET_MODEL = "qwen3.7-flash"
 
 # 模型超时时间配置（秒）
 NL_TIMEOUT_SEC = 10

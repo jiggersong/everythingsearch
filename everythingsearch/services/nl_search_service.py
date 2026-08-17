@@ -226,6 +226,8 @@ class NLSearchService:
                 messages=messages,
                 result_format='message',
                 response_format={"type": "json_object"},
+                # 关闭思考模式：保证 JSON Mode 稳定，并降低延迟/费用
+                enable_thinking=False,
                 timeout=settings.nl_timeout_sec
             )
             

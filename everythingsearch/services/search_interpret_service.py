@@ -78,6 +78,8 @@ class SearchInterpretService:
                 model=settings.search_interpret_model,
                 messages=messages,
                 result_format='message',
+                # 关闭思考模式：解读无需链式推理，降低延迟与费用
+                enable_thinking=False,
                 timeout=settings.interpret_timeout_sec
             )
             if response.status_code != 200:
@@ -111,6 +113,8 @@ class SearchInterpretService:
                 result_format='message',
                 stream=True,
                 incremental_output=True,
+                # 关闭思考模式：流式解读同样避免思考链开销
+                enable_thinking=False,
                 timeout=settings.interpret_timeout_sec
             )
             for resp in responses:

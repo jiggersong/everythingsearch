@@ -138,8 +138,8 @@ sudo nano /etc/hosts
 | `RERANK_MODEL` | `qwen3-rerank` | 精排模型（依赖 DashScope，如 `qwen3-rerank`、`gte-rerank`） |
 | `CHUNK_SIZE` | `500` | 索引切分块大小 |
 | `MAX_CONTENT_LENGTH` | `20000` | 单文件最大索引字符数 |
-| `NL_INTENT_MODEL` | `qwen-turbo` | `POST /api/search/nl` 使用的意图模型 |
-| `SEARCH_INTERPRET_MODEL` | `qwen-turbo` | 智能解读模型 |
+| `NL_INTENT_MODEL` | `qwen3.7-flash` | `POST /api/search/nl` 使用的意图模型（JSON Mode；调用侧关闭思考模式） |
+| `SEARCH_INTERPRET_MODEL` | `qwen3.7-flash` | 智能解读模型（调用侧关闭思考模式） |
 | `RATE_LIMIT_NL_PER_MIN` | `10` | NL 搜索接口每 IP 限流 |
 | `RATE_LIMIT_INTERPRET_PER_MIN` | `10` | 解读接口每 IP 限流 |
 | `TRUST_PROXY` | `False` | 仅在受控反向代理后面时才信任 `X-Forwarded-For` |
